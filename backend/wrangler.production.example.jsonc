@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "velora-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-03",
+  "vars": {
+    "APP_NAME": "Velora API",
+    "ADMIN_KEY": "replace-with-a-strong-admin-secret",
+    "APP_ENV": "production",
+    "ENABLE_DEV_ENDPOINTS": "false"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "velora-prod",
+      "database_id": "replace-with-your-cloudflare-d1-database-id",
+      "migrations_dir": "src/db/migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
+

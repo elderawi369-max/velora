@@ -1,0 +1,420 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(244, 172, 183, 0.35), transparent 35%),
+    linear-gradient(180deg, #fff9f7 0%, #f8f1eb 100%);
+  color: #241a1f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.page-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 24px 96px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0 32px;
+}
+
+.brand {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #2d1520;
+  text-decoration: none;
+}
+
+.topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.nav-link {
+  color: #694b56;
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 999px;
+}
+
+.nav-link-active,
+.nav-link:hover {
+  background: rgba(180, 84, 105, 0.1);
+  color: #9e334e;
+}
+
+.content-section {
+  display: grid;
+  gap: 28px;
+}
+
+.content-section.narrow {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.hero {
+  margin-bottom: 12px;
+}
+
+.hero-wide {
+  padding: 32px;
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(180, 84, 105, 0.14);
+  box-shadow: 0 14px 32px rgba(83, 53, 59, 0.08);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.section-copy {
+  display: grid;
+  gap: 12px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.78rem;
+  color: #b45469;
+  margin: 0 0 16px;
+}
+
+.hero h1 {
+  font-size: clamp(2.6rem, 8vw, 5.5rem);
+  line-height: 0.95;
+  margin: 0 0 20px;
+  max-width: 10ch;
+}
+
+.intro {
+  font-size: 1.08rem;
+  line-height: 1.7;
+  max-width: 700px;
+  color: #4f4047;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.panel,
+.card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(180, 84, 105, 0.15);
+  border-radius: 24px;
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 32px rgba(83, 53, 59, 0.08);
+}
+
+.form-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.card p {
+  margin: 0;
+  line-height: 1.6;
+  color: #5a4a51;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span,
+.picker-label,
+.meta-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #4d2e39;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(120, 79, 89, 0.2);
+  border-radius: 16px;
+  padding: 14px 16px;
+  font: inherit;
+  background: rgba(255, 255, 255, 0.95);
+  color: #241a1f;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.picker-group {
+  display: grid;
+  gap: 10px;
+}
+
+.tag-grid,
+.chip-row,
+.action-row,
+.gift-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tag-button,
+.chip {
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+}
+
+.tag-button {
+  border: 1px solid rgba(120, 79, 89, 0.18);
+  background: rgba(255, 255, 255, 0.8);
+  color: #543844;
+  cursor: pointer;
+}
+
+.tag-active {
+  background: #b45469;
+  color: white;
+  border-color: #b45469;
+}
+
+.chip {
+  background: rgba(180, 84, 105, 0.11);
+  color: #8a3250;
+}
+
+.chip-muted {
+  background: rgba(72, 62, 66, 0.08);
+  color: #5f4c53;
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font: inherit;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: #b45469;
+  color: white;
+}
+
+.primary-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.secondary-button {
+  background: rgba(255, 255, 255, 0.9);
+  color: #5a3945;
+  border: 1px solid rgba(120, 79, 89, 0.2);
+}
+
+.danger-button,
+.gift-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.danger-button {
+  background: #b42318;
+  color: white;
+  border: 0;
+}
+
+.gift-button {
+  border: 1px solid rgba(120, 79, 89, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  color: #6a4250;
+}
+
+.form-error,
+.error-message {
+  color: #b42318;
+}
+
+.success-message {
+  color: #12704a;
+}
+
+.form-hint,
+.status-message,
+.profile-head p,
+.avatar-pill {
+  color: #6d5760;
+}
+
+.empty-state {
+  text-align: center;
+}
+
+.conversation-list,
+.chat-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.conversation-header,
+.safety-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.gift-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(180, 84, 105, 0.15);
+  box-shadow: 0 14px 32px rgba(83, 53, 59, 0.08);
+  text-decoration: none;
+}
+
+.conversation-copy h2,
+.conversation-copy p {
+  margin: 0;
+}
+
+.conversation-meta {
+  margin-top: 8px;
+}
+
+.conversation-copy h2 {
+  color: #2d1520;
+}
+
+.conversation-copy p {
+  color: #6d5760;
+}
+
+.profile-card {
+  display: grid;
+  gap: 16px;
+}
+
+.avatar-pill {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+}
+
+.profile-head h2,
+.profile-head p,
+.profile-bio,
+.meta-group {
+  margin: 0;
+}
+
+.meta-group {
+  display: grid;
+  gap: 8px;
+}
+
+.message-list {
+  display: grid;
+  gap: 12px;
+  min-height: 320px;
+}
+
+.message-bubble {
+  max-width: 78%;
+  padding: 14px 16px;
+  border-radius: 18px 18px 18px 6px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(120, 79, 89, 0.15);
+}
+
+.message-bubble p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.own-message {
+  margin-left: auto;
+  border-radius: 18px 18px 6px 18px;
+  background: rgba(180, 84, 105, 0.13);
+}
+
+.composer {
+  display: grid;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    padding: 48px 18px 72px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    max-width: none;
+  }
+}

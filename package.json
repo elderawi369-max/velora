@@ -1,0 +1,16 @@
+{
+  "name": "ai-style-human-chat",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "cmd /c npm --workspace frontend run dev",
+    "dev:backend": "cmd /c npm --workspace backend run dev",
+    "build:frontend": "cmd /c npm --workspace frontend run build",
+    "build:backend": "cmd /c npm --workspace backend run build"
+  }
+}
+
