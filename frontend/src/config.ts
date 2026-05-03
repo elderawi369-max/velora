@@ -12,15 +12,20 @@ export const vibeOptions = [
   "late-night chatter",
 ] as const;
 
-export const boundaryOptions = [
-  "no off-app contact",
+export const platformRules = [
+  "No off-app contact",
+  "Text-only stays in Velora",
+  "No harassment or impersonation",
+  "No spam or begging",
+] as const;
+
+export const preferenceOptions = [
   "no explicit chat",
   "slow replies are okay",
   "respect quiet time",
   "friendly flirting only",
   "no pressure conversations",
   "kind tone only",
-  "text-only always",
 ] as const;
 
 export const avatarOptions = [
@@ -31,4 +36,3 @@ export const avatarOptions = [
   "velvet",
   "luna",
 ] as const;
-

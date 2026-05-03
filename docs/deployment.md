@@ -15,7 +15,7 @@ Before production:
 
 - use HTTPS-only secure cookies
 - disable development-only seed endpoints
-- use a real admin key
+- store the admin key as a Wrangler secret instead of in tracked config
 - replace the placeholder D1 database ID
 
 These safeguards are already supported by the code:
@@ -56,9 +56,24 @@ Use these production values:
 
 - `APP_ENV`: `production`
 - `ENABLE_DEV_ENDPOINTS`: `false`
-- `ADMIN_KEY`: a real secret value
 
 Keep `backend/wrangler.jsonc` for local development.
+
+### 3a. Set the production admin key as a secret
+
+```powershell
+cmd /c npx wrangler secret put ADMIN_SECRET --config backend\wrangler.jsonc
+```
+
+For local development, copy:
+
+`backend/.dev.vars.example`
+
+to:
+
+`backend/.dev.vars`
+
+and keep the local admin key there instead of in Git.
 
 ### 4. Apply remote migrations
 

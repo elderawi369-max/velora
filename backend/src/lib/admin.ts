@@ -7,10 +7,11 @@ function readAdminHeader(c: Context<{ Bindings: EnvBindings }>) {
 }
 
 export function requireAdmin(c: Context<{ Bindings: EnvBindings }>) {
-  const configuredKey = c.env.ADMIN_KEY ?? "velora-local-admin";
+  const configuredKey =
+    c.env.ADMIN_SECRET ?? (c.env.APP_ENV === "local" ? "velora-local-admin" : "");
   const providedKey = readAdminHeader(c);
 
-  if (!providedKey || providedKey !== configuredKey) {
+  if (!configuredKey || !providedKey || providedKey !== configuredKey) {
     throw new HTTPException(401, {
       message: "Unauthorized admin request.",
     });

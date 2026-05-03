@@ -45,7 +45,13 @@ export function ConversationList() {
           <div className="conversation-copy">
             <h2>{conversation.otherProfile?.displayName ?? "Unknown profile"}</h2>
             <p>@{conversation.otherProfile?.username ?? "missing-profile"}</p>
+            <p className="conversation-preview">
+              {conversation.lastMessagePreview || "No messages yet."}
+            </p>
             <div className="conversation-meta">
+              <span className={conversation.unread ? "chip" : "chip chip-muted"}>
+                {conversation.unread ? "Unread" : "Read"}
+              </span>
               <span className={conversation.isFavorited ? "chip" : "chip chip-muted"}>
                 {conversation.isFavorited ? "Favorited" : "Not favorited"}
               </span>

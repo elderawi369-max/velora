@@ -60,6 +60,8 @@ export type Conversation = {
   } | null;
   isFavorited: boolean;
   lastMessageAt: number;
+  lastMessagePreview: string;
+  unread: boolean;
   createdAt: number;
 };
 

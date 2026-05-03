@@ -5,7 +5,6 @@
   "compatibility_date": "2026-05-03",
   "vars": {
     "APP_NAME": "Velora API",
-    "ADMIN_KEY": "replace-with-a-strong-admin-secret",
     "APP_ENV": "production",
     "ENABLE_DEV_ENDPOINTS": "false"
   },
@@ -21,4 +20,3 @@
     "enabled": true
   }
 }
-

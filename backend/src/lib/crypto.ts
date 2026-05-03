@@ -28,7 +28,7 @@ export async function hashPassword(
       name: "PBKDF2",
       hash: "SHA-256",
       salt: encoder.encode(salt),
-      iterations: 120_000,
+      iterations: 100_000,
     },
     baseKey,
     256,
@@ -52,4 +52,3 @@ export async function verifyPassword(
 export async function hashToken(token: string): Promise<string> {
   return sha256(token);
 }
-

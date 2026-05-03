@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { platformRules } from "../../config";
 import {
   addFavorite,
   createConversation,
@@ -70,7 +71,12 @@ export function ProfileList() {
 
   return (
     <section className="card-grid">
-      {data.profiles.map((profile) => (
+      {data.profiles.map((profile) => {
+        const visiblePreferences = profile.boundaries.filter(
+          (item) => !platformRules.includes(item as (typeof platformRules)[number]),
+        );
+
+        return (
         <article className="card profile-card" key={profile.id}>
           <div className="avatar-pill">{profile.avatarPreset}</div>
           <div className="profile-head">
@@ -91,14 +97,18 @@ export function ProfileList() {
           </div>
 
           <div className="meta-group">
-            <span className="meta-title">Boundaries</span>
-            <div className="chip-row">
-              {profile.boundaries.map((tag) => (
-                <span className="chip chip-muted" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
+            <span className="meta-title">Preferences</span>
+            {visiblePreferences.length > 0 ? (
+              <div className="chip-row">
+                {visiblePreferences.map((tag) => (
+                  <span className="chip chip-muted" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="status-message">No extra preferences listed.</p>
+            )}
           </div>
 
           <div className="action-row">
@@ -152,7 +162,7 @@ export function ProfileList() {
 
           {giftSuccess ? <p className="success-message">{giftSuccess}</p> : null}
         </article>
-      ))}
+      )})}
     </section>
   );
 }

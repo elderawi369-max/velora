@@ -5,22 +5,16 @@
 	"compatibility_date": "2026-05-02",
 	"vars": {
 		"APP_NAME": "Velora API",
-		"ADMIN_KEY": "ZxdfFgY7630$&hbsR@$#lh493",
 		"APP_ENV": "production",
 		"ENABLE_DEV_ENDPOINTS": "false"
 	},
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "velora-dev",
+			"database_name": "velora-prod",
 			"database_id": "19155ba3-b108-40cc-93b3-f71d45279e8c",
 			"preview_database_id": "velora-dev-local",
 			"migrations_dir": "src/db/migrations"
-		},
-		{
-			"binding": "velora_prod",
-			"database_name": "velora-prod",
-			"database_id": "19155ba3-b108-40cc-93b3-f71d45279e8c"
 		}
 	],
 	"observability": {

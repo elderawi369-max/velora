@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { avatarOptions, boundaryOptions, vibeOptions } from "../../config";
+import {
+  avatarOptions,
+  platformRules,
+  preferenceOptions,
+  vibeOptions,
+} from "../../config";
 import { createProfile } from "../../lib/api";
 
 function toggleItem(items: string[], item: string) {
@@ -16,7 +21,7 @@ export function ProfileForm() {
   const [bio, setBio] = useState("");
   const [avatarPreset, setAvatarPreset] = useState<string>(avatarOptions[0]);
   const [vibeTags, setVibeTags] = useState<string[]>(["sweet"]);
-  const [boundaries, setBoundaries] = useState<string[]>(["no off-app contact"]);
+  const [boundaries, setBoundaries] = useState<string[]>(["kind tone only"]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,7 +58,7 @@ export function ProfileForm() {
         <h1>Create a profile people will want to return to.</h1>
         <p className="intro">
           In Velora, the profile is the product. It needs a memorable tone,
-          clear boundaries, and a vibe that feels intentional.
+          clear preferences, and a vibe that feels intentional.
         </p>
       </div>
 
@@ -134,9 +139,24 @@ export function ProfileForm() {
         </div>
 
         <div className="picker-group">
-          <span className="picker-label">Boundaries</span>
+          <span className="picker-label">Platform rules</span>
+          <p className="status-message">
+            These are fixed for everyone and do not need to be selected per
+            profile.
+          </p>
           <div className="tag-grid">
-            {boundaryOptions.map((option) => {
+            {platformRules.map((rule) => (
+              <span className="chip chip-muted" key={rule}>
+                {rule}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="picker-group">
+          <span className="picker-label">Profile preferences</span>
+          <div className="tag-grid">
+            {preferenceOptions.map((option) => {
               const active = boundaries.includes(option);
               return (
                 <button

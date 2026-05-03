@@ -1,0 +1,3 @@
+ADMIN_SECRET=velora-local-admin
+APP_ENV=local
+ENABLE_DEV_ENDPOINTS=true

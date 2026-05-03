@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMessages, sendMessage } from "../../lib/api";
 
@@ -31,6 +31,20 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
 
   const ownProfileId = messageQuery.data?.ownProfileId ?? "";
   const messages = useMemo(() => messageQuery.data?.messages ?? [], [messageQuery.data]);
+
+  useEffect(() => {
+    if (!messageQuery.data) {
+      return;
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: ["conversations"],
+    });
+
+    void queryClient.invalidateQueries({
+      queryKey: ["conversation", conversationId],
+    });
+  }, [conversationId, messageQuery.data, queryClient]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,4 +124,3 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
     </section>
   );
 }
-

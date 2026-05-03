@@ -339,6 +339,12 @@ body {
   margin-top: 8px;
 }
 
+.conversation-preview {
+  margin-top: 8px;
+  color: #5d4a52;
+  line-height: 1.5;
+}
+
 .conversation-copy h2 {
   color: #2d1520;
 }

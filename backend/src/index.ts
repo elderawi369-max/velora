@@ -16,9 +16,12 @@ function resolveCorsOrigin(origin: string | undefined) {
     return origin;
   }
 
-  const allowedOrigins = [
-    "https://velora-web.pages.dev",
-  ];
+  const pagesPattern = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i;
+  if (pagesPattern.test(origin)) {
+    return origin;
+  }
+
+  const allowedOrigins: string[] = [];
 
   if (allowedOrigins.includes(origin)) {
     return origin;
@@ -49,7 +52,7 @@ app.get("/api/health", (c) => {
   return c.json({
     ok: true,
     timestamp: new Date().toISOString(),
-    adminConfigured: Boolean(c.env.ADMIN_KEY ?? "velora-local-admin"),
+    adminConfigured: Boolean(c.env.ADMIN_SECRET ?? "velora-local-admin"),
     appEnv: c.env.APP_ENV ?? "unknown",
   });
 });

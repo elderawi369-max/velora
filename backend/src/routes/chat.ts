@@ -10,6 +10,22 @@ import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 
 export const chatRoutes = new Hono<{ Bindings: EnvBindings }>();
 
+function getOwnReadAt(conversation: typeof conversations.$inferSelect, ownProfileId: string) {
+  return conversation.profileAId === ownProfileId
+    ? conversation.lastReadAtA
+    : conversation.lastReadAtB;
+}
+
+function readStatePatch(
+  conversation: typeof conversations.$inferSelect,
+  ownProfileId: string,
+  timestamp: number,
+) {
+  return conversation.profileAId === ownProfileId
+    ? { lastReadAtA: timestamp }
+    : { lastReadAtB: timestamp };
+}
+
 chatRoutes.get("/conversations", async (c) => {
   const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
   if (!own) {
@@ -54,6 +70,11 @@ chatRoutes.get("/conversations", async (c) => {
           ? await isFavorited(c.env, own.profileId, otherProfile.id)
           : false,
         lastMessageAt: conversation.lastMessageAt,
+        lastMessagePreview: conversation.lastMessagePreview,
+        unread: Boolean(
+          conversation.lastMessageSenderProfileId !== own.profileId &&
+            conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
+        ),
         createdAt: conversation.createdAt,
       };
     }),
@@ -125,6 +146,10 @@ chatRoutes.post("/conversations", async (c) => {
     profileAId: own.profileId,
     profileBId: body.targetProfileId,
     lastMessageAt: now,
+    lastMessagePreview: "",
+    lastMessageSenderProfileId: own.profileId,
+    lastReadAtA: now,
+    lastReadAtB: 0,
     createdAt: now,
   };
 
@@ -182,6 +207,11 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
         ? await isFavorited(c.env, own.profileId, otherProfile.id)
         : false,
       lastMessageAt: conversation.lastMessageAt,
+      lastMessagePreview: conversation.lastMessagePreview,
+      unread: Boolean(
+        conversation.lastMessageSenderProfileId !== own.profileId &&
+          conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
+      ),
       createdAt: conversation.createdAt,
     },
   });
@@ -218,6 +248,11 @@ chatRoutes.get("/conversations/:conversationId/messages", async (c) => {
     .where(eq(messages.conversationId, conversation.id))
     .orderBy(asc(messages.createdAt))
     .limit(200);
+
+  await db
+    .update(conversations)
+    .set(readStatePatch(conversation, own.profileId, Date.now()))
+    .where(eq(conversations.id, conversation.id));
 
   return c.json({ messages: items, ownProfileId: own.profileId });
 });
@@ -295,6 +330,9 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
     .update(conversations)
     .set({
       lastMessageAt: now,
+      lastMessagePreview: trimmedBody.slice(0, 140),
+      lastMessageSenderProfileId: own.profileId,
+      ...readStatePatch(conversation, own.profileId, now),
     })
     .where(eq(conversations.id, conversation.id));
 

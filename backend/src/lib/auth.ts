@@ -23,14 +23,19 @@ export async function createSession(env: EnvBindings, userId: string) {
   return token;
 }
 
-export function buildSessionCookie(token: string, secure: boolean) {
-  const secureFlag = secure ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}${secureFlag}`;
+type CookiePolicy = {
+  sameSite: "Strict" | "None";
+  secure: boolean;
+};
+
+export function buildSessionCookie(token: string, policy: CookiePolicy) {
+  const secureFlag = policy.secure ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=${policy.sameSite}; Max-Age=${60 * 60 * 24 * 30}${secureFlag}`;
 }
 
-export function clearSessionCookie(secure: boolean) {
-  const secureFlag = secure ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${secureFlag}`;
+export function clearSessionCookie(policy: CookiePolicy) {
+  const secureFlag = policy.secure ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=${policy.sameSite}; Max-Age=0${secureFlag}`;
 }
 
 export function readSessionToken(cookieHeader: string | undefined) {
@@ -71,10 +76,16 @@ export async function getUserIdFromSession(
   return session.userId;
 }
 
-export function shouldUseSecureCookie(requestUrl: string, appEnv?: string) {
+export function resolveCookiePolicy(requestUrl: string, appEnv?: string): CookiePolicy {
   if (appEnv === "local") {
-    return false;
+    return {
+      sameSite: "Strict",
+      secure: false,
+    };
   }
 
-  return requestUrl.startsWith("https://");
+  return {
+    sameSite: "None",
+    secure: requestUrl.startsWith("https://"),
+  };
 }

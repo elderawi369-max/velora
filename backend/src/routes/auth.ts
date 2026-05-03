@@ -7,7 +7,7 @@ import {
   createSession,
   buildSessionCookie,
   clearSessionCookie,
-  shouldUseSecureCookie,
+  resolveCookiePolicy,
 } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/crypto";
 import { loginSchema, signupSchema } from "../lib/validation";
@@ -49,7 +49,7 @@ authRoutes.post("/signup", async (c) => {
     "Set-Cookie",
     buildSessionCookie(
       sessionToken,
-      shouldUseSecureCookie(c.req.url, c.env.APP_ENV),
+      resolveCookiePolicy(c.req.url, c.env.APP_ENV),
     ),
   );
 
@@ -93,7 +93,7 @@ authRoutes.post("/login", async (c) => {
     "Set-Cookie",
     buildSessionCookie(
       sessionToken,
-      shouldUseSecureCookie(c.req.url, c.env.APP_ENV),
+      resolveCookiePolicy(c.req.url, c.env.APP_ENV),
     ),
   );
 
@@ -108,7 +108,7 @@ authRoutes.post("/login", async (c) => {
 authRoutes.post("/logout", (c) => {
   c.header(
     "Set-Cookie",
-    clearSessionCookie(shouldUseSecureCookie(c.req.url, c.env.APP_ENV)),
+    clearSessionCookie(resolveCookiePolicy(c.req.url, c.env.APP_ENV)),
   );
   return c.json({ ok: true });
 });

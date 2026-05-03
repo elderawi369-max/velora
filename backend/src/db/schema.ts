@@ -45,6 +45,12 @@ export const conversations = sqliteTable("conversations", {
     .notNull()
     .references(() => profiles.id),
   lastMessageAt: integer("last_message_at").notNull(),
+  lastMessagePreview: text("last_message_preview").notNull(),
+  lastMessageSenderProfileId: text("last_message_sender_profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  lastReadAtA: integer("last_read_at_a").notNull(),
+  lastReadAtB: integer("last_read_at_b").notNull(),
   createdAt: integer("created_at").notNull(),
 });
 

@@ -36,9 +36,14 @@ CREATE TABLE IF NOT EXISTS conversations (
   profile_a_id TEXT NOT NULL,
   profile_b_id TEXT NOT NULL,
   last_message_at INTEGER NOT NULL,
+  last_message_preview TEXT NOT NULL,
+  last_message_sender_profile_id TEXT NOT NULL,
+  last_read_at_a INTEGER NOT NULL,
+  last_read_at_b INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (profile_a_id) REFERENCES profiles(id),
-  FOREIGN KEY (profile_b_id) REFERENCES profiles(id)
+  FOREIGN KEY (profile_b_id) REFERENCES profiles(id),
+  FOREIGN KEY (last_message_sender_profile_id) REFERENCES profiles(id)
 );
 
 CREATE TABLE IF NOT EXISTS messages (
