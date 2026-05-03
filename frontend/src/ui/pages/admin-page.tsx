@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchAdminReports, suspendProfile, unsuspendProfile } from "../../lib/admin-api";
+import {
+  fetchAdminReports,
+  fetchSupportTickets,
+  suspendProfile,
+  unsuspendProfile,
+} from "../../lib/admin-api";
 
 const adminStorageKey = "velora-admin-key";
 
@@ -18,6 +23,11 @@ export function AdminPage() {
   const reportsQuery = useQuery({
     queryKey: ["adminReports", activeAdminKey],
     queryFn: () => fetchAdminReports(activeAdminKey),
+    enabled: Boolean(activeAdminKey),
+  });
+  const ticketsQuery = useQuery({
+    queryKey: ["adminSupportTickets", activeAdminKey],
+    queryFn: () => fetchSupportTickets(activeAdminKey),
     enabled: Boolean(activeAdminKey),
   });
 
@@ -43,6 +53,7 @@ export function AdminPage() {
   });
 
   const reports = useMemo(() => reportsQuery.data?.reports ?? [], [reportsQuery.data]);
+  const tickets = useMemo(() => ticketsQuery.data?.tickets ?? [], [ticketsQuery.data]);
 
   function saveAdminKey() {
     window.localStorage.setItem(adminStorageKey, adminKeyInput);
@@ -97,6 +108,16 @@ export function AdminPage() {
         </section>
       ) : null}
 
+      {ticketsQuery.error ? (
+        <section className="panel">
+          <p className="error-message">
+            {ticketsQuery.error instanceof Error
+              ? ticketsQuery.error.message
+              : "Unable to load support tickets."}
+          </p>
+        </section>
+      ) : null}
+
       {activeAdminKey && !reportsQuery.isLoading && !reportsQuery.error && reports.length === 0 ? (
         <section className="panel empty-state">
           <h2>No reports yet.</h2>
@@ -121,6 +142,20 @@ export function AdminPage() {
                 <p>
                   {target ? `${target.displayName} (@${target.username})` : "Missing profile"}
                 </p>
+              </div>
+
+              <div className="chip-row">
+                <span className={report.riskLevel === "high" ? "chip" : "chip chip-muted"}>
+                  {report.riskLevel === "high"
+                    ? "High attention"
+                    : report.riskLevel === "watch"
+                      ? "Needs review"
+                      : "Low volume"}
+                </span>
+                <span className="chip chip-muted">{report.reportCount} reports</span>
+                <span className="chip chip-muted">
+                  {report.uniqueReporterCount} unique reporters
+                </span>
               </div>
 
               <div className="meta-group">
@@ -161,7 +196,50 @@ export function AdminPage() {
           );
         })}
       </section>
+
+      <section className="content-section">
+        <section className="section-copy">
+          <p className="eyebrow">Support queue</p>
+          <h2>User support tickets land here too.</h2>
+        </section>
+
+        {ticketsQuery.isLoading ? (
+          <p className="status-message">Loading support tickets...</p>
+        ) : null}
+
+        {activeAdminKey && !ticketsQuery.isLoading && tickets.length === 0 ? (
+          <section className="panel empty-state">
+            <h2>No support tickets yet.</h2>
+            <p>The support page is wired, but nobody has asked for help yet.</p>
+          </section>
+        ) : null}
+
+        <section className="card-grid">
+          {tickets.map((ticket) => (
+            <article className="card profile-card" key={ticket.id}>
+              <div className="chip-row">
+                <span className="chip">{ticket.status}</span>
+                <span className="chip chip-muted">{ticket.email}</span>
+              </div>
+
+              <div className="meta-group">
+                <span className="meta-title">Subject</span>
+                <p>{ticket.subject}</p>
+              </div>
+
+              <div className="meta-group">
+                <span className="meta-title">Message</span>
+                <p>{ticket.message}</p>
+              </div>
+
+              <div className="meta-group">
+                <span className="meta-title">Profile</span>
+                <p>{ticket.profileId ?? "Submitted without a linked profile"}</p>
+              </div>
+            </article>
+          ))}
+        </section>
+      </section>
     </main>
   );
 }
-

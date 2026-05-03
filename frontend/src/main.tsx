@@ -10,9 +10,11 @@ import { ConversationsPage } from "./ui/pages/conversations-page";
 import { FavoritesPage } from "./ui/pages/favorites-page";
 import { HomePage } from "./ui/pages/home-page";
 import { LoginPage } from "./ui/pages/login-page";
+import { MyProfilePage } from "./ui/pages/my-profile-page";
 import { NotificationsPage } from "./ui/pages/notifications-page";
 import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
+import { SupportPage } from "./ui/pages/support-page";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,10 @@ const router = createBrowserRouter([
         element: <CreateProfilePage />,
       },
       {
+        path: "my-profile",
+        element: <MyProfilePage />,
+      },
+      {
         path: "browse",
         element: <BrowsePage />,
       },
@@ -57,6 +63,10 @@ const router = createBrowserRouter([
       {
         path: "activity",
         element: <NotificationsPage />,
+      },
+      {
+        path: "support",
+        element: <SupportPage />,
       },
       {
         path: "chat/:conversationId",

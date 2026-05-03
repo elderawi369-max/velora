@@ -66,6 +66,12 @@ export type PublicProfile = {
   createdAt: number;
 };
 
+export type SupportTicketPayload = {
+  email: string;
+  subject: string;
+  message: string;
+};
+
 export type Conversation = {
   id: string;
   otherProfile: {
@@ -127,6 +133,10 @@ export function createProfile(payload: ProfilePayload) {
 
 export function fetchProfiles() {
   return request<{ profiles: PublicProfile[] }>("/api/profiles");
+}
+
+export function fetchOwnProfile() {
+  return request<{ profile: PublicProfile | null }>("/api/profiles/me");
 }
 
 export function createConversation(targetProfileId: string) {
@@ -232,5 +242,12 @@ export function blockProfile(targetProfileId: string) {
   return request<{ ok: true }>("/api/safety/blocks", {
     method: "POST",
     body: { targetProfileId },
+  });
+}
+
+export function submitSupportTicket(payload: SupportTicketPayload) {
+  return request<{ ok: true }>("/api/support/tickets", {
+    method: "POST",
+    body: payload,
   });
 }

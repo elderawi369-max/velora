@@ -129,3 +129,13 @@ export const notifications = sqliteTable("notifications", {
   readAt: integer("read_at"),
   createdAt: integer("created_at").notNull(),
 });
+
+export const supportTickets = sqliteTable("support_tickets", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id").references(() => profiles.id),
+  email: text("email").notNull(),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull(),
+  createdAt: integer("created_at").notNull(),
+});

@@ -36,6 +36,19 @@ export type AdminReport = {
     displayName: string;
     suspendedAt: number | null;
   } | null;
+  reportCount: number;
+  uniqueReporterCount: number;
+  riskLevel: "low" | "watch" | "high";
+};
+
+export type SupportTicket = {
+  id: string;
+  profileId: string | null;
+  email: string;
+  subject: string;
+  message: string;
+  status: string;
+  createdAt: number;
 };
 
 export function fetchAdminReports(adminKey: string) {
@@ -58,3 +71,6 @@ export function unsuspendProfile(adminKey: string, profileId: string) {
   );
 }
 
+export function fetchSupportTickets(adminKey: string) {
+  return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
+}

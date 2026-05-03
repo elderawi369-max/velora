@@ -1,19 +1,13 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchConversations, fetchNotifications } from "../lib/api";
-
-const navItems = [
-  { to: "/", label: "Home" },
-  { to: "/browse", label: "Browse" },
-  { to: "/conversations", label: "Conversations" },
-  { to: "/activity", label: "Activity" },
-  { to: "/favorites", label: "Favorites" },
-  { to: "/admin", label: "Admin" },
-  { to: "/create-profile", label: "Create Profile" },
-  { to: "/login", label: "Login" },
-];
+import { fetchConversations, fetchNotifications, fetchOwnProfile } from "../lib/api";
 
 export function AppLayout() {
+  const ownProfileQuery = useQuery({
+    queryKey: ["ownProfile"],
+    queryFn: fetchOwnProfile,
+    retry: false,
+  });
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
@@ -33,6 +27,18 @@ export function AppLayout() {
     ) ?? 0;
   const notificationUnreadCount =
     notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
+  const hasProfile = Boolean(ownProfileQuery.data?.profile);
+  const navItems = [
+    { to: "/", label: "Home" },
+    { to: "/browse", label: "Browse" },
+    { to: "/conversations", label: "Conversations" },
+    { to: "/activity", label: "Activity" },
+    { to: "/favorites", label: "Favorites" },
+    { to: "/admin", label: "Admin" },
+    { to: hasProfile ? "/my-profile" : "/create-profile", label: hasProfile ? "My Profile" : "Create Profile" },
+    { to: "/support", label: "Support" },
+    { to: "/login", label: "Login" },
+  ];
 
   return (
     <div className="page-shell">

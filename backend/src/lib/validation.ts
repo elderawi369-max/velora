@@ -19,3 +19,9 @@ export const profileSchema = z.object({
   vibeTags: z.array(z.string().trim().min(1).max(24)).min(1).max(6),
   boundaries: z.array(z.string().trim().min(1).max(40)).min(1).max(8),
 });
+
+export const supportTicketSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  subject: z.string().trim().min(4).max(120),
+  message: z.string().trim().min(10).max(2000),
+});

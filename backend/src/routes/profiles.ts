@@ -10,6 +10,37 @@ import { profileSchema } from "../lib/validation";
 
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
+async function getProfileById(env: EnvBindings, profileId: string) {
+  const db = getDb(env);
+  const [profile] = await db
+    .select({
+      id: profiles.id,
+      username: profiles.username,
+      displayName: profiles.displayName,
+      identity: profiles.identity,
+      lookingFor: profiles.lookingFor,
+      bio: profiles.bio,
+      avatarPreset: profiles.avatarPreset,
+      vibeTags: profiles.vibeTags,
+      boundaries: profiles.boundaries,
+      suspendedAt: profiles.suspendedAt,
+      createdAt: profiles.createdAt,
+    })
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .limit(1);
+
+  if (!profile || profile.suspendedAt) {
+    return null;
+  }
+
+  return {
+    ...profile,
+    vibeTags: JSON.parse(profile.vibeTags) as string[],
+    boundaries: JSON.parse(profile.boundaries) as string[],
+  };
+}
+
 type Identity = "woman" | "man" | "non-binary" | "prefer not to say";
 type LookingFor = "women" | "men" | "non-binary people" | "any";
 
@@ -135,6 +166,16 @@ profileRoutes.get("/", async (c) => {
   });
 });
 
+profileRoutes.get("/me", async (c) => {
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  if (!own) {
+    return c.json({ profile: null });
+  }
+
+  const profile = await getProfileById(c.env, own.profileId);
+  return c.json({ profile });
+});
+
 profileRoutes.post("/", async (c) => {
   const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"));
   if (!userId) {
@@ -196,37 +237,20 @@ profileRoutes.post("/", async (c) => {
 
 profileRoutes.get("/:username", async (c) => {
   const db = getDb(c.env);
-  const [profile] = await db
-    .select({
-      id: profiles.id,
-      username: profiles.username,
-      displayName: profiles.displayName,
-      identity: profiles.identity,
-      lookingFor: profiles.lookingFor,
-      bio: profiles.bio,
-      avatarPreset: profiles.avatarPreset,
-      vibeTags: profiles.vibeTags,
-      boundaries: profiles.boundaries,
-      suspendedAt: profiles.suspendedAt,
-      createdAt: profiles.createdAt,
-    })
+  const [match] = await db
+    .select({ id: profiles.id })
     .from(profiles)
     .where(eq(profiles.username, c.req.param("username")))
     .limit(1);
 
+  if (!match) {
+    return c.json({ error: "Profile not found." }, 404);
+  }
+
+  const profile = await getProfileById(c.env, match.id);
   if (!profile) {
     return c.json({ error: "Profile not found." }, 404);
   }
 
-  if (profile.suspendedAt) {
-    return c.json({ error: "Profile not found." }, 404);
-  }
-
-  return c.json({
-    profile: {
-      ...profile,
-      vibeTags: JSON.parse(profile.vibeTags) as string[],
-      boundaries: JSON.parse(profile.boundaries) as string[],
-    },
-  });
+  return c.json({ profile });
 });

@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { fetchOwnProfile } from "../../lib/api";
 
 const pillars = [
   "Persistent profiles that people can return to",
@@ -7,6 +9,13 @@ const pillars = [
 ];
 
 export function HomePage() {
+  const ownProfileQuery = useQuery({
+    queryKey: ["ownProfile"],
+    queryFn: fetchOwnProfile,
+    retry: false,
+  });
+  const hasProfile = Boolean(ownProfileQuery.data?.profile);
+
   return (
     <main className="content-section">
       <section className="hero hero-wide">
@@ -21,8 +30,8 @@ export function HomePage() {
         </div>
 
         <div className="hero-actions">
-          <Link className="primary-button" to="/signup">
-            Create account
+          <Link className="primary-button" to={hasProfile ? "/my-profile" : "/signup"}>
+            {hasProfile ? "My profile" : "Create account"}
           </Link>
           <Link className="secondary-button" to="/browse">
             Browse profiles
@@ -44,4 +53,3 @@ export function HomePage() {
     </main>
   );
 }
-
