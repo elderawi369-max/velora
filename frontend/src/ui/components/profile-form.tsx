@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   avatarOptions,
   identityOptions,
   lookingForOptions,
   platformRules,
   preferenceOptions,
+  profilePromptOptions,
   vibeOptions,
 } from "../../config";
-import { createProfile } from "../../lib/api";
+import { createProfile, type PublicProfile, updateOwnProfile } from "../../lib/api";
 
 function toggleItem(items: string[], item: string) {
   return items.includes(item)
@@ -16,16 +18,36 @@ function toggleItem(items: string[], item: string) {
     : [...items, item];
 }
 
-export function ProfileForm() {
+type ProfileFormProps = {
+  mode?: "create" | "edit";
+  initialProfile?: PublicProfile | null;
+};
+
+export function ProfileForm({ mode = "create", initialProfile = null }: ProfileFormProps) {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [identity, setIdentity] = useState<string>("prefer not to say");
-  const [lookingFor, setLookingFor] = useState<string>("any");
-  const [bio, setBio] = useState("");
-  const [avatarPreset, setAvatarPreset] = useState<string>(avatarOptions[0]);
-  const [vibeTags, setVibeTags] = useState<string[]>(["sweet"]);
-  const [boundaries, setBoundaries] = useState<string[]>(["kind tone only"]);
+  const queryClient = useQueryClient();
+  const [username, setUsername] = useState(initialProfile?.username ?? "");
+  const [displayName, setDisplayName] = useState(initialProfile?.displayName ?? "");
+  const [identity, setIdentity] = useState<string>(
+    initialProfile?.identity ?? "prefer not to say",
+  );
+  const [lookingFor, setLookingFor] = useState<string>(initialProfile?.lookingFor ?? "any");
+  const [bio, setBio] = useState(initialProfile?.bio ?? "");
+  const [avatarPreset, setAvatarPreset] = useState<string>(
+    initialProfile?.avatarPreset ?? avatarOptions[0],
+  );
+  const [vibeTags, setVibeTags] = useState<string[]>(initialProfile?.vibeTags ?? ["sweet"]);
+  const [boundaries, setBoundaries] = useState<string[]>(
+    initialProfile?.boundaries ?? ["kind tone only"],
+  );
+  const [promptEntries, setPromptEntries] = useState<Array<{ question: string; answer: string }>>(
+    initialProfile?.promptEntries?.length
+      ? initialProfile.promptEntries
+      : [
+          { question: profilePromptOptions[0], answer: "" },
+          { question: profilePromptOptions[1], answer: "" },
+        ],
+  );
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,22 +57,34 @@ export function ProfileForm() {
     setIsSubmitting(true);
 
     try {
-      await createProfile({
+      const payload = {
         username,
         displayName,
         identity,
         lookingFor,
         bio,
+        promptEntries: promptEntries.filter((entry) => entry.answer.trim().length > 0),
         avatarPreset,
         vibeTags,
         boundaries,
-      });
-      navigate("/browse");
+      };
+
+      if (mode === "edit") {
+        await updateOwnProfile(payload);
+        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+        navigate("/my-profile");
+      } else {
+        await createProfile(payload);
+        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+        navigate("/browse");
+      }
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
           ? submissionError.message
-          : "Unable to create profile.",
+          : "Unable to save profile.",
       );
     } finally {
       setIsSubmitting(false);
@@ -61,7 +95,11 @@ export function ProfileForm() {
     <section className="content-section">
       <div className="section-copy">
         <p className="eyebrow">Profile setup</p>
-        <h1>Create a profile people will want to return to.</h1>
+        <h1>
+          {mode === "edit"
+            ? "Refine the profile people return to."
+            : "Create a profile people will want to return to."}
+        </h1>
         <p className="intro">
           In Velora, the profile is the product. It needs a memorable tone,
           clear preferences, and a vibe that feels intentional.
@@ -138,6 +176,59 @@ export function ProfileForm() {
           />
         </label>
 
+        <div className="picker-group">
+          <span className="picker-label">Profile prompts</span>
+          <p className="status-message">
+            Short answers make profiles easier to remember and easier to start chatting with.
+          </p>
+          <div className="content-section">
+            {promptEntries.map((entry, index) => (
+              <div className="panel form-panel" key={`${entry.question}-${index}`}>
+                <label className="field">
+                  <span>Prompt {index + 1}</span>
+                  <select
+                    value={entry.question}
+                    onChange={(event) =>
+                      setPromptEntries((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, question: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                  >
+                    {profilePromptOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>Answer</span>
+                  <textarea
+                    value={entry.answer}
+                    onChange={(event) =>
+                      setPromptEntries((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, answer: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="Give people a concrete feel for how you like to chat."
+                    rows={3}
+                    maxLength={180}
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <label className="field">
           <span>Avatar preset</span>
           <select
@@ -174,8 +265,7 @@ export function ProfileForm() {
         <div className="picker-group">
           <span className="picker-label">Platform rules</span>
           <p className="status-message">
-            These are fixed for everyone and do not need to be selected per
-            profile.
+            These are fixed for everyone and do not need to be selected per profile.
           </p>
           <div className="tag-grid">
             {platformRules.map((rule) => (
@@ -208,7 +298,11 @@ export function ProfileForm() {
         {error ? <p className="form-error">{error}</p> : null}
 
         <button className="primary-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving profile..." : "Create profile"}
+          {isSubmitting
+            ? "Saving profile..."
+            : mode === "edit"
+              ? "Save profile"
+              : "Create profile"}
         </button>
       </form>
     </section>

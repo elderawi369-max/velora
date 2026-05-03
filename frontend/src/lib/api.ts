@@ -1,7 +1,7 @@
 import { apiBaseUrl } from "../config";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
 };
 
@@ -46,6 +46,7 @@ export type ProfilePayload = {
   identity: string;
   lookingFor: string;
   bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
   avatarPreset: string;
   vibeTags: string[];
   boundaries: string[];
@@ -58,11 +59,13 @@ export type PublicProfile = {
   identity: string;
   lookingFor: string;
   bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
   avatarPreset: string;
   vibeTags: string[];
   boundaries: string[];
   isFavorited: boolean;
   recommended: boolean;
+  trustSignals: string[];
   createdAt: number;
 };
 
@@ -127,6 +130,13 @@ export function login(payload: SignupPayload) {
 export function createProfile(payload: ProfilePayload) {
   return request<{ profile: PublicProfile }>("/api/profiles", {
     method: "POST",
+    body: payload,
+  });
+}
+
+export function updateOwnProfile(payload: ProfilePayload) {
+  return request<{ profile: PublicProfile }>("/api/profiles/me", {
+    method: "PUT",
     body: payload,
   });
 }

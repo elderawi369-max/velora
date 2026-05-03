@@ -20,6 +20,7 @@ export const profiles = sqliteTable("profiles", {
   identity: text("identity").notNull(),
   lookingFor: text("looking_for").notNull(),
   bio: text("bio").notNull(),
+  promptEntries: text("prompt_entries").notNull(),
   avatarPreset: text("avatar_preset").notNull(),
   boundaries: text("boundaries").notNull(),
   vibeTags: text("vibe_tags").notNull(),

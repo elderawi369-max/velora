@@ -1,6 +1,16 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchOwnProfile } from "../../lib/api";
+import { ProfileForm } from "../components/profile-form";
 import { MyProfileCard } from "../components/my-profile-card";
 
 export function MyProfilePage() {
+  const [isEditing, setIsEditing] = useState(false);
+  const ownProfileQuery = useQuery({
+    queryKey: ["ownProfile"],
+    queryFn: fetchOwnProfile,
+  });
+
   return (
     <main className="content-section">
       <section className="section-copy">
@@ -12,7 +22,21 @@ export function MyProfilePage() {
         </p>
       </section>
 
-      <MyProfileCard />
+      <div className="action-row">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setIsEditing((current) => !current)}
+        >
+          {isEditing ? "Back to profile view" : "Edit profile"}
+        </button>
+      </div>
+
+      {isEditing ? (
+        <ProfileForm mode="edit" initialProfile={ownProfileQuery.data?.profile ?? null} />
+      ) : (
+        <MyProfileCard />
+      )}
     </main>
   );
 }

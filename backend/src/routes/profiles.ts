@@ -20,6 +20,7 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       identity: profiles.identity,
       lookingFor: profiles.lookingFor,
       bio: profiles.bio,
+      promptEntries: profiles.promptEntries,
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
@@ -36,8 +37,17 @@ async function getProfileById(env: EnvBindings, profileId: string) {
 
   return {
     ...profile,
+    promptEntries: JSON.parse(profile.promptEntries) as Array<{
+      question: string;
+      answer: string;
+    }>,
     vibeTags: JSON.parse(profile.vibeTags) as string[],
     boundaries: JSON.parse(profile.boundaries) as string[],
+    trustSignals: [
+      profile.bio.length >= 40 ? "Complete profile" : null,
+      Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24 ? "Established profile" : null,
+      JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
+    ].filter(Boolean),
   };
 }
 
@@ -99,6 +109,7 @@ profileRoutes.get("/", async (c) => {
       identity: profiles.identity,
       lookingFor: profiles.lookingFor,
       bio: profiles.bio,
+      promptEntries: profiles.promptEntries,
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
@@ -144,11 +155,22 @@ profileRoutes.get("/", async (c) => {
 
       return {
         ...profile,
+        promptEntries: JSON.parse(profile.promptEntries) as Array<{
+          question: string;
+          answer: string;
+        }>,
         vibeTags: JSON.parse(profile.vibeTags) as string[],
         boundaries: JSON.parse(profile.boundaries) as string[],
         isFavorited: own ? await isFavorited(c.env, own.profileId, profile.id) : false,
         recommended: compatibilityScore > 0,
         compatibilityScore,
+        trustSignals: [
+          profile.bio.length >= 40 ? "Complete profile" : null,
+          Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24
+            ? "Established profile"
+            : null,
+          JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
+        ].filter(Boolean),
       };
     }),
   );
@@ -219,6 +241,7 @@ profileRoutes.post("/", async (c) => {
     identity: payload.data.identity,
     lookingFor: payload.data.lookingFor,
     bio: payload.data.bio,
+    promptEntries: JSON.stringify(payload.data.promptEntries),
     avatarPreset: payload.data.avatarPreset,
     vibeTags: JSON.stringify(payload.data.vibeTags),
     boundaries: JSON.stringify(payload.data.boundaries),
@@ -231,8 +254,69 @@ profileRoutes.post("/", async (c) => {
     profile: {
       id: profileId,
       ...payload.data,
+      trustSignals: payload.data.bio.length >= 40 ? ["Complete profile"] : [],
     },
   }, 201);
+});
+
+profileRoutes.put("/me", async (c) => {
+  const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"));
+  if (!userId) {
+    return c.json({ error: "Unauthorized." }, 401);
+  }
+
+  const payload = profileSchema.safeParse(await c.req.json());
+  if (!payload.success) {
+    return c.json({ error: "Invalid profile payload." }, 400);
+  }
+
+  const db = getDb(c.env);
+  const [existingProfile] = await db
+    .select({ id: profiles.id, username: profiles.username })
+    .from(profiles)
+    .where(eq(profiles.userId, userId))
+    .limit(1);
+
+  if (!existingProfile) {
+    return c.json({ error: "Profile not found." }, 404);
+  }
+
+  const [usernameTaken] = await db
+    .select({ id: profiles.id })
+    .from(profiles)
+    .where(eq(profiles.username, payload.data.username))
+    .limit(1);
+
+  if (usernameTaken && usernameTaken.id !== existingProfile.id) {
+    return c.json({ error: "That username is already taken." }, 409);
+  }
+
+  await db
+    .update(profiles)
+    .set({
+      username: payload.data.username,
+      displayName: payload.data.displayName,
+      identity: payload.data.identity,
+      lookingFor: payload.data.lookingFor,
+      bio: payload.data.bio,
+      promptEntries: JSON.stringify(payload.data.promptEntries),
+      avatarPreset: payload.data.avatarPreset,
+      vibeTags: JSON.stringify(payload.data.vibeTags),
+      boundaries: JSON.stringify(payload.data.boundaries),
+      updatedAt: Date.now(),
+    })
+    .where(eq(profiles.id, existingProfile.id));
+
+  return c.json({
+    profile: {
+      id: existingProfile.id,
+      ...payload.data,
+      trustSignals: [
+        payload.data.bio.length >= 40 ? "Complete profile" : null,
+        payload.data.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
+      ].filter(Boolean),
+    },
+  });
 });
 
 profileRoutes.get("/:username", async (c) => {

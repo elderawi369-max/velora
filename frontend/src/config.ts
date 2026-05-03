@@ -26,6 +26,15 @@ export const lookingForOptions = [
   "any",
 ] as const;
 
+export const profilePromptOptions = [
+  "My ideal chat energy is...",
+  "I reply best when...",
+  "One thing I always enjoy talking about is...",
+  "A conversation feels safe to me when...",
+  "The kind of attention I appreciate most is...",
+  "If you want to get my interest, start with...",
+] as const;
+
 export const platformRules = [
   "No off-app contact",
   "Text-only stays in Velora",

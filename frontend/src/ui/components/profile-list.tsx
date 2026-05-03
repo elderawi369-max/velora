@@ -310,8 +310,27 @@ export function ProfileList() {
             {profile.recommended ? <span className="chip">Recommended match</span> : null}
             <span className="chip chip-muted">I am {profile.identity}</span>
             <span className="chip chip-muted">Open to {profile.lookingFor}</span>
+            {profile.trustSignals.map((signal) => (
+              <span className="chip" key={signal}>
+                {signal}
+              </span>
+            ))}
           </div>
           <p className="profile-bio">{profile.bio}</p>
+
+          {profile.promptEntries.length > 0 ? (
+            <div className="meta-group">
+              <span className="meta-title">Prompts</span>
+              <div className="content-section">
+                {profile.promptEntries.map((entry) => (
+                  <div className="panel form-panel" key={`${profile.id}-${entry.question}`}>
+                    <span className="meta-title">{entry.question}</span>
+                    <p>{entry.answer}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="meta-group">
             <span className="meta-title">Vibe</span>
