@@ -43,6 +43,8 @@ export type SignupPayload = {
 export type ProfilePayload = {
   username: string;
   displayName: string;
+  identity: string;
+  lookingFor: string;
   bio: string;
   avatarPreset: string;
   vibeTags: string[];
@@ -53,11 +55,14 @@ export type PublicProfile = {
   id: string;
   username: string;
   displayName: string;
+  identity: string;
+  lookingFor: string;
   bio: string;
   avatarPreset: string;
   vibeTags: string[];
   boundaries: string[];
   isFavorited: boolean;
+  recommended: boolean;
   createdAt: number;
 };
 

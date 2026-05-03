@@ -12,6 +12,20 @@ export const vibeOptions = [
   "late-night chatter",
 ] as const;
 
+export const identityOptions = [
+  "woman",
+  "man",
+  "non-binary",
+  "prefer not to say",
+] as const;
+
+export const lookingForOptions = [
+  "women",
+  "men",
+  "non-binary people",
+  "any",
+] as const;
+
 export const platformRules = [
   "No off-app contact",
   "Text-only stays in Velora",

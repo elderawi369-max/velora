@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   avatarOptions,
+  lookingForOptions,
   platformRules,
   preferenceOptions,
   vibeOptions,
@@ -24,8 +25,11 @@ export function ProfileList() {
   const [selectedVibe, setSelectedVibe] = useState<string>("all");
   const [selectedPreference, setSelectedPreference] = useState<string>("all");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("all");
+  const [selectedIdentity, setSelectedIdentity] = useState<string>("all");
+  const [selectedLookingFor, setSelectedLookingFor] = useState<string>("all");
   const [sortMode, setSortMode] = useState<"newest" | "name" | "favorited">("newest");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [recommendedOnly, setRecommendedOnly] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["profiles"],
     queryFn: fetchProfiles,
@@ -98,14 +102,22 @@ export function ProfileList() {
         visiblePreferences.includes(selectedPreference);
       const matchesAvatar =
         selectedAvatar === "all" || profile.avatarPreset === selectedAvatar;
+      const matchesIdentity =
+        selectedIdentity === "all" || profile.identity === selectedIdentity;
+      const matchesLookingFor =
+        selectedLookingFor === "all" || profile.lookingFor === selectedLookingFor;
       const matchesFavorite = !favoritesOnly || profile.isFavorited;
+      const matchesRecommended = !recommendedOnly || profile.recommended;
 
       return (
         matchesSearch &&
         matchesVibe &&
         matchesPreference &&
         matchesAvatar &&
-        matchesFavorite
+        matchesIdentity &&
+        matchesLookingFor &&
+        matchesFavorite &&
+        matchesRecommended
       );
     })
     .sort((left, right) => {
@@ -195,6 +207,36 @@ export function ProfileList() {
           </label>
 
           <label className="field">
+            <span>Identity</span>
+            <select
+              value={selectedIdentity}
+              onChange={(event) => setSelectedIdentity(event.target.value)}
+            >
+              <option value="all">All identities</option>
+              {["woman", "man", "non-binary", "prefer not to say"].map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Open to chatting with</span>
+            <select
+              value={selectedLookingFor}
+              onChange={(event) => setSelectedLookingFor(event.target.value)}
+            >
+              <option value="all">Any preference</option>
+              {lookingForOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
             <span>Sort by</span>
             <select
               value={sortMode}
@@ -218,6 +260,13 @@ export function ProfileList() {
             {favoritesOnly ? "Showing favorites only" : "Favorites only"}
           </button>
           <button
+            className={recommendedOnly ? "tag-button tag-active" : "tag-button"}
+            type="button"
+            onClick={() => setRecommendedOnly((current) => !current)}
+          >
+            {recommendedOnly ? "Showing recommended only" : "Recommended only"}
+          </button>
+          <button
             className="secondary-button"
             type="button"
             onClick={() => {
@@ -225,8 +274,11 @@ export function ProfileList() {
               setSelectedVibe("all");
               setSelectedPreference("all");
               setSelectedAvatar("all");
+              setSelectedIdentity("all");
+              setSelectedLookingFor("all");
               setSortMode("newest");
               setFavoritesOnly(false);
+              setRecommendedOnly(false);
             }}
           >
             Clear filters
@@ -253,6 +305,11 @@ export function ProfileList() {
           <div className="profile-head">
             <h2>{profile.displayName}</h2>
             <p>@{profile.username}</p>
+          </div>
+          <div className="chip-row">
+            {profile.recommended ? <span className="chip">Recommended match</span> : null}
+            <span className="chip chip-muted">I am {profile.identity}</span>
+            <span className="chip chip-muted">Open to {profile.lookingFor}</span>
           </div>
           <p className="profile-bio">{profile.bio}</p>
 

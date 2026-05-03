@@ -12,9 +12,10 @@ export const loginSchema = signupSchema;
 export const profileSchema = z.object({
   username: z.string().trim().toLowerCase().regex(usernameRegex),
   displayName: z.string().trim().min(2).max(30),
+  identity: z.enum(["woman", "man", "non-binary", "prefer not to say"]),
+  lookingFor: z.enum(["women", "men", "non-binary people", "any"]),
   bio: z.string().trim().min(10).max(280),
   avatarPreset: z.string().trim().min(1).max(30),
   vibeTags: z.array(z.string().trim().min(1).max(24)).min(1).max(6),
   boundaries: z.array(z.string().trim().min(1).max(40)).min(1).max(8),
 });
-

@@ -10,6 +10,53 @@ import { profileSchema } from "../lib/validation";
 
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
+type Identity = "woman" | "man" | "non-binary" | "prefer not to say";
+type LookingFor = "women" | "men" | "non-binary people" | "any";
+
+function identityMatchesPreference(identity: Identity, lookingFor: LookingFor) {
+  if (lookingFor === "any") {
+    return true;
+  }
+
+  if (lookingFor === "women") {
+    return identity === "woman";
+  }
+
+  if (lookingFor === "men") {
+    return identity === "man";
+  }
+
+  return identity === "non-binary";
+}
+
+function getCompatibilityScore(
+  ownProfile:
+    | {
+        identity: Identity;
+        lookingFor: LookingFor;
+      }
+    | undefined,
+  targetProfile: {
+    identity: Identity;
+    lookingFor: LookingFor;
+  },
+) {
+  if (!ownProfile) {
+    return 0;
+  }
+
+  let score = 0;
+  if (identityMatchesPreference(targetProfile.identity, ownProfile.lookingFor)) {
+    score += 2;
+  }
+
+  if (identityMatchesPreference(ownProfile.identity, targetProfile.lookingFor)) {
+    score += 1;
+  }
+
+  return score;
+}
+
 profileRoutes.get("/", async (c) => {
   const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
   const db = getDb(c.env);
@@ -18,6 +65,8 @@ profileRoutes.get("/", async (c) => {
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
+      identity: profiles.identity,
+      lookingFor: profiles.lookingFor,
       bio: profiles.bio,
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
@@ -30,15 +79,59 @@ profileRoutes.get("/", async (c) => {
     .orderBy(desc(profiles.createdAt))
     .limit(50);
 
-  return c.json({
-    profiles: await Promise.all(
-      results.map(async (profile) => ({
+  const visibleProfiles = results.filter((profile) => profile.id !== own?.profileId);
+  const ownProfile = own
+    ? visibleProfiles.find((profile) => profile.id === own.profileId)
+    : undefined;
+  const fallbackOwnProfile =
+    own && !ownProfile
+      ? (
+          await db
+            .select({
+              identity: profiles.identity,
+              lookingFor: profiles.lookingFor,
+            })
+            .from(profiles)
+            .where(eq(profiles.id, own.profileId))
+            .limit(1)
+        )[0]
+      : undefined;
+
+  const currentProfile = fallbackOwnProfile
+    ? {
+        identity: fallbackOwnProfile.identity as Identity,
+        lookingFor: fallbackOwnProfile.lookingFor as LookingFor,
+      }
+    : undefined;
+
+  const normalized = await Promise.all(
+    visibleProfiles.map(async (profile) => {
+      const compatibilityScore = getCompatibilityScore(currentProfile, {
+        identity: profile.identity as Identity,
+        lookingFor: profile.lookingFor as LookingFor,
+      });
+
+      return {
         ...profile,
         vibeTags: JSON.parse(profile.vibeTags) as string[],
         boundaries: JSON.parse(profile.boundaries) as string[],
         isFavorited: own ? await isFavorited(c.env, own.profileId, profile.id) : false,
-      })),
-    ),
+        recommended: compatibilityScore > 0,
+        compatibilityScore,
+      };
+    }),
+  );
+
+  normalized.sort((left, right) => {
+    if (right.compatibilityScore !== left.compatibilityScore) {
+      return right.compatibilityScore - left.compatibilityScore;
+    }
+
+    return right.createdAt - left.createdAt;
+  });
+
+  return c.json({
+    profiles: normalized,
   });
 });
 
@@ -82,14 +175,16 @@ profileRoutes.post("/", async (c) => {
     userId,
     username: payload.data.username,
     displayName: payload.data.displayName,
+    identity: payload.data.identity,
+    lookingFor: payload.data.lookingFor,
     bio: payload.data.bio,
-        avatarPreset: payload.data.avatarPreset,
-        vibeTags: JSON.stringify(payload.data.vibeTags),
-        boundaries: JSON.stringify(payload.data.boundaries),
-        suspendedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      });
+    avatarPreset: payload.data.avatarPreset,
+    vibeTags: JSON.stringify(payload.data.vibeTags),
+    boundaries: JSON.stringify(payload.data.boundaries),
+    suspendedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  });
 
   return c.json({
     profile: {
@@ -106,6 +201,8 @@ profileRoutes.get("/:username", async (c) => {
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
+      identity: profiles.identity,
+      lookingFor: profiles.lookingFor,
       bio: profiles.bio,
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,

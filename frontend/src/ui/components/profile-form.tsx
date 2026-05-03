@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   avatarOptions,
+  identityOptions,
+  lookingForOptions,
   platformRules,
   preferenceOptions,
   vibeOptions,
@@ -18,6 +20,8 @@ export function ProfileForm() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [identity, setIdentity] = useState<string>("prefer not to say");
+  const [lookingFor, setLookingFor] = useState<string>("any");
   const [bio, setBio] = useState("");
   const [avatarPreset, setAvatarPreset] = useState<string>(avatarOptions[0]);
   const [vibeTags, setVibeTags] = useState<string[]>(["sweet"]);
@@ -34,6 +38,8 @@ export function ProfileForm() {
       await createProfile({
         username,
         displayName,
+        identity,
+        lookingFor,
         bio,
         avatarPreset,
         vibeTags,
@@ -89,6 +95,33 @@ export function ProfileForm() {
               maxLength={30}
               required
             />
+          </label>
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>I am</span>
+            <select value={identity} onChange={(event) => setIdentity(event.target.value)}>
+              {identityOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>I want to chat with</span>
+            <select
+              value={lookingFor}
+              onChange={(event) => setLookingFor(event.target.value)}
+            >
+              {lookingForOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
