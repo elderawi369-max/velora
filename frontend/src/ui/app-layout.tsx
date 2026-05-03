@@ -1,8 +1,17 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { fetchConversations, fetchNotifications, fetchOwnProfile } from "../lib/api";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, logout } from "../lib/api";
+import { useEffect, useState } from "react";
 
 export function AppLayout() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    setShowAdmin(Boolean(window.localStorage.getItem("velora-admin-key")));
+  }, []);
+
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
@@ -28,16 +37,27 @@ export function AppLayout() {
   const notificationUnreadCount =
     notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
   const hasProfile = Boolean(ownProfileQuery.data?.profile);
+  const isLoggedIn = ownProfileQuery.data?.profile !== null || Boolean(window.localStorage.getItem("velora-auth-token"));
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSuccess: async () => {
+      clearAuthToken();
+      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      navigate("/login");
+    },
+  });
+
   const navItems = [
     { to: "/", label: "Home" },
     { to: "/browse", label: "Browse" },
     { to: "/conversations", label: "Conversations" },
     { to: "/activity", label: "Activity" },
     { to: "/favorites", label: "Favorites" },
-    { to: "/admin", label: "Admin" },
+    ...(showAdmin ? [{ to: "/admin", label: "Admin" }] : []),
     { to: hasProfile ? "/my-profile" : "/create-profile", label: hasProfile ? "My Profile" : "Create Profile" },
     { to: "/support", label: "Support" },
-    { to: "/login", label: "Login" },
   ];
 
   return (
@@ -64,6 +84,19 @@ export function AppLayout() {
               ) : null}
             </NavLink>
           ))}
+          {isLoggedIn ? (
+            <button
+              className="nav-link nav-button-link"
+              type="button"
+              onClick={() => logoutMutation.mutate()}
+            >
+              <span>{logoutMutation.isPending ? "Logging out..." : "Logout"}</span>
+            </button>
+          ) : (
+            <NavLink to="/login" className="nav-link">
+              <span>Login</span>
+            </NavLink>
+          )}
         </nav>
       </header>
 

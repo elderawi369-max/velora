@@ -1,5 +1,31 @@
 import { apiBaseUrl } from "../config";
 
+const authTokenStorageKey = "velora-auth-token";
+
+function getAuthToken() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(authTokenStorageKey) ?? "";
+}
+
+export function saveAuthToken(token: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(authTokenStorageKey, token);
+}
+
+export function clearAuthToken() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(authTokenStorageKey);
+}
+
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -11,6 +37,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -114,16 +141,22 @@ export type Message = {
 };
 
 export function signup(payload: SignupPayload) {
-  return request<{ user: { id: string; email: string } }>("/api/auth/signup", {
+  return request<{ user: { id: string; email: string }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
     method: "POST",
     body: payload,
   });
 }
 
 export function login(payload: SignupPayload) {
-  return request<{ user: { id: string; email: string } }>("/api/auth/login", {
+  return request<{ user: { id: string; email: string }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
     method: "POST",
     body: payload,
+  });
+}
+
+export function logout() {
+  return request<{ ok: true }>("/api/auth/logout", {
+    method: "POST",
   });
 }
 
@@ -252,6 +285,25 @@ export function blockProfile(targetProfileId: string) {
   return request<{ ok: true }>("/api/safety/blocks", {
     method: "POST",
     body: { targetProfileId },
+  });
+}
+
+export function fetchBlocks() {
+  return request<{
+    blocks: Array<{
+      id: string;
+      targetProfileId: string;
+      createdAt: number;
+      username?: string;
+      displayName?: string;
+      avatarPreset?: string;
+    }>;
+  }>("/api/safety/blocks");
+}
+
+export function unblockProfile(targetProfileId: string) {
+  return request<{ ok: true }>(`/api/safety/blocks/${targetProfileId}`, {
+    method: "DELETE",
   });
 }
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOwnProfile } from "../../lib/api";
+import { BlockedUsersList } from "../components/blocked-users-list";
 import { ProfileForm } from "../components/profile-form";
 import { MyProfileCard } from "../components/my-profile-card";
 
@@ -37,6 +38,13 @@ export function MyProfilePage() {
       ) : (
         <MyProfileCard />
       )}
+
+      <section className="section-copy">
+        <p className="eyebrow">Blocked users</p>
+        <h2>Undo a block if you change your mind.</h2>
+      </section>
+
+      <BlockedUsersList />
     </main>
   );
 }

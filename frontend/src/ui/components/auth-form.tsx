@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { login, signup } from "../../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { login, saveAuthToken, signup } from "../../lib/api";
 
 type AuthMode = "signup" | "login";
 
@@ -10,6 +11,7 @@ type AuthFormProps = {
 
 export function AuthForm({ mode }: AuthFormProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,11 +24,15 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "signup") {
-        await signup({ email, password });
+        const result = await signup({ email, password });
+        saveAuthToken(result.sessionToken);
+        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         navigate("/create-profile");
       } else {
-        await login({ email, password });
-        navigate("/browse");
+        const result = await login({ email, password });
+        saveAuthToken(result.sessionToken);
+        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        navigate(result.hasProfile ? "/my-profile" : "/create-profile");
       }
     } catch (submissionError) {
       setError(
@@ -94,4 +100,3 @@ export function AuthForm({ mode }: AuthFormProps) {
     </section>
   );
 }
-

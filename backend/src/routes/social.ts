@@ -34,7 +34,7 @@ async function createNotification(
 }
 
 socialRoutes.get("/favorites", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -58,7 +58,7 @@ socialRoutes.get("/favorites", async (c) => {
 });
 
 socialRoutes.post("/favorites/:targetProfileId", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -96,7 +96,7 @@ socialRoutes.post("/favorites/:targetProfileId", async (c) => {
 });
 
 socialRoutes.delete("/favorites/:targetProfileId", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -117,7 +117,7 @@ socialRoutes.delete("/favorites/:targetProfileId", async (c) => {
 socialRoutes.get("/gifts/catalog", (c) => c.json({ gifts: giftCatalog }));
 
 socialRoutes.post("/gifts/send", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }

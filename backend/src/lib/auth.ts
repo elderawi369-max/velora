@@ -52,11 +52,22 @@ export function readSessionToken(cookieHeader: string | undefined) {
   return sessionPair.slice(`${SESSION_COOKIE}=`.length);
 }
 
+export function readAuthorizationToken(authorizationHeader: string | undefined) {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
 export async function getUserIdFromSession(
   env: EnvBindings,
   cookieHeader: string | undefined,
+  authorizationHeader?: string | undefined,
 ) {
-  const token = readSessionToken(cookieHeader);
+  const token =
+    readAuthorizationToken(authorizationHeader) ?? readSessionToken(cookieHeader);
   if (!token) {
     return null;
   }
@@ -74,6 +85,21 @@ export async function getUserIdFromSession(
   }
 
   return session.userId;
+}
+
+export async function revokeSession(
+  env: EnvBindings,
+  cookieHeader: string | undefined,
+  authorizationHeader?: string | undefined,
+) {
+  const token =
+    readAuthorizationToken(authorizationHeader) ?? readSessionToken(cookieHeader);
+  if (!token) {
+    return;
+  }
+
+  const db = getDb(env);
+  await db.delete(sessions).where(eq(sessions.tokenHash, await hashToken(token)));
 }
 
 export function resolveCookiePolicy(requestUrl: string, appEnv?: string): CookiePolicy {

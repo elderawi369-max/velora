@@ -7,7 +7,7 @@ import { getOwnProfileContext } from "../lib/profile-context";
 export const notificationRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 notificationRoutes.get("/", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -49,7 +49,7 @@ notificationRoutes.get("/", async (c) => {
 });
 
 notificationRoutes.post("/:notificationId/read", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -69,7 +69,7 @@ notificationRoutes.post("/:notificationId/read", async (c) => {
 });
 
 notificationRoutes.post("/read-all", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }

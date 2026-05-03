@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   avatarOptions,
@@ -18,18 +18,35 @@ import {
 } from "../../lib/api";
 
 export function ProfileList() {
+  const filterStorageKey = "velora-browse-filters";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [giftSuccess, setGiftSuccess] = useState<string>("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedVibe, setSelectedVibe] = useState<string>("all");
-  const [selectedPreference, setSelectedPreference] = useState<string>("all");
-  const [selectedAvatar, setSelectedAvatar] = useState<string>("all");
-  const [selectedIdentity, setSelectedIdentity] = useState<string>("all");
-  const [selectedLookingFor, setSelectedLookingFor] = useState<string>("all");
-  const [sortMode, setSortMode] = useState<"newest" | "name" | "favorited">("newest");
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [recommendedOnly, setRecommendedOnly] = useState(false);
+  const savedFilters =
+    typeof window !== "undefined"
+      ? JSON.parse(window.localStorage.getItem(filterStorageKey) ?? "{}")
+      : {};
+  const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? "");
+  const [selectedVibe, setSelectedVibe] = useState<string>(savedFilters.selectedVibe ?? "all");
+  const [selectedPreference, setSelectedPreference] = useState<string>(
+    savedFilters.selectedPreference ?? "all",
+  );
+  const [selectedAvatar, setSelectedAvatar] = useState<string>(
+    savedFilters.selectedAvatar ?? "all",
+  );
+  const [selectedIdentity, setSelectedIdentity] = useState<string>(
+    savedFilters.selectedIdentity ?? "all",
+  );
+  const [selectedLookingFor, setSelectedLookingFor] = useState<string>(
+    savedFilters.selectedLookingFor ?? "all",
+  );
+  const [sortMode, setSortMode] = useState<"newest" | "name" | "favorited">(
+    savedFilters.sortMode ?? "newest",
+  );
+  const [favoritesOnly, setFavoritesOnly] = useState(Boolean(savedFilters.favoritesOnly));
+  const [recommendedOnly, setRecommendedOnly] = useState(
+    Boolean(savedFilters.recommendedOnly),
+  );
   const { data, isLoading, error } = useQuery({
     queryKey: ["profiles"],
     queryFn: fetchProfiles,
@@ -38,6 +55,33 @@ export function ProfileList() {
     queryKey: ["giftCatalog"],
     queryFn: fetchGiftCatalog,
   });
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      filterStorageKey,
+      JSON.stringify({
+        searchTerm,
+        selectedVibe,
+        selectedPreference,
+        selectedAvatar,
+        selectedIdentity,
+        selectedLookingFor,
+        sortMode,
+        favoritesOnly,
+        recommendedOnly,
+      }),
+    );
+  }, [
+    favoritesOnly,
+    recommendedOnly,
+    searchTerm,
+    selectedAvatar,
+    selectedIdentity,
+    selectedLookingFor,
+    selectedPreference,
+    selectedVibe,
+    sortMode,
+  ]);
 
   const createConversationMutation = useMutation({
     mutationFn: (targetProfileId: string) => createConversation(targetProfileId),

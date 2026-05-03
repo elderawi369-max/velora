@@ -7,10 +7,12 @@ import {
   createSession,
   buildSessionCookie,
   clearSessionCookie,
+  revokeSession,
   resolveCookiePolicy,
 } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/crypto";
 import { loginSchema, signupSchema } from "../lib/validation";
+import { profiles } from "../db/schema";
 
 export const authRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -58,6 +60,8 @@ authRoutes.post("/signup", async (c) => {
       id: userId,
       email: payload.data.email,
     },
+    sessionToken,
+    hasProfile: false,
   }, 201);
 });
 
@@ -97,15 +101,28 @@ authRoutes.post("/login", async (c) => {
     ),
   );
 
+  const [profile] = await db
+    .select({ id: profiles.id })
+    .from(profiles)
+    .where(eq(profiles.userId, user.id))
+    .limit(1);
+
   return c.json({
     user: {
       id: user.id,
       email: user.email,
     },
+    sessionToken,
+    hasProfile: Boolean(profile),
   });
 });
 
-authRoutes.post("/logout", (c) => {
+authRoutes.post("/logout", async (c) => {
+  await revokeSession(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   c.header(
     "Set-Cookie",
     clearSessionCookie(resolveCookiePolicy(c.req.url, c.env.APP_ENV)),

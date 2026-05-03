@@ -27,7 +27,7 @@ function readStatePatch(
 }
 
 chatRoutes.get("/conversations", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -98,7 +98,7 @@ chatRoutes.get("/conversations", async (c) => {
 });
 
 chatRoutes.post("/conversations", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -173,7 +173,7 @@ chatRoutes.post("/conversations", async (c) => {
 });
 
 chatRoutes.get("/conversations/:conversationId", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -238,7 +238,7 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
 });
 
 chatRoutes.get("/conversations/:conversationId/messages", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -278,7 +278,7 @@ chatRoutes.get("/conversations/:conversationId/messages", async (c) => {
 });
 
 chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }

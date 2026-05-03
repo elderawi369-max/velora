@@ -5,7 +5,7 @@ import { getDb } from "../lib/db";
 import { profiles } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
-import { isFavorited } from "../lib/relationships";
+import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { profileSchema } from "../lib/validation";
 
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -99,7 +99,7 @@ function getCompatibilityScore(
 }
 
 profileRoutes.get("/", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   const db = getDb(c.env);
   const results = await db
     .select({
@@ -148,6 +148,10 @@ profileRoutes.get("/", async (c) => {
 
   const normalized = await Promise.all(
     visibleProfiles.map(async (profile) => {
+      if (own && (await areProfilesBlocked(c.env, own.profileId, profile.id))) {
+        return null;
+      }
+
       const compatibilityScore = getCompatibilityScore(currentProfile, {
         identity: profile.identity as Identity,
         lookingFor: profile.lookingFor as LookingFor,
@@ -174,8 +178,14 @@ profileRoutes.get("/", async (c) => {
       };
     }),
   );
+  const filteredNormalized = normalized.filter(Boolean);
+  const rankedProfiles = normalized.filter(
+    (
+      profile,
+    ): profile is NonNullable<(typeof normalized)[number]> => profile !== null,
+  );
 
-  normalized.sort((left, right) => {
+  rankedProfiles.sort((left, right) => {
     if (right.compatibilityScore !== left.compatibilityScore) {
       return right.compatibilityScore - left.compatibilityScore;
     }
@@ -184,12 +194,12 @@ profileRoutes.get("/", async (c) => {
   });
 
   return c.json({
-    profiles: normalized,
+    profiles: rankedProfiles,
   });
 });
 
 profileRoutes.get("/me", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
     return c.json({ profile: null });
   }
@@ -199,7 +209,7 @@ profileRoutes.get("/me", async (c) => {
 });
 
 profileRoutes.post("/", async (c) => {
-  const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"));
+  const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!userId) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -260,7 +270,7 @@ profileRoutes.post("/", async (c) => {
 });
 
 profileRoutes.put("/me", async (c) => {
-  const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"));
+  const userId = await getUserIdFromSession(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!userId) {
     return c.json({ error: "Unauthorized." }, 401);
   }

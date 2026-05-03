@@ -13,8 +13,9 @@ export type OwnProfileContext = {
 export async function getOwnProfileContext(
   env: EnvBindings,
   cookieHeader: string | undefined,
+  authorizationHeader?: string | undefined,
 ): Promise<OwnProfileContext | null> {
-  const userId = await getUserIdFromSession(env, cookieHeader);
+  const userId = await getUserIdFromSession(env, cookieHeader, authorizationHeader);
   if (!userId) {
     return null;
   }

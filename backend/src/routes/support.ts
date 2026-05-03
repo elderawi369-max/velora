@@ -7,7 +7,11 @@ import { supportTicketSchema } from "../lib/validation";
 export const supportRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 supportRoutes.post("/tickets", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   const payload = supportTicketSchema.safeParse(await c.req.json());
 
   if (!payload.success) {
