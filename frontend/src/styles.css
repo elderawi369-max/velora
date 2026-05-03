@@ -49,10 +49,28 @@ body {
 }
 
 .nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: #694b56;
   text-decoration: none;
   padding: 10px 14px;
   border-radius: 999px;
+}
+
+.nav-badge,
+.unread-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #b42318;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .nav-link-active,
@@ -330,6 +348,12 @@ body {
   text-decoration: none;
 }
 
+.unread-item {
+  border-color: rgba(180, 84, 105, 0.34);
+  background: rgba(255, 246, 248, 0.94);
+  box-shadow: 0 18px 36px rgba(180, 84, 105, 0.14);
+}
+
 .conversation-copy h2,
 .conversation-copy p {
   margin: 0;
@@ -337,6 +361,10 @@ body {
 
 .conversation-meta {
   margin-top: 8px;
+}
+
+.conversation-copy {
+  flex: 1;
 }
 
 .conversation-preview {

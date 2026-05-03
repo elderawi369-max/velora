@@ -35,7 +35,11 @@ export function ConversationList() {
     <div className="conversation-list">
       {data.conversations.map((conversation) => (
         <Link
-          className="conversation-item"
+          className={
+            conversation.unread
+              ? "conversation-item unread-item"
+              : "conversation-item"
+          }
           key={conversation.id}
           to={`/chat/${conversation.id}`}
         >
@@ -50,13 +54,18 @@ export function ConversationList() {
             </p>
             <div className="conversation-meta">
               <span className={conversation.unread ? "chip" : "chip chip-muted"}>
-                {conversation.unread ? "Unread" : "Read"}
+                {conversation.unread
+                  ? `${conversation.unreadCount} new`
+                  : "Read"}
               </span>
               <span className={conversation.isFavorited ? "chip" : "chip chip-muted"}>
                 {conversation.isFavorited ? "Favorited" : "Not favorited"}
               </span>
             </div>
           </div>
+          {conversation.unreadCount > 0 ? (
+            <div className="unread-bubble">{conversation.unreadCount}</div>
+          ) : null}
         </Link>
       ))}
     </div>

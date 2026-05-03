@@ -113,3 +113,17 @@ export const gifts = sqliteTable("gifts", {
   giftType: text("gift_type").notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  actorProfileId: text("actor_profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  type: text("type").notNull(),
+  giftType: text("gift_type"),
+  readAt: integer("read_at"),
+  createdAt: integer("created_at").notNull(),
+});

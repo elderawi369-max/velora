@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
-import { favorites, gifts, profiles } from "../db/schema";
+import { favorites, gifts, notifications, profiles } from "../db/schema";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 
@@ -11,6 +11,27 @@ const giftCatalog = [
 ] as const;
 
 export const socialRoutes = new Hono<{ Bindings: EnvBindings }>();
+
+async function createNotification(
+  env: EnvBindings,
+  input: {
+    profileId: string;
+    actorProfileId: string;
+    type: "favorite" | "gift";
+    giftType?: string;
+  },
+) {
+  const db = getDb(env);
+  await db.insert(notifications).values({
+    id: crypto.randomUUID(),
+    profileId: input.profileId,
+    actorProfileId: input.actorProfileId,
+    type: input.type,
+    giftType: input.giftType ?? null,
+    readAt: null,
+    createdAt: Date.now(),
+  });
+}
 
 socialRoutes.get("/favorites", async (c) => {
   const own = await getOwnProfileContext(c.env, c.req.header("Cookie"));
@@ -62,6 +83,12 @@ socialRoutes.post("/favorites/:targetProfileId", async (c) => {
       profileId: own.profileId,
       targetProfileId,
       createdAt: Date.now(),
+    });
+
+    await createNotification(c.env, {
+      profileId: targetProfileId,
+      actorProfileId: own.profileId,
+      type: "favorite",
     });
   }
 
@@ -118,6 +145,12 @@ socialRoutes.post("/gifts/send", async (c) => {
     createdAt: Date.now(),
   });
 
+  await createNotification(c.env, {
+    profileId: body.targetProfileId,
+    actorProfileId: own.profileId,
+    type: "gift",
+    giftType: body.giftType,
+  });
+
   return c.json({ ok: true });
 });
-

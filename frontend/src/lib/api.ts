@@ -15,13 +15,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const data = (await response.json()) as T & { error?: string };
+  const raw = await response.text();
+  let data: (T & { error?: string }) | null = null;
 
-  if (!response.ok) {
-    throw new Error(data.error ?? "Request failed.");
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as T & { error?: string };
+    } catch {
+      if (!response.ok) {
+        throw new Error("Server error. Please try again.");
+      }
+    }
   }
 
-  return data;
+  if (!response.ok) {
+    throw new Error(data?.error ?? "Request failed.");
+  }
+
+  return (data ?? {}) as T;
 }
 
 export type SignupPayload = {
@@ -62,7 +73,22 @@ export type Conversation = {
   lastMessageAt: number;
   lastMessagePreview: string;
   unread: boolean;
+  unreadCount: number;
   createdAt: number;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: "favorite" | "gift";
+  giftType: string | null;
+  readAt: number | null;
+  createdAt: number;
+  actorProfile: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarPreset: string;
+  };
 };
 
 export type Message = {
@@ -129,6 +155,22 @@ export function fetchConversation(conversationId: string) {
   return request<{ conversation: Conversation }>(
     `/api/chat/conversations/${conversationId}`,
   );
+}
+
+export function fetchNotifications() {
+  return request<{ notifications: NotificationItem[] }>("/api/notifications");
+}
+
+export function markNotificationRead(notificationId: string) {
+  return request<{ ok: true }>(`/api/notifications/${notificationId}/read`, {
+    method: "POST",
+  });
+}
+
+export function markAllNotificationsRead() {
+  return request<{ ok: true }>("/api/notifications/read-all", {
+    method: "POST",
+  });
 }
 
 export function fetchFavorites() {

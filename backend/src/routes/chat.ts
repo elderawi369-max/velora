@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
 import { conversations, messages, profiles } from "../db/schema";
@@ -63,6 +63,22 @@ chatRoutes.get("/conversations", async (c) => {
         .where(eq(profiles.id, otherProfileId))
         .limit(1);
 
+      const ownReadAt = getOwnReadAt(conversation, own.profileId);
+      const [unreadCountRow] = await db
+        .select({
+          count: sql<number>`count(*)`,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, conversation.id),
+            eq(messages.senderProfileId, otherProfileId),
+            sql`${messages.createdAt} > ${ownReadAt}`,
+          ),
+        );
+
+      const unreadCount = Number(unreadCountRow?.count ?? 0);
+
       return {
         id: conversation.id,
         otherProfile,
@@ -71,10 +87,8 @@ chatRoutes.get("/conversations", async (c) => {
           : false,
         lastMessageAt: conversation.lastMessageAt,
         lastMessagePreview: conversation.lastMessagePreview,
-        unread: Boolean(
-          conversation.lastMessageSenderProfileId !== own.profileId &&
-            conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
-        ),
+        unread: unreadCount > 0,
+        unreadCount,
         createdAt: conversation.createdAt,
       };
     }),
@@ -212,6 +226,12 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
         conversation.lastMessageSenderProfileId !== own.profileId &&
           conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
       ),
+      unreadCount: Boolean(
+        conversation.lastMessageSenderProfileId !== own.profileId &&
+          conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
+      )
+        ? 1
+        : 0,
       createdAt: conversation.createdAt,
     },
   });

@@ -10,6 +10,7 @@ import { ConversationsPage } from "./ui/pages/conversations-page";
 import { FavoritesPage } from "./ui/pages/favorites-page";
 import { HomePage } from "./ui/pages/home-page";
 import { LoginPage } from "./ui/pages/login-page";
+import { NotificationsPage } from "./ui/pages/notifications-page";
 import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
 import "./styles.css";
@@ -52,6 +53,10 @@ const router = createBrowserRouter([
       {
         path: "favorites",
         element: <FavoritesPage />,
+      },
+      {
+        path: "activity",
+        element: <NotificationsPage />,
       },
       {
         path: "chat/:conversationId",
