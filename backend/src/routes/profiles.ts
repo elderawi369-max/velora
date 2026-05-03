@@ -12,6 +12,18 @@ export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type GiftType = "rose" | "starlight" | "crown";
 
+const giftDurationsMs: Record<GiftType, number> = {
+  rose: 1000 * 60 * 60 * 24,
+  starlight: 1000 * 60 * 60 * 48,
+  crown: 1000 * 60 * 60 * 72,
+};
+
+const giftLabels: Record<GiftType, string> = {
+  rose: "Rose Aura",
+  starlight: "Starlight Ring",
+  crown: "Velora Crown",
+};
+
 function getStrongerGiftType(current: GiftType | null, next: GiftType | null) {
   const priority: Record<GiftType, number> = {
     rose: 1,
@@ -52,7 +64,10 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
     return new Map<string, {
       dominantGiftType: GiftType | null;
       totalReceived: number;
-      highlights: string[];
+      activeLabel: string | null;
+      activeExpiresAt: number | null;
+      remainingMs: number;
+      activeCount: number;
     }>();
   }
 
@@ -61,27 +76,29 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
     .select({
       targetProfileId: gifts.targetProfileId,
       giftType: gifts.giftType,
+      createdAt: gifts.createdAt,
     })
     .from(gifts)
     .where(inArray(gifts.targetProfileId, profileIds));
 
-  const labelMap: Record<GiftType, string> = {
-    rose: "Rose Aura",
-    starlight: "Starlight Ring",
-    crown: "Velora Crown",
-  };
-
   const effects = new Map<string, {
     dominantGiftType: GiftType | null;
     totalReceived: number;
-    highlights: string[];
+    activeLabel: string | null;
+    activeExpiresAt: number | null;
+    remainingMs: number;
+    activeCount: number;
   }>();
+  const now = Date.now();
 
   profileIds.forEach((profileId) => {
     effects.set(profileId, {
       dominantGiftType: null,
       totalReceived: 0,
-      highlights: [],
+      activeLabel: null,
+      activeExpiresAt: null,
+      remainingMs: 0,
+      activeCount: 0,
     });
   });
 
@@ -95,15 +112,48 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
     const normalizedType = (row.giftType === "rose" || row.giftType === "starlight" || row.giftType === "crown")
       ? (row.giftType as GiftType)
       : null;
-
-    const nextHighlights = normalizedType
-      ? Array.from(new Set([...current.highlights, labelMap[normalizedType]])).slice(0, 3)
-      : current.highlights;
+    const expiresAt =
+      normalizedType ? row.createdAt + giftDurationsMs[normalizedType] : 0;
+    const isActive = normalizedType ? expiresAt > now : false;
+    const nextDominantGiftType = isActive
+      ? getStrongerGiftType(current.dominantGiftType, normalizedType)
+      : current.dominantGiftType;
+    const dominantChanged = nextDominantGiftType !== current.dominantGiftType;
+    const shouldRefreshCurrentGift =
+      isActive &&
+      normalizedType !== null &&
+      nextDominantGiftType === current.dominantGiftType &&
+      normalizedType === current.dominantGiftType &&
+      expiresAt > (current.activeExpiresAt ?? 0);
 
     effects.set(row.targetProfileId, {
-      dominantGiftType: getStrongerGiftType(current.dominantGiftType, normalizedType),
+      dominantGiftType: nextDominantGiftType,
       totalReceived: nextTotal,
-      highlights: nextHighlights,
+      activeLabel:
+        isActive && nextDominantGiftType
+          ? dominantChanged
+            ? giftLabels[nextDominantGiftType]
+            : shouldRefreshCurrentGift
+              ? giftLabels[nextDominantGiftType]
+              : current.activeLabel ?? giftLabels[nextDominantGiftType]
+          : current.activeLabel,
+      activeExpiresAt:
+        isActive && nextDominantGiftType
+          ? dominantChanged
+            ? expiresAt
+            : shouldRefreshCurrentGift
+              ? expiresAt
+              : current.activeExpiresAt
+          : current.activeExpiresAt,
+      remainingMs:
+        isActive && nextDominantGiftType
+          ? dominantChanged
+            ? Math.max(expiresAt - now, 0)
+            : shouldRefreshCurrentGift
+              ? Math.max(expiresAt - now, 0)
+              : current.remainingMs
+          : current.remainingMs,
+      activeCount: isActive ? current.activeCount + 1 : current.activeCount,
     });
   }
 
@@ -140,7 +190,10 @@ async function getProfileById(env: EnvBindings, profileId: string) {
   const giftEffects = (await getGiftEffects(env, [profileId])).get(profileId) ?? {
     dominantGiftType: null,
     totalReceived: 0,
-    highlights: [],
+    activeLabel: null,
+    activeExpiresAt: null,
+    remainingMs: 0,
+    activeCount: 0,
   };
 
   return {
@@ -349,7 +402,10 @@ profileRoutes.get("/", async (c) => {
         giftEffect: giftEffects.get(profile.id) ?? {
           dominantGiftType: null,
           totalReceived: 0,
-          highlights: [],
+          activeLabel: null,
+          activeExpiresAt: null,
+          remainingMs: 0,
+          activeCount: 0,
         },
       };
     }),
@@ -441,6 +497,14 @@ profileRoutes.post("/", async (c) => {
       id: profileId,
       ...payload.data,
       trustSignals: payload.data.bio.length >= 40 ? ["Complete profile"] : [],
+      giftEffect: {
+        dominantGiftType: null,
+        totalReceived: 0,
+        activeLabel: null,
+        activeExpiresAt: null,
+        remainingMs: 0,
+        activeCount: 0,
+      },
     },
   }, 201);
 });
@@ -502,6 +566,14 @@ profileRoutes.put("/me", async (c) => {
         payload.data.bio.length >= 40 ? "Complete profile" : null,
         payload.data.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
       ].filter(Boolean),
+      giftEffect: (await getGiftEffects(c.env, [existingProfile.id])).get(existingProfile.id) ?? {
+        dominantGiftType: null,
+        totalReceived: 0,
+        activeLabel: null,
+        activeExpiresAt: null,
+        remainingMs: 0,
+        activeCount: 0,
+      },
     },
   });
 });

@@ -20,6 +20,7 @@ import {
   removeFavorite,
   sendGift,
 } from "../../lib/api";
+import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function ProfileList() {
@@ -383,16 +384,21 @@ export function ProfileList() {
             <div className="meta-group">
               <span className="meta-title">Gift effects</span>
               <div className="chip-row">
-                {profile.giftEffect.highlights.map((highlight) => (
-                  <span className="chip" key={`${profile.id}-${highlight}`}>
-                    {highlight}
+                {profile.giftEffect.activeLabel ? (
+                  <span className="chip" key={`${profile.id}-${profile.giftEffect.activeLabel}`}>
+                    {profile.giftEffect.activeLabel}
                   </span>
-                ))}
+                ) : null}
                 <span className="chip chip-muted">
                   {profile.giftEffect.totalReceived} gift
                   {profile.giftEffect.totalReceived === 1 ? "" : "s"} received
                 </span>
               </div>
+              <GiftEffectStatus
+                activeLabel={profile.giftEffect.activeLabel}
+                activeExpiresAt={profile.giftEffect.activeExpiresAt}
+                totalReceived={profile.giftEffect.totalReceived}
+              />
             </div>
           ) : null}
           <p className="profile-bio">{profile.bio}</p>

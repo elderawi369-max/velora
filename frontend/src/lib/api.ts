@@ -98,7 +98,10 @@ export type PublicProfile = {
   giftEffect: {
     dominantGiftType: "rose" | "starlight" | "crown" | null;
     totalReceived: number;
-    highlights: string[];
+    activeLabel: string | null;
+    activeExpiresAt: number | null;
+    remainingMs: number;
+    activeCount: number;
   };
   createdAt: number;
 };
