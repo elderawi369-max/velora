@@ -34,6 +34,11 @@ export function ConversationList() {
   return (
     <div className="conversation-list">
       {data.conversations.map((conversation) => (
+        (() => {
+          const unreadCount =
+            conversation.unreadCount ?? (conversation.unread ? 1 : 0);
+
+          return (
         <Link
           className={
             conversation.unread
@@ -55,7 +60,7 @@ export function ConversationList() {
             <div className="conversation-meta">
               <span className={conversation.unread ? "chip" : "chip chip-muted"}>
                 {conversation.unread
-                  ? `${conversation.unreadCount} new`
+                  ? `${unreadCount} new`
                   : "Read"}
               </span>
               <span className={conversation.isFavorited ? "chip" : "chip chip-muted"}>
@@ -63,10 +68,12 @@ export function ConversationList() {
               </span>
             </div>
           </div>
-          {conversation.unreadCount > 0 ? (
-            <div className="unread-bubble">{conversation.unreadCount}</div>
+          {unreadCount > 0 ? (
+            <div className="unread-bubble">{unreadCount}</div>
           ) : null}
         </Link>
+          );
+        })()
       ))}
     </div>
   );

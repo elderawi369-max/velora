@@ -27,7 +27,8 @@ export function AppLayout() {
 
   const conversationUnreadCount =
     conversationsQuery.data?.conversations.reduce(
-      (sum, conversation) => sum + conversation.unreadCount,
+      (sum, conversation) =>
+        sum + (conversation.unreadCount ?? (conversation.unread ? 1 : 0)),
       0,
     ) ?? 0;
   const notificationUnreadCount =
