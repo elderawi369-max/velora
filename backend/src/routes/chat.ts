@@ -57,6 +57,8 @@ chatRoutes.get("/conversations", async (c) => {
           id: profiles.id,
           username: profiles.username,
           displayName: profiles.displayName,
+          personalityType: profiles.personalityType,
+          identity: profiles.identity,
           avatarPreset: profiles.avatarPreset,
         })
         .from(profiles)
@@ -207,6 +209,8 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
+      identity: profiles.identity,
       avatarPreset: profiles.avatarPreset,
     })
     .from(profiles)

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   identityOptions,
   lookingForOptions,
+  personalityTypeIcons,
   personalityTypeAvatarMap,
   personalityTypeDescriptions,
   personalityTypeOptions,
@@ -13,6 +14,7 @@ import {
   vibeOptions,
 } from "../../config";
 import { createProfile, type PublicProfile, updateOwnProfile } from "../../lib/api";
+import { ProfileAvatar } from "./profile-avatar";
 
 function toggleItem(items: string[], item: string) {
   return items.includes(item)
@@ -256,12 +258,21 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         </div>
 
         <div className="picker-group">
-          <span className="picker-label">Avatar style</span>
+          <span className="picker-label">Profile picture</span>
           <div className="chip-row">
-            <span className="chip">{avatarPreset}</span>
+            <ProfileAvatar
+              personalityType={personalityType}
+              identity={identity}
+              size="large"
+            />
+            <span className="chip">
+              {personalityTypeIcons[
+                personalityType as keyof typeof personalityTypeIcons
+              ]} {avatarPreset}
+            </span>
           </div>
           <p className="status-message">
-            This avatar style is assigned automatically from your personality type.
+            Your profile picture is assigned automatically from your personality type.
           </p>
         </div>
 

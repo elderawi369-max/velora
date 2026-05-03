@@ -428,39 +428,82 @@ body {
   align-content: start;
 }
 
-.avatar-pill {
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.8rem;
+.profile-avatar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
+  border-radius: 50%;
   border: 1px solid rgba(120, 79, 89, 0.12);
-  background: rgba(255, 255, 255, 0.88);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72) 55%, rgba(243, 225, 230, 0.72)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 238, 240, 0.88));
+  box-shadow: 0 16px 32px rgba(83, 53, 59, 0.12);
+  overflow: visible;
 }
 
-.avatar-pill-rose {
-  box-shadow:
-    0 0 0 3px rgba(228, 109, 139, 0.12),
-    0 10px 24px rgba(228, 109, 139, 0.16);
-  border-color: rgba(228, 109, 139, 0.28);
+.profile-avatar-large {
+  width: 112px;
+  height: 112px;
 }
 
-.avatar-pill-starlight {
-  box-shadow:
-    0 0 0 3px rgba(225, 194, 124, 0.14),
-    0 10px 24px rgba(225, 194, 124, 0.18);
-  border-color: rgba(225, 194, 124, 0.32);
+.profile-avatar-medium {
+  width: 72px;
+  height: 72px;
 }
 
-.avatar-pill-crown {
+.profile-avatar-small {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+}
+
+.profile-avatar-icon {
+  line-height: 1;
+  filter: saturate(1.02);
+}
+
+.profile-avatar-large .profile-avatar-icon {
+  font-size: 3.2rem;
+}
+
+.profile-avatar-medium .profile-avatar-icon {
+  font-size: 2.2rem;
+}
+
+.profile-avatar-small .profile-avatar-icon {
+  font-size: 1.6rem;
+}
+
+.profile-avatar-crown {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.8rem;
+  line-height: 1;
+  text-shadow: 0 6px 12px rgba(97, 63, 25, 0.22);
+}
+
+.profile-avatar-gift-rose {
   box-shadow:
-    0 0 0 3px rgba(180, 84, 105, 0.16),
-    0 12px 28px rgba(180, 84, 105, 0.2);
-  border-color: rgba(180, 84, 105, 0.38);
+    0 0 0 4px rgba(228, 109, 139, 0.18),
+    0 0 26px rgba(228, 109, 139, 0.18),
+    0 16px 32px rgba(83, 53, 59, 0.14);
+}
+
+.profile-avatar-gift-starlight {
+  box-shadow:
+    0 0 0 4px rgba(225, 194, 124, 0.2),
+    0 0 28px rgba(225, 194, 124, 0.2),
+    0 16px 32px rgba(83, 53, 59, 0.14);
+}
+
+.profile-avatar-gift-crown {
+  box-shadow:
+    0 0 0 5px rgba(180, 84, 105, 0.18),
+    0 0 30px rgba(180, 84, 105, 0.22),
+    0 18px 34px rgba(83, 53, 59, 0.16);
 }
 
 .profile-head h2,

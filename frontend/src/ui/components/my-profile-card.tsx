@@ -1,14 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { personalityTypeDescriptions, platformRules } from "../../config";
+import {
+  formatIdentityLabel,
+  formatLookingForLabel,
+  personalityTypeDescriptions,
+  platformRules,
+} from "../../config";
 import { fetchOwnProfile } from "../../lib/api";
-
-function getGiftEffectClass(giftType: "rose" | "starlight" | "crown" | null) {
-  if (!giftType) {
-    return "";
-  }
-
-  return `avatar-pill-${giftType}`;
-}
+import { ProfileAvatar } from "./profile-avatar";
 
 export function MyProfileCard() {
   const { data, isLoading, error } = useQuery({
@@ -43,19 +41,23 @@ export function MyProfileCard() {
   const visiblePreferences = profile.boundaries.filter(
     (item) => !platformRules.includes(item as (typeof platformRules)[number]),
   );
-  const giftEffectClass = getGiftEffectClass(profile.giftEffect.dominantGiftType);
 
   return (
     <article className="panel profile-card">
-      <div className={`avatar-pill ${giftEffectClass}`.trim()}>{profile.avatarPreset}</div>
+      <ProfileAvatar
+        personalityType={profile.personalityType}
+        identity={profile.identity}
+        dominantGiftType={profile.giftEffect.dominantGiftType}
+        size="large"
+      />
       <div className="profile-head">
         <h2>{profile.displayName}</h2>
         <p>@{profile.username}</p>
       </div>
       <div className="chip-row">
         <span className="chip">{profile.personalityType}</span>
-        <span className="chip chip-muted">I am {profile.identity}</span>
-        <span className="chip chip-muted">Open to {profile.lookingFor}</span>
+        <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
+        <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
         {profile.trustSignals.map((signal) => (
           <span className="chip" key={signal}>
             {signal}

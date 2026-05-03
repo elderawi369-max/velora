@@ -69,6 +69,52 @@ export const personalityTypeAvatarMap: Record<
   "roleplay / fantasy": "halo",
 };
 
+export const personalityTypeIcons: Record<
+  (typeof personalityTypeOptions)[number],
+  string
+> = {
+  "clingy / affectionate": "💕",
+  "cold / mysterious": "🧊",
+  "flirty / teasing": "😈",
+  protective: "🛡️",
+  "soft / sweet": "🌸",
+  intellectual: "🧠",
+  "funny / chaotic": "😂",
+  "confident / dominant": "🔥",
+  "emotionally distant": "💔",
+  "roleplay / fantasy": "🎭",
+};
+
+export const identityFallbackIcons = {
+  woman: "👩",
+  man: "👨",
+  "prefer not to say": "✨",
+} as const;
+
+export function formatIdentityLabel(identity: string) {
+  if (identity === "woman") {
+    return "Woman";
+  }
+
+  if (identity === "man") {
+    return "Man";
+  }
+
+  return "Identity private";
+}
+
+export function formatLookingForLabel(lookingFor: string) {
+  if (lookingFor === "women") {
+    return "Open to women";
+  }
+
+  if (lookingFor === "men") {
+    return "Open to men";
+  }
+
+  return "Open to anyone";
+}
+
 export const profilePromptOptions = [
   "My ideal chat energy is...",
   "I reply best when...",
@@ -92,13 +138,4 @@ export const preferenceOptions = [
   "friendly flirting only",
   "no pressure conversations",
   "kind tone only",
-] as const;
-
-export const avatarOptions = [
-  "rose",
-  "halo",
-  "nova",
-  "echo",
-  "velvet",
-  "luna",
 ] as const;

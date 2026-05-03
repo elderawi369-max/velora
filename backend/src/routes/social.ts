@@ -47,6 +47,8 @@ socialRoutes.get("/favorites", async (c) => {
       createdAt: favorites.createdAt,
       username: profiles.username,
       displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
+      identity: profiles.identity,
       avatarPreset: profiles.avatarPreset,
     })
     .from(favorites)

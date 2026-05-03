@@ -115,6 +115,8 @@ export type Conversation = {
     id: string;
     username: string;
     displayName: string;
+    personalityType: string;
+    identity: string;
     avatarPreset: string;
   } | null;
   isFavorited: boolean;
@@ -135,6 +137,8 @@ export type NotificationItem = {
     id: string;
     username: string;
     displayName: string;
+    personalityType: string;
+    identity: string;
     avatarPreset: string;
   };
 };
@@ -246,6 +250,8 @@ export function fetchFavorites() {
       createdAt: number;
       username: string;
       displayName: string;
+      personalityType: string;
+      identity: string;
       avatarPreset: string;
     }>;
   }>("/api/social/favorites");
@@ -303,6 +309,8 @@ export function fetchBlocks() {
       createdAt: number;
       username?: string;
       displayName?: string;
+      personalityType?: string;
+      identity?: string;
       avatarPreset?: string;
     }>;
   }>("/api/safety/blocks");

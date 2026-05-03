@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchFavorites } from "../../lib/api";
+import { ProfileAvatar } from "./profile-avatar";
 
 export function FavoritesList() {
   const { data, isLoading, error } = useQuery({
@@ -34,7 +35,11 @@ export function FavoritesList() {
     <section className="card-grid">
       {data.favorites.map((favorite) => (
         <article className="card profile-card" key={favorite.id}>
-          <div className="avatar-pill">{favorite.avatarPreset}</div>
+          <ProfileAvatar
+            personalityType={favorite.personalityType}
+            identity={favorite.identity}
+            size="medium"
+          />
           <div className="profile-head">
             <h2>{favorite.displayName}</h2>
             <p>@{favorite.username}</p>
@@ -44,4 +49,3 @@ export function FavoritesList() {
     </section>
   );
 }
-

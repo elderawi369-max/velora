@@ -20,6 +20,8 @@ safetyRoutes.get("/blocks", async (c) => {
       createdAt: blocks.createdAt,
       username: profiles.username,
       displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
+      identity: profiles.identity,
       avatarPreset: profiles.avatarPreset,
     })
     .from(blocks)

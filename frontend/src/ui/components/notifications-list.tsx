@@ -5,6 +5,7 @@ import {
   markNotificationRead,
   type NotificationItem,
 } from "../../lib/api";
+import { ProfileAvatar } from "./profile-avatar";
 
 function describeNotification(item: NotificationItem) {
   if (item.type === "gift") {
@@ -92,7 +93,11 @@ export function NotificationsList() {
             className={item.readAt ? "conversation-item" : "conversation-item unread-item"}
             key={item.id}
           >
-            <div className="avatar-pill">{item.actorProfile.avatarPreset}</div>
+            <ProfileAvatar
+              personalityType={item.actorProfile.personalityType}
+              identity={item.actorProfile.identity}
+              size="small"
+            />
             <div className="conversation-copy">
               <h2>{item.actorProfile.displayName}</h2>
               <p>@{item.actorProfile.username}</p>

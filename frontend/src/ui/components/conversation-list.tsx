@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchConversations } from "../../lib/api";
+import { ProfileAvatar } from "./profile-avatar";
 
 export function ConversationList() {
   const { data, isLoading, error } = useQuery({
@@ -48,9 +49,11 @@ export function ConversationList() {
           key={conversation.id}
           to={`/chat/${conversation.id}`}
         >
-          <div className="avatar-pill">
-            {conversation.otherProfile?.avatarPreset ?? "chat"}
-          </div>
+          <ProfileAvatar
+            personalityType={conversation.otherProfile?.personalityType}
+            identity={conversation.otherProfile?.identity}
+            size="small"
+          />
           <div className="conversation-copy">
             <h2>{conversation.otherProfile?.displayName ?? "Unknown profile"}</h2>
             <p>@{conversation.otherProfile?.username ?? "missing-profile"}</p>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchBlocks, unblockProfile } from "../../lib/api";
+import { ProfileAvatar } from "./profile-avatar";
 
 export function BlockedUsersList() {
   const queryClient = useQueryClient();
@@ -34,7 +35,7 @@ export function BlockedUsersList() {
     return (
       <div className="panel empty-state">
         <h2>No blocked users.</h2>
-        <p>If you block someone, you’ll be able to review and undo it here.</p>
+        <p>If you block someone, you'll be able to review and undo it here.</p>
       </div>
     );
   }
@@ -43,7 +44,11 @@ export function BlockedUsersList() {
     <section className="card-grid">
       {data.blocks.map((block) => (
         <article className="card profile-card" key={block.id}>
-          <div className="avatar-pill">{block.avatarPreset ?? "profile"}</div>
+          <ProfileAvatar
+            personalityType={block.personalityType}
+            identity={block.identity}
+            size="medium"
+          />
           <div className="profile-head">
             <h2>{block.displayName ?? "Unknown profile"}</h2>
             <p>@{block.username ?? "missing-profile"}</p>

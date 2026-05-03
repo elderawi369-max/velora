@@ -23,6 +23,8 @@ notificationRoutes.get("/", async (c) => {
       actorProfileId: notifications.actorProfileId,
       actorUsername: profiles.username,
       actorDisplayName: profiles.displayName,
+      actorPersonalityType: profiles.personalityType,
+      actorIdentity: profiles.identity,
       actorAvatarPreset: profiles.avatarPreset,
     })
     .from(notifications)
@@ -42,6 +44,8 @@ notificationRoutes.get("/", async (c) => {
         id: row.actorProfileId,
         username: row.actorUsername,
         displayName: row.actorDisplayName,
+        personalityType: row.actorPersonalityType,
+        identity: row.actorIdentity,
         avatarPreset: row.actorAvatarPreset,
       },
     })),

@@ -5,6 +5,7 @@ import { addFavorite, fetchConversation, removeFavorite } from "../../lib/api";
 import { ChatPanel } from "../components/chat-panel";
 import { ChatSafetyPanel } from "../components/chat-safety-panel";
 import { GiftActions } from "../components/gift-actions";
+import { ProfileAvatar } from "../components/profile-avatar";
 
 export function ChatPage() {
   const params = useParams();
@@ -65,7 +66,11 @@ export function ChatPage() {
 
       {otherProfile ? (
         <div className="panel conversation-header">
-          <div className="avatar-pill">{otherProfile.avatarPreset}</div>
+          <ProfileAvatar
+            personalityType={otherProfile.personalityType}
+            identity={otherProfile.identity}
+            size="medium"
+          />
           <div className="profile-head">
             <h2>{otherProfile.displayName}</h2>
             <p>@{otherProfile.username}</p>
