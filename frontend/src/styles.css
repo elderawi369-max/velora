@@ -150,6 +150,32 @@ body {
   box-shadow: 0 14px 32px rgba(83, 53, 59, 0.08);
 }
 
+.filter-panel,
+.filter-grid,
+.filter-panel-head {
+  display: grid;
+}
+
+.filter-panel {
+  gap: 18px;
+}
+
+.filter-panel-head {
+  gap: 12px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.filter-panel-head h2,
+.filter-panel-head p {
+  margin: 0;
+}
+
+.filter-grid {
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .form-panel {
   display: grid;
   gap: 18px;
@@ -445,6 +471,10 @@ body {
   }
 
   .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-panel-head {
     grid-template-columns: 1fr;
   }
 
