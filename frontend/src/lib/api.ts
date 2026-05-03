@@ -94,6 +94,8 @@ export type PublicProfile = {
   boundaries: string[];
   isFavorited: boolean;
   recommended: boolean;
+  compatibilityScore: number;
+  matchReasons: string[];
   trustSignals: string[];
   giftEffect: {
     dominantGiftType: "rose" | "starlight" | "crown" | null;

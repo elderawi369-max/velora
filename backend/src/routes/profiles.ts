@@ -213,6 +213,10 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24 ? "Established profile" : null,
       JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
     ].filter(Boolean),
+    isFavorited: false,
+    recommended: false,
+    compatibilityScore: 0,
+    matchReasons: [] as string[],
     giftEffect: giftEffects,
   };
 }
@@ -282,32 +286,103 @@ function identityMatchesPreference(identity: Identity, lookingFor: LookingFor) {
   return false;
 }
 
+function getPersonalityCompatibilityScore(
+  ownPersonality: PersonalityType,
+  targetPersonality: PersonalityType,
+) {
+  const strongPairs: Record<PersonalityType, PersonalityType[]> = {
+    "clingy / affectionate": ["protective", "soft / sweet", "confident / dominant"],
+    "cold / mysterious": ["flirty / teasing", "confident / dominant", "intellectual"],
+    "flirty / teasing": ["cold / mysterious", "funny / chaotic", "confident / dominant"],
+    protective: ["clingy / affectionate", "soft / sweet", "intellectual"],
+    "soft / sweet": ["protective", "clingy / affectionate", "intellectual"],
+    intellectual: ["intellectual", "soft / sweet", "cold / mysterious", "protective"],
+    "funny / chaotic": ["flirty / teasing", "funny / chaotic", "roleplay / fantasy"],
+    "confident / dominant": ["flirty / teasing", "cold / mysterious", "clingy / affectionate"],
+    "emotionally distant": ["cold / mysterious", "intellectual"],
+    "roleplay / fantasy": ["roleplay / fantasy", "funny / chaotic", "flirty / teasing"],
+  };
+
+  if (ownPersonality === targetPersonality) {
+    return 2;
+  }
+
+  return strongPairs[ownPersonality].includes(targetPersonality) ? 3 : 0;
+}
+
+function countOverlap(left: string[], right: string[]) {
+  const rightSet = new Set(right);
+  return left.filter((item) => rightSet.has(item)).length;
+}
+
 function getCompatibilityScore(
   ownProfile:
     | {
+        personalityType: PersonalityType;
         identity: Identity;
         lookingFor: LookingFor;
+        vibeTags: string[];
+        boundaries: string[];
       }
     | undefined,
   targetProfile: {
+    personalityType: PersonalityType;
     identity: Identity;
     lookingFor: LookingFor;
+    vibeTags: string[];
+    boundaries: string[];
   },
 ) {
   if (!ownProfile) {
-    return 0;
+    return {
+      total: 0,
+      reasons: [] as string[],
+    };
   }
 
   let score = 0;
+  const reasons: string[] = [];
   if (identityMatchesPreference(targetProfile.identity, ownProfile.lookingFor)) {
     score += 2;
+    reasons.push("Fits who you want to chat with");
   }
 
   if (identityMatchesPreference(ownProfile.identity, targetProfile.lookingFor)) {
     score += 1;
+    reasons.push("You fit their chat preference too");
   }
 
-  return score;
+  const personalityScore = getPersonalityCompatibilityScore(
+    ownProfile.personalityType,
+    targetProfile.personalityType,
+  );
+  score += personalityScore;
+  if (personalityScore >= 3) {
+    reasons.push("Strong personality chemistry");
+  } else if (personalityScore >= 2) {
+    reasons.push("Similar personality energy");
+  }
+
+  const sharedVibes = countOverlap(ownProfile.vibeTags, targetProfile.vibeTags);
+  score += Math.min(sharedVibes, 3);
+  if (sharedVibes >= 2) {
+    reasons.push("Several shared vibe tags");
+  } else if (sharedVibes === 1) {
+    reasons.push("A shared vibe tag");
+  }
+
+  const sharedBoundaries = countOverlap(ownProfile.boundaries, targetProfile.boundaries);
+  score += Math.min(sharedBoundaries, 2);
+  if (sharedBoundaries >= 2) {
+    reasons.push("Very compatible chat preferences");
+  } else if (sharedBoundaries === 1) {
+    reasons.push("A shared chat preference");
+  }
+
+  return {
+    total: score,
+    reasons: Array.from(new Set(reasons)).slice(0, 3),
+  };
 }
 
 profileRoutes.get("/", async (c) => {
@@ -350,6 +425,8 @@ profileRoutes.get("/", async (c) => {
               personalityType: profiles.personalityType,
               identity: profiles.identity,
               lookingFor: profiles.lookingFor,
+              vibeTags: profiles.vibeTags,
+              boundaries: profiles.boundaries,
             })
             .from(profiles)
             .where(eq(profiles.id, own.profileId))
@@ -362,6 +439,8 @@ profileRoutes.get("/", async (c) => {
         personalityType: normalizePersonalityType(fallbackOwnProfile.personalityType),
         identity: normalizeIdentity(fallbackOwnProfile.identity),
         lookingFor: normalizeLookingFor(fallbackOwnProfile.lookingFor),
+        vibeTags: JSON.parse(fallbackOwnProfile.vibeTags) as string[],
+        boundaries: JSON.parse(fallbackOwnProfile.boundaries) as string[],
       }
     : undefined;
 
@@ -371,11 +450,14 @@ profileRoutes.get("/", async (c) => {
         return null;
       }
 
-      const compatibilityScore = getCompatibilityScore(currentProfile, {
+      const personalityType = normalizePersonalityType(profile.personalityType);
+      const compatibility = getCompatibilityScore(currentProfile, {
+        personalityType,
         identity: normalizeIdentity(profile.identity),
         lookingFor: normalizeLookingFor(profile.lookingFor),
+        vibeTags: JSON.parse(profile.vibeTags) as string[],
+        boundaries: JSON.parse(profile.boundaries) as string[],
       });
-      const personalityType = normalizePersonalityType(profile.personalityType);
 
       return {
         ...profile,
@@ -390,8 +472,9 @@ profileRoutes.get("/", async (c) => {
         vibeTags: JSON.parse(profile.vibeTags) as string[],
         boundaries: JSON.parse(profile.boundaries) as string[],
         isFavorited: own ? await isFavorited(c.env, own.profileId, profile.id) : false,
-        recommended: compatibilityScore > 0,
-        compatibilityScore,
+        recommended: compatibility.total >= 5,
+        compatibilityScore: compatibility.total,
+        matchReasons: compatibility.reasons,
         trustSignals: [
           profile.bio.length >= 40 ? "Complete profile" : null,
           Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24
@@ -497,6 +580,10 @@ profileRoutes.post("/", async (c) => {
       id: profileId,
       ...payload.data,
       trustSignals: payload.data.bio.length >= 40 ? ["Complete profile"] : [],
+      isFavorited: false,
+      recommended: false,
+      compatibilityScore: 0,
+      matchReasons: [],
       giftEffect: {
         dominantGiftType: null,
         totalReceived: 0,
@@ -566,6 +653,10 @@ profileRoutes.put("/me", async (c) => {
         payload.data.bio.length >= 40 ? "Complete profile" : null,
         payload.data.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
       ].filter(Boolean),
+      isFavorited: false,
+      recommended: false,
+      compatibilityScore: 0,
+      matchReasons: [],
       giftEffect: (await getGiftEffects(c.env, [existingProfile.id])).get(existingProfile.id) ?? {
         dominantGiftType: null,
         totalReceived: 0,

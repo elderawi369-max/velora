@@ -364,6 +364,9 @@ export function ProfileList() {
           </div>
           <div className="chip-row">
             {profile.recommended ? <span className="chip">Recommended match</span> : null}
+            {profile.compatibilityScore > 0 ? (
+              <span className="chip chip-muted">Match score {profile.compatibilityScore}</span>
+            ) : null}
             <span className="chip">{profile.personalityType}</span>
             <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
             <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
@@ -380,6 +383,18 @@ export function ProfileList() {
               ]
             }
           </p>
+          {profile.matchReasons.length > 0 ? (
+            <div className="meta-group">
+              <span className="meta-title">Why this matches</span>
+              <div className="chip-row">
+                {profile.matchReasons.map((reason) => (
+                  <span className="chip chip-muted" key={`${profile.id}-${reason}`}>
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {profile.giftEffect.totalReceived > 0 ? (
             <div className="meta-group">
               <span className="meta-title">Gift effects</span>
