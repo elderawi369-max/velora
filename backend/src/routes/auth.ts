@@ -59,6 +59,7 @@ authRoutes.post("/signup", async (c) => {
     user: {
       id: userId,
       email: payload.data.email,
+      emailVerified: false,
     },
     sessionToken,
     hasProfile: false,
@@ -111,6 +112,7 @@ authRoutes.post("/login", async (c) => {
     user: {
       id: user.id,
       email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
     },
     sessionToken,
     hasProfile: Boolean(profile),

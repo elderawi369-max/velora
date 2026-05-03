@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, inArray, isNull } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { gifts, profiles } from "../db/schema";
+import { gifts, profiles, reports, users } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
@@ -11,6 +11,7 @@ import { profileSchema } from "../lib/validation";
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type GiftType = "rose" | "starlight" | "crown";
+type TrustLevel = "new" | "established" | "trusted";
 
 const giftDurationsMs: Record<GiftType, number> = {
   rose: 1000 * 60 * 60 * 24,
@@ -57,6 +58,83 @@ function getAvatarPresetForPersonality(personalityType: PersonalityType) {
   };
 
   return avatarMap[personalityType];
+}
+
+async function getModerationStats(env: EnvBindings, profileIds: string[]) {
+  const stats = new Map<string, { reportCount: number; uniqueReporterCount: number }>();
+
+  if (profileIds.length === 0) {
+    return stats;
+  }
+
+  const db = getDb(env);
+  const rows = await db
+    .select({
+      targetProfileId: reports.targetProfileId,
+      reporterProfileId: reports.reporterProfileId,
+    })
+    .from(reports)
+    .where(inArray(reports.targetProfileId, profileIds));
+
+  for (const profileId of profileIds) {
+    stats.set(profileId, { reportCount: 0, uniqueReporterCount: 0 });
+  }
+
+  for (const profileId of profileIds) {
+    const related = rows.filter((row) => row.targetProfileId === profileId);
+    stats.set(profileId, {
+      reportCount: related.length,
+      uniqueReporterCount: new Set(related.map((row) => row.reporterProfileId)).size,
+    });
+  }
+
+  return stats;
+}
+
+function buildTrustProfile(input: {
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+  createdAt: number;
+  emailVerifiedAt: number | null;
+  verifiedHumanAt: number | null;
+  reportCount: number;
+  uniqueReporterCount: number;
+}) {
+  const trustSignals = [
+    input.verifiedHumanAt ? "Verified human" : null,
+    input.emailVerifiedAt ? "Verified email" : null,
+    input.bio.length >= 40 ? "Complete profile" : null,
+    input.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
+    Date.now() - input.createdAt >= 1000 * 60 * 60 * 24 ? "Established profile" : null,
+    input.uniqueReporterCount === 0 && input.reportCount <= 1 ? "Calm report history" : null,
+  ].filter(Boolean) as string[];
+
+  let score = 0;
+  if (input.bio.length >= 40) {
+    score += 1;
+  }
+  if (input.promptEntries.length >= 2) {
+    score += 1;
+  }
+  if (Date.now() - input.createdAt >= 1000 * 60 * 60 * 24) {
+    score += 1;
+  }
+  if (input.emailVerifiedAt) {
+    score += 1;
+  }
+  if (input.uniqueReporterCount === 0 && input.reportCount <= 1) {
+    score += 1;
+  }
+
+  const trustLevel: TrustLevel =
+    score >= 4 ? "trusted" : score >= 2 ? "established" : "new";
+
+  return {
+    trustLevel,
+    trustSignals,
+    verifiedHuman: Boolean(input.verifiedHumanAt),
+    emailVerified: Boolean(input.emailVerifiedAt),
+  };
 }
 
 async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
@@ -175,10 +253,13 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
+      verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
       createdAt: profiles.createdAt,
+      emailVerifiedAt: users.emailVerifiedAt,
     })
     .from(profiles)
+    .innerJoin(users, eq(users.id, profiles.userId))
     .where(eq(profiles.id, profileId))
     .limit(1);
 
@@ -187,6 +268,23 @@ async function getProfileById(env: EnvBindings, profileId: string) {
   }
 
   const personalityType = normalizePersonalityType(profile.personalityType);
+  const promptEntries = JSON.parse(profile.promptEntries) as Array<{
+    question: string;
+    answer: string;
+  }>;
+  const moderationStats = (await getModerationStats(env, [profileId])).get(profileId) ?? {
+    reportCount: 0,
+    uniqueReporterCount: 0,
+  };
+  const trustProfile = buildTrustProfile({
+    bio: profile.bio,
+    promptEntries,
+    createdAt: profile.createdAt,
+    emailVerifiedAt: profile.emailVerifiedAt,
+    verifiedHumanAt: profile.verifiedHumanAt,
+    reportCount: moderationStats.reportCount,
+    uniqueReporterCount: moderationStats.uniqueReporterCount,
+  });
   const giftEffects = (await getGiftEffects(env, [profileId])).get(profileId) ?? {
     dominantGiftType: null,
     totalReceived: 0,
@@ -202,17 +300,13 @@ async function getProfileById(env: EnvBindings, profileId: string) {
     avatarPreset: getAvatarPresetForPersonality(personalityType),
     identity: normalizeIdentity(profile.identity),
     lookingFor: normalizeLookingFor(profile.lookingFor),
-    promptEntries: JSON.parse(profile.promptEntries) as Array<{
-      question: string;
-      answer: string;
-    }>,
+    promptEntries,
     vibeTags: JSON.parse(profile.vibeTags) as string[],
     boundaries: JSON.parse(profile.boundaries) as string[],
-    trustSignals: [
-      profile.bio.length >= 40 ? "Complete profile" : null,
-      Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24 ? "Established profile" : null,
-      JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
-    ].filter(Boolean),
+    trustLevel: trustProfile.trustLevel,
+    verifiedHuman: trustProfile.verifiedHuman,
+    emailVerified: trustProfile.emailVerified,
+    trustSignals: trustProfile.trustSignals,
     isFavorited: false,
     recommended: false,
     compatibilityScore: 0,
@@ -401,15 +495,22 @@ profileRoutes.get("/", async (c) => {
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
+      verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
       createdAt: profiles.createdAt,
+      emailVerifiedAt: users.emailVerifiedAt,
     })
     .from(profiles)
+    .innerJoin(users, eq(users.id, profiles.userId))
     .where(isNull(profiles.suspendedAt))
     .orderBy(desc(profiles.createdAt))
     .limit(50);
 
   const visibleProfiles = results.filter((profile) => profile.id !== own?.profileId);
+  const moderationStats = await getModerationStats(
+    c.env,
+    visibleProfiles.map((profile) => profile.id),
+  );
   const giftEffects = await getGiftEffects(
     c.env,
     visibleProfiles.map((profile) => profile.id),
@@ -451,12 +552,25 @@ profileRoutes.get("/", async (c) => {
       }
 
       const personalityType = normalizePersonalityType(profile.personalityType);
+      const promptEntries = JSON.parse(profile.promptEntries) as Array<{
+        question: string;
+        answer: string;
+      }>;
       const compatibility = getCompatibilityScore(currentProfile, {
         personalityType,
         identity: normalizeIdentity(profile.identity),
         lookingFor: normalizeLookingFor(profile.lookingFor),
         vibeTags: JSON.parse(profile.vibeTags) as string[],
         boundaries: JSON.parse(profile.boundaries) as string[],
+      });
+      const trustProfile = buildTrustProfile({
+        bio: profile.bio,
+        promptEntries,
+        createdAt: profile.createdAt,
+        emailVerifiedAt: profile.emailVerifiedAt,
+        verifiedHumanAt: profile.verifiedHumanAt,
+        reportCount: moderationStats.get(profile.id)?.reportCount ?? 0,
+        uniqueReporterCount: moderationStats.get(profile.id)?.uniqueReporterCount ?? 0,
       });
 
       return {
@@ -465,23 +579,17 @@ profileRoutes.get("/", async (c) => {
         avatarPreset: getAvatarPresetForPersonality(personalityType),
         identity: normalizeIdentity(profile.identity),
         lookingFor: normalizeLookingFor(profile.lookingFor),
-        promptEntries: JSON.parse(profile.promptEntries) as Array<{
-          question: string;
-          answer: string;
-        }>,
+        promptEntries,
         vibeTags: JSON.parse(profile.vibeTags) as string[],
         boundaries: JSON.parse(profile.boundaries) as string[],
         isFavorited: own ? await isFavorited(c.env, own.profileId, profile.id) : false,
         recommended: compatibility.total >= 5,
         compatibilityScore: compatibility.total,
         matchReasons: compatibility.reasons,
-        trustSignals: [
-          profile.bio.length >= 40 ? "Complete profile" : null,
-          Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24
-            ? "Established profile"
-            : null,
-          JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
-        ].filter(Boolean),
+        trustLevel: trustProfile.trustLevel,
+        verifiedHuman: trustProfile.verifiedHuman,
+        emailVerified: trustProfile.emailVerified,
+        trustSignals: trustProfile.trustSignals,
         giftEffect: giftEffects.get(profile.id) ?? {
           dominantGiftType: null,
           totalReceived: 0,
@@ -570,6 +678,7 @@ profileRoutes.post("/", async (c) => {
     avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
     vibeTags: JSON.stringify(payload.data.vibeTags),
     boundaries: JSON.stringify(payload.data.boundaries),
+    verifiedHumanAt: null,
     suspendedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -579,7 +688,17 @@ profileRoutes.post("/", async (c) => {
     profile: {
       id: profileId,
       ...payload.data,
-      trustSignals: payload.data.bio.length >= 40 ? ["Complete profile"] : [],
+      trustLevel:
+        payload.data.bio.length >= 40 || payload.data.promptEntries.length >= 2
+          ? "established"
+          : "new",
+      verifiedHuman: false,
+      emailVerified: false,
+      trustSignals: [
+        payload.data.bio.length >= 40 ? "Complete profile" : null,
+        payload.data.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
+        "Calm report history",
+      ].filter(Boolean),
       isFavorited: false,
       recommended: false,
       compatibilityScore: 0,
@@ -609,7 +728,12 @@ profileRoutes.put("/me", async (c) => {
 
   const db = getDb(c.env);
   const [existingProfile] = await db
-    .select({ id: profiles.id, username: profiles.username })
+    .select({
+      id: profiles.id,
+      username: profiles.username,
+      createdAt: profiles.createdAt,
+      verifiedHumanAt: profiles.verifiedHumanAt,
+    })
     .from(profiles)
     .where(eq(profiles.userId, userId))
     .limit(1);
@@ -645,14 +769,29 @@ profileRoutes.put("/me", async (c) => {
     })
     .where(eq(profiles.id, existingProfile.id));
 
+  const [userRow] = await db
+    .select({ emailVerifiedAt: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const trustProfile = buildTrustProfile({
+    bio: payload.data.bio,
+    promptEntries: payload.data.promptEntries,
+    createdAt: existingProfile.createdAt,
+    emailVerifiedAt: userRow?.emailVerifiedAt ?? null,
+    verifiedHumanAt: existingProfile.verifiedHumanAt,
+    reportCount: 0,
+    uniqueReporterCount: 0,
+  });
+
   return c.json({
     profile: {
       id: existingProfile.id,
       ...payload.data,
-      trustSignals: [
-        payload.data.bio.length >= 40 ? "Complete profile" : null,
-        payload.data.promptEntries.length >= 2 ? "Prompt-rich profile" : null,
-      ].filter(Boolean),
+      trustLevel: trustProfile.trustLevel,
+      verifiedHuman: trustProfile.verifiedHuman,
+      emailVerified: trustProfile.emailVerified,
+      trustSignals: trustProfile.trustSignals,
       isFavorited: false,
       recommended: false,
       compatibilityScore: 0,

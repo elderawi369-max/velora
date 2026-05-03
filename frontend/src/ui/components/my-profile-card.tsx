@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
+  formatTrustLevelLabel,
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
@@ -56,6 +57,7 @@ export function MyProfileCard() {
         <p>@{profile.username}</p>
       </div>
       <div className="chip-row">
+        <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
         <span className="chip">{profile.personalityType}</span>
         <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
         <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>

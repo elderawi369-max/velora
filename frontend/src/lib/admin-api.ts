@@ -34,6 +34,7 @@ export type AdminReport = {
     id: string;
     username: string;
     displayName: string;
+    verifiedHumanAt: number | null;
     suspendedAt: number | null;
   } | null;
   reportCount: number;
@@ -73,4 +74,20 @@ export function unsuspendProfile(adminKey: string, profileId: string) {
 
 export function fetchSupportTickets(adminKey: string) {
   return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
+}
+
+export function verifyProfile(adminKey: string, profileId: string) {
+  return adminRequest<{ ok: true }>(
+    `/api/admin/profiles/${profileId}/verify`,
+    adminKey,
+    { method: "POST" },
+  );
+}
+
+export function unverifyProfile(adminKey: string, profileId: string) {
+  return adminRequest<{ ok: true }>(
+    `/api/admin/profiles/${profileId}/unverify`,
+    adminKey,
+    { method: "POST" },
+  );
 }

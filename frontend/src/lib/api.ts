@@ -96,6 +96,9 @@ export type PublicProfile = {
   recommended: boolean;
   compatibilityScore: number;
   matchReasons: string[];
+  trustLevel: "new" | "established" | "trusted";
+  verifiedHuman: boolean;
+  emailVerified: boolean;
   trustSignals: string[];
   giftEffect: {
     dominantGiftType: "rose" | "starlight" | "crown" | null;
@@ -157,14 +160,14 @@ export type Message = {
 };
 
 export function signup(payload: SignupPayload) {
-  return request<{ user: { id: string; email: string }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
+  return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
     method: "POST",
     body: payload,
   });
 }
 
 export function login(payload: SignupPayload) {
-  return request<{ user: { id: string; email: string }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
+  return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
     method: "POST",
     body: payload,
   });

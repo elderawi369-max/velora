@@ -4,7 +4,9 @@ import {
   fetchAdminReports,
   fetchSupportTickets,
   suspendProfile,
+  unverifyProfile,
   unsuspendProfile,
+  verifyProfile,
 } from "../../lib/admin-api";
 
 const adminStorageKey = "velora-admin-key";
@@ -36,9 +38,17 @@ export function AdminPage() {
       action,
       profileId,
     }: {
-      action: "suspend" | "unsuspend";
+      action: "suspend" | "unsuspend" | "verify" | "unverify";
       profileId: string;
     }) => {
+      if (action === "verify") {
+        return verifyProfile(activeAdminKey, profileId);
+      }
+
+      if (action === "unverify") {
+        return unverifyProfile(activeAdminKey, profileId);
+      }
+
       if (action === "suspend") {
         return suspendProfile(activeAdminKey, profileId);
       }
@@ -129,6 +139,7 @@ export function AdminPage() {
         {reports.map((report) => {
           const target = report.targetProfile;
           const suspended = Boolean(target?.suspendedAt);
+          const verifiedHuman = Boolean(target?.verifiedHumanAt);
 
           return (
             <article className="card profile-card" key={report.id}>
@@ -152,6 +163,7 @@ export function AdminPage() {
                       ? "Needs review"
                       : "Low volume"}
                 </span>
+                {verifiedHuman ? <span className="chip">Verified human</span> : null}
                 <span className="chip chip-muted">{report.reportCount} reports</span>
                 <span className="chip chip-muted">
                   {report.uniqueReporterCount} unique reporters
@@ -170,6 +182,23 @@ export function AdminPage() {
 
               {target ? (
                 <div className="action-row">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={moderationMutation.isPending}
+                    onClick={() =>
+                      moderationMutation.mutate({
+                        action: verifiedHuman ? "unverify" : "verify",
+                        profileId: target.id,
+                      })
+                    }
+                  >
+                    {moderationMutation.isPending
+                      ? "Saving..."
+                      : verifiedHuman
+                        ? "Remove verification"
+                        : "Verify human"}
+                  </button>
                   <button
                     className={suspended ? "secondary-button" : "danger-button"}
                     type="button"

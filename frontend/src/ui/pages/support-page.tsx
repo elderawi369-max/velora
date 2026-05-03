@@ -29,6 +29,10 @@ export function SupportPage() {
         <p className="status-message">
           Trust signals in profiles are lightweight product indicators, not full identity guarantees.
         </p>
+        <p className="status-message">
+          Most trust is earned automatically through profile quality, account history, and calm behavior.
+          A smaller set of profiles may also receive a manual <strong>Verified human</strong> badge.
+        </p>
       </section>
 
       <SupportForm />

@@ -115,6 +115,18 @@ export function formatLookingForLabel(lookingFor: string) {
   return "Open to anyone";
 }
 
+export function formatTrustLevelLabel(trustLevel: string) {
+  if (trustLevel === "trusted") {
+    return "Trusted profile";
+  }
+
+  if (trustLevel === "established") {
+    return "Established profile";
+  }
+
+  return "New profile";
+}
+
 export const profilePromptOptions = [
   "My ideal chat energy is...",
   "I reply best when...",

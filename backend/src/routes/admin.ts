@@ -26,6 +26,7 @@ adminRoutes.get("/reports", async (c) => {
           id: profiles.id,
           username: profiles.username,
           displayName: profiles.displayName,
+          verifiedHumanAt: profiles.verifiedHumanAt,
           suspendedAt: profiles.suspendedAt,
         })
         .from(profiles)
@@ -86,6 +87,32 @@ adminRoutes.post("/profiles/:profileId/unsuspend", async (c) => {
     .update(profiles)
     .set({
       suspendedAt: null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(profiles.id, c.req.param("profileId")));
+
+  return c.json({ ok: true });
+});
+
+adminRoutes.post("/profiles/:profileId/verify", async (c) => {
+  const db = getDb(c.env);
+  await db
+    .update(profiles)
+    .set({
+      verifiedHumanAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .where(eq(profiles.id, c.req.param("profileId")));
+
+  return c.json({ ok: true });
+});
+
+adminRoutes.post("/profiles/:profileId/unverify", async (c) => {
+  const db = getDb(c.env);
+  await db
+    .update(profiles)
+    .set({
+      verifiedHumanAt: null,
       updatedAt: Date.now(),
     })
     .where(eq(profiles.id, c.req.param("profileId")));

@@ -5,6 +5,7 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  emailVerifiedAt: integer("email_verified_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -25,6 +26,7 @@ export const profiles = sqliteTable("profiles", {
   avatarPreset: text("avatar_preset").notNull(),
   boundaries: text("boundaries").notNull(),
   vibeTags: text("vibe_tags").notNull(),
+  verifiedHumanAt: integer("verified_human_at"),
   suspendedAt: integer("suspended_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),

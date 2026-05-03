@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
+  formatTrustLevelLabel,
   identityOptions,
   lookingForOptions,
   personalityTypeDescriptions,
@@ -367,6 +368,7 @@ export function ProfileList() {
             {profile.compatibilityScore > 0 ? (
               <span className="chip chip-muted">Match score {profile.compatibilityScore}</span>
             ) : null}
+            <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
             <span className="chip">{profile.personalityType}</span>
             <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
             <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
