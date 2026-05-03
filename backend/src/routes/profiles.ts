@@ -12,6 +12,24 @@ export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type GiftType = "rose" | "starlight" | "crown";
 
+function getStrongerGiftType(current: GiftType | null, next: GiftType | null) {
+  const priority: Record<GiftType, number> = {
+    rose: 1,
+    starlight: 2,
+    crown: 3,
+  };
+
+  if (!next) {
+    return current;
+  }
+
+  if (!current) {
+    return next;
+  }
+
+  return priority[next] >= priority[current] ? next : current;
+}
+
 function getAvatarPresetForPersonality(personalityType: PersonalityType) {
   const avatarMap: Record<PersonalityType, string> = {
     "clingy / affectionate": "rose",
@@ -83,7 +101,7 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
       : current.highlights;
 
     effects.set(row.targetProfileId, {
-      dominantGiftType: normalizedType ?? current.dominantGiftType,
+      dominantGiftType: getStrongerGiftType(current.dominantGiftType, normalizedType),
       totalReceived: nextTotal,
       highlights: nextHighlights,
     });

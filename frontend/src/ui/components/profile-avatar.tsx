@@ -47,6 +47,18 @@ export function ProfileAvatar({
       {dominantGiftType === "crown" ? (
         <span className="profile-avatar-crown">👑</span>
       ) : null}
+      {dominantGiftType === "rose" ? (
+        <>
+          <span className="profile-avatar-petal profile-avatar-petal-a">✿</span>
+          <span className="profile-avatar-petal profile-avatar-petal-b">✿</span>
+        </>
+      ) : null}
+      {dominantGiftType === "starlight" ? (
+        <>
+          <span className="profile-avatar-sparkle profile-avatar-sparkle-a">✦</span>
+          <span className="profile-avatar-sparkle profile-avatar-sparkle-b">✦</span>
+        </>
+      ) : null}
       <span className="profile-avatar-icon">{icon}</span>
     </div>
   );
