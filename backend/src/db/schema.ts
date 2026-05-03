@@ -17,6 +17,7 @@ export const profiles = sqliteTable("profiles", {
     .references(() => users.id),
   username: text("username").notNull().unique(),
   displayName: text("display_name").notNull(),
+  personalityType: text("personality_type").notNull(),
   identity: text("identity").notNull(),
   lookingFor: text("looking_for").notNull(),
   bio: text("bio").notNull(),

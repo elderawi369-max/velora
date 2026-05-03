@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  avatarOptions,
   identityOptions,
   lookingForOptions,
+  personalityTypeAvatarMap,
+  personalityTypeDescriptions,
+  personalityTypeOptions,
   platformRules,
   preferenceOptions,
   profilePromptOptions,
@@ -28,14 +30,14 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
   const queryClient = useQueryClient();
   const [username, setUsername] = useState(initialProfile?.username ?? "");
   const [displayName, setDisplayName] = useState(initialProfile?.displayName ?? "");
+  const [personalityType, setPersonalityType] = useState<string>(
+    initialProfile?.personalityType ?? "soft / sweet",
+  );
   const [identity, setIdentity] = useState<string>(
     initialProfile?.identity ?? "prefer not to say",
   );
   const [lookingFor, setLookingFor] = useState<string>(initialProfile?.lookingFor ?? "any");
   const [bio, setBio] = useState(initialProfile?.bio ?? "");
-  const [avatarPreset, setAvatarPreset] = useState<string>(
-    initialProfile?.avatarPreset ?? avatarOptions[0],
-  );
   const [vibeTags, setVibeTags] = useState<string[]>(initialProfile?.vibeTags ?? ["sweet"]);
   const [boundaries, setBoundaries] = useState<string[]>(
     initialProfile?.boundaries ?? ["kind tone only"],
@@ -50,6 +52,10 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
   );
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const avatarPreset =
+    personalityTypeAvatarMap[
+      personalityType as keyof typeof personalityTypeAvatarMap
+    ] ?? "rose";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,6 +66,7 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
       const payload = {
         username,
         displayName,
+        personalityType,
         identity,
         lookingFor,
         bio,
@@ -137,6 +144,25 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         </div>
 
         <div className="field-grid">
+          <label className="field">
+            <span>Personality type</span>
+            <select
+              value={personalityType}
+              onChange={(event) => setPersonalityType(event.target.value)}
+            >
+              {personalityTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <small className="status-message">
+              {personalityTypeDescriptions[
+                personalityType as keyof typeof personalityTypeDescriptions
+              ]}
+            </small>
+          </label>
+
           <label className="field">
             <span>I am</span>
             <select value={identity} onChange={(event) => setIdentity(event.target.value)}>
@@ -229,19 +255,15 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
           </div>
         </div>
 
-        <label className="field">
-          <span>Avatar preset</span>
-          <select
-            value={avatarPreset}
-            onChange={(event) => setAvatarPreset(event.target.value)}
-          >
-            {avatarOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="picker-group">
+          <span className="picker-label">Avatar style</span>
+          <div className="chip-row">
+            <span className="chip">{avatarPreset}</span>
+          </div>
+          <p className="status-message">
+            This avatar style is assigned automatically from your personality type.
+          </p>
+        </div>
 
         <div className="picker-group">
           <span className="picker-label">Vibe tags</span>

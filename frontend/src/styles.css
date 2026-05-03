@@ -432,6 +432,35 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 79, 89, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.avatar-pill-rose {
+  box-shadow:
+    0 0 0 3px rgba(228, 109, 139, 0.12),
+    0 10px 24px rgba(228, 109, 139, 0.16);
+  border-color: rgba(228, 109, 139, 0.28);
+}
+
+.avatar-pill-starlight {
+  box-shadow:
+    0 0 0 3px rgba(225, 194, 124, 0.14),
+    0 10px 24px rgba(225, 194, 124, 0.18);
+  border-color: rgba(225, 194, 124, 0.32);
+}
+
+.avatar-pill-crown {
+  box-shadow:
+    0 0 0 3px rgba(180, 84, 105, 0.16),
+    0 12px 28px rgba(180, 84, 105, 0.2);
+  border-color: rgba(180, 84, 105, 0.38);
 }
 
 .profile-head h2,

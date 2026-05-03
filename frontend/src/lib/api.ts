@@ -70,6 +70,7 @@ export type SignupPayload = {
 export type ProfilePayload = {
   username: string;
   displayName: string;
+  personalityType: string;
   identity: string;
   lookingFor: string;
   bio: string;
@@ -83,6 +84,7 @@ export type PublicProfile = {
   id: string;
   username: string;
   displayName: string;
+  personalityType: string;
   identity: string;
   lookingFor: string;
   bio: string;
@@ -93,6 +95,11 @@ export type PublicProfile = {
   isFavorited: boolean;
   recommended: boolean;
   trustSignals: string[];
+  giftEffect: {
+    dominantGiftType: "rose" | "starlight" | "crown" | null;
+    totalReceived: number;
+    highlights: string[];
+  };
   createdAt: number;
 };
 

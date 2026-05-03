@@ -1,14 +1,96 @@
 import { Hono } from "hono";
-import { desc, eq, isNull } from "drizzle-orm";
+import { desc, eq, inArray, isNull } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { profiles } from "../db/schema";
+import { gifts, profiles } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { profileSchema } from "../lib/validation";
 
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
+
+type GiftType = "rose" | "starlight" | "crown";
+
+function getAvatarPresetForPersonality(personalityType: PersonalityType) {
+  const avatarMap: Record<PersonalityType, string> = {
+    "clingy / affectionate": "rose",
+    "cold / mysterious": "luna",
+    "flirty / teasing": "velvet",
+    protective: "halo",
+    "soft / sweet": "rose",
+    intellectual: "echo",
+    "funny / chaotic": "nova",
+    "confident / dominant": "velvet",
+    "emotionally distant": "luna",
+    "roleplay / fantasy": "halo",
+  };
+
+  return avatarMap[personalityType];
+}
+
+async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
+  if (profileIds.length === 0) {
+    return new Map<string, {
+      dominantGiftType: GiftType | null;
+      totalReceived: number;
+      highlights: string[];
+    }>();
+  }
+
+  const db = getDb(env);
+  const rows = await db
+    .select({
+      targetProfileId: gifts.targetProfileId,
+      giftType: gifts.giftType,
+    })
+    .from(gifts)
+    .where(inArray(gifts.targetProfileId, profileIds));
+
+  const labelMap: Record<GiftType, string> = {
+    rose: "Rose Aura",
+    starlight: "Starlight Ring",
+    crown: "Velora Crown",
+  };
+
+  const effects = new Map<string, {
+    dominantGiftType: GiftType | null;
+    totalReceived: number;
+    highlights: string[];
+  }>();
+
+  profileIds.forEach((profileId) => {
+    effects.set(profileId, {
+      dominantGiftType: null,
+      totalReceived: 0,
+      highlights: [],
+    });
+  });
+
+  for (const row of rows) {
+    const current = effects.get(row.targetProfileId);
+    if (!current) {
+      continue;
+    }
+
+    const nextTotal = current.totalReceived + 1;
+    const normalizedType = (row.giftType === "rose" || row.giftType === "starlight" || row.giftType === "crown")
+      ? (row.giftType as GiftType)
+      : null;
+
+    const nextHighlights = normalizedType
+      ? Array.from(new Set([...current.highlights, labelMap[normalizedType]])).slice(0, 3)
+      : current.highlights;
+
+    effects.set(row.targetProfileId, {
+      dominantGiftType: normalizedType ?? current.dominantGiftType,
+      totalReceived: nextTotal,
+      highlights: nextHighlights,
+    });
+  }
+
+  return effects;
+}
 
 async function getProfileById(env: EnvBindings, profileId: string) {
   const db = getDb(env);
@@ -17,6 +99,7 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
       identity: profiles.identity,
       lookingFor: profiles.lookingFor,
       bio: profiles.bio,
@@ -35,8 +118,19 @@ async function getProfileById(env: EnvBindings, profileId: string) {
     return null;
   }
 
+  const personalityType = normalizePersonalityType(profile.personalityType);
+  const giftEffects = (await getGiftEffects(env, [profileId])).get(profileId) ?? {
+    dominantGiftType: null,
+    totalReceived: 0,
+    highlights: [],
+  };
+
   return {
     ...profile,
+    personalityType,
+    avatarPreset: getAvatarPresetForPersonality(personalityType),
+    identity: normalizeIdentity(profile.identity),
+    lookingFor: normalizeLookingFor(profile.lookingFor),
     promptEntries: JSON.parse(profile.promptEntries) as Array<{
       question: string;
       answer: string;
@@ -48,11 +142,58 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       Date.now() - profile.createdAt >= 1000 * 60 * 60 * 24 ? "Established profile" : null,
       JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
     ].filter(Boolean),
+    giftEffect: giftEffects,
   };
 }
 
-type Identity = "woman" | "man" | "non-binary" | "prefer not to say";
-type LookingFor = "women" | "men" | "non-binary people" | "any";
+type PersonalityType =
+  | "clingy / affectionate"
+  | "cold / mysterious"
+  | "flirty / teasing"
+  | "protective"
+  | "soft / sweet"
+  | "intellectual"
+  | "funny / chaotic"
+  | "confident / dominant"
+  | "emotionally distant"
+  | "roleplay / fantasy";
+type Identity = "woman" | "man" | "prefer not to say";
+type LookingFor = "women" | "men" | "any";
+
+function normalizePersonalityType(value: string): PersonalityType {
+  const allowed = new Set<PersonalityType>([
+    "clingy / affectionate",
+    "cold / mysterious",
+    "flirty / teasing",
+    "protective",
+    "soft / sweet",
+    "intellectual",
+    "funny / chaotic",
+    "confident / dominant",
+    "emotionally distant",
+    "roleplay / fantasy",
+  ]);
+
+  return allowed.has(value as PersonalityType)
+    ? (value as PersonalityType)
+    : "soft / sweet";
+}
+
+function normalizeIdentity(value: string): Identity {
+  if (value === "woman" || value === "man") {
+    return value;
+  }
+
+  return "prefer not to say";
+}
+
+function normalizeLookingFor(value: string): LookingFor {
+  if (value === "women" || value === "men") {
+    return value;
+  }
+
+  return "any";
+}
 
 function identityMatchesPreference(identity: Identity, lookingFor: LookingFor) {
   if (lookingFor === "any") {
@@ -67,7 +208,7 @@ function identityMatchesPreference(identity: Identity, lookingFor: LookingFor) {
     return identity === "man";
   }
 
-  return identity === "non-binary";
+  return false;
 }
 
 function getCompatibilityScore(
@@ -106,6 +247,7 @@ profileRoutes.get("/", async (c) => {
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
       identity: profiles.identity,
       lookingFor: profiles.lookingFor,
       bio: profiles.bio,
@@ -122,6 +264,10 @@ profileRoutes.get("/", async (c) => {
     .limit(50);
 
   const visibleProfiles = results.filter((profile) => profile.id !== own?.profileId);
+  const giftEffects = await getGiftEffects(
+    c.env,
+    visibleProfiles.map((profile) => profile.id),
+  );
   const ownProfile = own
     ? visibleProfiles.find((profile) => profile.id === own.profileId)
     : undefined;
@@ -130,6 +276,7 @@ profileRoutes.get("/", async (c) => {
       ? (
           await db
             .select({
+              personalityType: profiles.personalityType,
               identity: profiles.identity,
               lookingFor: profiles.lookingFor,
             })
@@ -141,8 +288,9 @@ profileRoutes.get("/", async (c) => {
 
   const currentProfile = fallbackOwnProfile
     ? {
-        identity: fallbackOwnProfile.identity as Identity,
-        lookingFor: fallbackOwnProfile.lookingFor as LookingFor,
+        personalityType: normalizePersonalityType(fallbackOwnProfile.personalityType),
+        identity: normalizeIdentity(fallbackOwnProfile.identity),
+        lookingFor: normalizeLookingFor(fallbackOwnProfile.lookingFor),
       }
     : undefined;
 
@@ -153,12 +301,17 @@ profileRoutes.get("/", async (c) => {
       }
 
       const compatibilityScore = getCompatibilityScore(currentProfile, {
-        identity: profile.identity as Identity,
-        lookingFor: profile.lookingFor as LookingFor,
+        identity: normalizeIdentity(profile.identity),
+        lookingFor: normalizeLookingFor(profile.lookingFor),
       });
+      const personalityType = normalizePersonalityType(profile.personalityType);
 
       return {
         ...profile,
+        personalityType,
+        avatarPreset: getAvatarPresetForPersonality(personalityType),
+        identity: normalizeIdentity(profile.identity),
+        lookingFor: normalizeLookingFor(profile.lookingFor),
         promptEntries: JSON.parse(profile.promptEntries) as Array<{
           question: string;
           answer: string;
@@ -175,10 +328,14 @@ profileRoutes.get("/", async (c) => {
             : null,
           JSON.parse(profile.promptEntries).length >= 2 ? "Prompt-rich profile" : null,
         ].filter(Boolean),
+        giftEffect: giftEffects.get(profile.id) ?? {
+          dominantGiftType: null,
+          totalReceived: 0,
+          highlights: [],
+        },
       };
     }),
   );
-  const filteredNormalized = normalized.filter(Boolean);
   const rankedProfiles = normalized.filter(
     (
       profile,
@@ -248,11 +405,12 @@ profileRoutes.post("/", async (c) => {
     userId,
     username: payload.data.username,
     displayName: payload.data.displayName,
+    personalityType: payload.data.personalityType,
     identity: payload.data.identity,
     lookingFor: payload.data.lookingFor,
     bio: payload.data.bio,
     promptEntries: JSON.stringify(payload.data.promptEntries),
-    avatarPreset: payload.data.avatarPreset,
+    avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
     vibeTags: JSON.stringify(payload.data.vibeTags),
     boundaries: JSON.stringify(payload.data.boundaries),
     suspendedAt: null,
@@ -306,11 +464,12 @@ profileRoutes.put("/me", async (c) => {
     .set({
       username: payload.data.username,
       displayName: payload.data.displayName,
+      personalityType: payload.data.personalityType,
       identity: payload.data.identity,
       lookingFor: payload.data.lookingFor,
       bio: payload.data.bio,
       promptEntries: JSON.stringify(payload.data.promptEntries),
-      avatarPreset: payload.data.avatarPreset,
+      avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
       vibeTags: JSON.stringify(payload.data.vibeTags),
       boundaries: JSON.stringify(payload.data.boundaries),
       updatedAt: Date.now(),

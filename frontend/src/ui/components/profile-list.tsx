@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   avatarOptions,
+  identityOptions,
   lookingForOptions,
+  personalityTypeDescriptions,
+  personalityTypeOptions,
   platformRules,
   preferenceOptions,
   vibeOptions,
@@ -16,6 +19,14 @@ import {
   removeFavorite,
   sendGift,
 } from "../../lib/api";
+
+function getGiftEffectClass(giftType: "rose" | "starlight" | "crown" | null) {
+  if (!giftType) {
+    return "";
+  }
+
+  return `avatar-pill-${giftType}`;
+}
 
 export function ProfileList() {
   const filterStorageKey = "velora-browse-filters";
@@ -36,6 +47,9 @@ export function ProfileList() {
   );
   const [selectedIdentity, setSelectedIdentity] = useState<string>(
     savedFilters.selectedIdentity ?? "all",
+  );
+  const [selectedPersonalityType, setSelectedPersonalityType] = useState<string>(
+    savedFilters.selectedPersonalityType ?? "all",
   );
   const [selectedLookingFor, setSelectedLookingFor] = useState<string>(
     savedFilters.selectedLookingFor ?? "all",
@@ -65,6 +79,7 @@ export function ProfileList() {
         selectedPreference,
         selectedAvatar,
         selectedIdentity,
+        selectedPersonalityType,
         selectedLookingFor,
         sortMode,
         favoritesOnly,
@@ -77,6 +92,7 @@ export function ProfileList() {
     searchTerm,
     selectedAvatar,
     selectedIdentity,
+    selectedPersonalityType,
     selectedLookingFor,
     selectedPreference,
     selectedVibe,
@@ -148,6 +164,9 @@ export function ProfileList() {
         selectedAvatar === "all" || profile.avatarPreset === selectedAvatar;
       const matchesIdentity =
         selectedIdentity === "all" || profile.identity === selectedIdentity;
+      const matchesPersonalityType =
+        selectedPersonalityType === "all" ||
+        profile.personalityType === selectedPersonalityType;
       const matchesLookingFor =
         selectedLookingFor === "all" || profile.lookingFor === selectedLookingFor;
       const matchesFavorite = !favoritesOnly || profile.isFavorited;
@@ -159,6 +178,7 @@ export function ProfileList() {
         matchesPreference &&
         matchesAvatar &&
         matchesIdentity &&
+        matchesPersonalityType &&
         matchesLookingFor &&
         matchesFavorite &&
         matchesRecommended
@@ -257,7 +277,22 @@ export function ProfileList() {
               onChange={(event) => setSelectedIdentity(event.target.value)}
             >
               <option value="all">All identities</option>
-              {["woman", "man", "non-binary", "prefer not to say"].map((option) => (
+              {identityOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Personality</span>
+            <select
+              value={selectedPersonalityType}
+              onChange={(event) => setSelectedPersonalityType(event.target.value)}
+            >
+              <option value="all">All personality types</option>
+              {personalityTypeOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -319,6 +354,7 @@ export function ProfileList() {
               setSelectedPreference("all");
               setSelectedAvatar("all");
               setSelectedIdentity("all");
+              setSelectedPersonalityType("all");
               setSelectedLookingFor("all");
               setSortMode("newest");
               setFavoritesOnly(false);
@@ -342,16 +378,18 @@ export function ProfileList() {
         const visiblePreferences = profile.boundaries.filter(
           (item) => !platformRules.includes(item as (typeof platformRules)[number]),
         );
+        const giftEffectClass = getGiftEffectClass(profile.giftEffect.dominantGiftType);
 
         return (
         <article className="card profile-card" key={profile.id}>
-          <div className="avatar-pill">{profile.avatarPreset}</div>
+          <div className={`avatar-pill ${giftEffectClass}`.trim()}>{profile.avatarPreset}</div>
           <div className="profile-head">
             <h2>{profile.displayName}</h2>
             <p>@{profile.username}</p>
           </div>
           <div className="chip-row">
             {profile.recommended ? <span className="chip">Recommended match</span> : null}
+            <span className="chip">{profile.personalityType}</span>
             <span className="chip chip-muted">I am {profile.identity}</span>
             <span className="chip chip-muted">Open to {profile.lookingFor}</span>
             {profile.trustSignals.map((signal) => (
@@ -360,6 +398,29 @@ export function ProfileList() {
               </span>
             ))}
           </div>
+          <p className="status-message">
+            {
+              personalityTypeDescriptions[
+                profile.personalityType as keyof typeof personalityTypeDescriptions
+              ]
+            }
+          </p>
+          {profile.giftEffect.totalReceived > 0 ? (
+            <div className="meta-group">
+              <span className="meta-title">Gift effects</span>
+              <div className="chip-row">
+                {profile.giftEffect.highlights.map((highlight) => (
+                  <span className="chip" key={`${profile.id}-${highlight}`}>
+                    {highlight}
+                  </span>
+                ))}
+                <span className="chip chip-muted">
+                  {profile.giftEffect.totalReceived} gift
+                  {profile.giftEffect.totalReceived === 1 ? "" : "s"} received
+                </span>
+              </div>
+            </div>
+          ) : null}
           <p className="profile-bio">{profile.bio}</p>
 
           {profile.promptEntries.length > 0 ? (

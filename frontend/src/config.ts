@@ -15,16 +15,59 @@ export const vibeOptions = [
 export const identityOptions = [
   "woman",
   "man",
-  "non-binary",
   "prefer not to say",
 ] as const;
 
 export const lookingForOptions = [
   "women",
   "men",
-  "non-binary people",
   "any",
 ] as const;
+
+export const personalityTypeOptions = [
+  "clingy / affectionate",
+  "cold / mysterious",
+  "flirty / teasing",
+  "protective",
+  "soft / sweet",
+  "intellectual",
+  "funny / chaotic",
+  "confident / dominant",
+  "emotionally distant",
+  "roleplay / fantasy",
+] as const;
+
+export const personalityTypeDescriptions: Record<
+  (typeof personalityTypeOptions)[number],
+  string
+> = {
+  "clingy / affectionate": "Warm, attached, emotional energy that texts first and stays engaged.",
+  "cold / mysterious": "Shorter replies, harder to read, and a little tension that makes people lean in.",
+  "flirty / teasing": "Playful push-pull banter with sarcastic, fun, lightly dangerous chemistry.",
+  protective: "Caring, grounded, and strong with a safe, watchful tone.",
+  "soft / sweet": "Kind, gentle, supportive energy built for comfort and emotional connection.",
+  intellectual: "Thoughtful, curious conversation with depth, reflection, and real questions.",
+  "funny / chaotic": "Jokes, unpredictability, and lively energy that keeps chats moving.",
+  "confident / dominant": "Bold, leading energy with strong presence and attraction.",
+  "emotionally distant": "More realistic, slower, less invested energy that should be used carefully.",
+  "roleplay / fantasy": "Character-driven energy for anime, stranger, CEO, or other imagined dynamics.",
+};
+
+export const personalityTypeAvatarMap: Record<
+  (typeof personalityTypeOptions)[number],
+  string
+> = {
+  "clingy / affectionate": "rose",
+  "cold / mysterious": "luna",
+  "flirty / teasing": "velvet",
+  protective: "halo",
+  "soft / sweet": "rose",
+  intellectual: "echo",
+  "funny / chaotic": "nova",
+  "confident / dominant": "velvet",
+  "emotionally distant": "luna",
+  "roleplay / fantasy": "halo",
+};
 
 export const profilePromptOptions = [
   "My ideal chat energy is...",

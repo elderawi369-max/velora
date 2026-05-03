@@ -12,8 +12,20 @@ export const loginSchema = signupSchema;
 export const profileSchema = z.object({
   username: z.string().trim().toLowerCase().regex(usernameRegex),
   displayName: z.string().trim().min(2).max(30),
-  identity: z.enum(["woman", "man", "non-binary", "prefer not to say"]),
-  lookingFor: z.enum(["women", "men", "non-binary people", "any"]),
+  personalityType: z.enum([
+    "clingy / affectionate",
+    "cold / mysterious",
+    "flirty / teasing",
+    "protective",
+    "soft / sweet",
+    "intellectual",
+    "funny / chaotic",
+    "confident / dominant",
+    "emotionally distant",
+    "roleplay / fantasy",
+  ]),
+  identity: z.enum(["woman", "man", "prefer not to say"]),
+  lookingFor: z.enum(["women", "men", "any"]),
   bio: z.string().trim().min(10).max(280),
   promptEntries: z
     .array(
