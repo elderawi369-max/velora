@@ -489,14 +489,26 @@ body {
   border-radius: 50%;
   pointer-events: none;
   z-index: -1;
+  background: transparent;
+  padding: 8px;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
 }
 
 .profile-avatar-large .profile-avatar-frame {
   inset: -12px;
+  padding: 10px;
 }
 
 .profile-avatar-small .profile-avatar-frame {
   inset: -7px;
+  padding: 6px;
 }
 
 .profile-avatar-crown {
@@ -533,11 +545,17 @@ body {
 
 .profile-avatar-gift-rose .profile-avatar-frame {
   background:
-    radial-gradient(circle at center, transparent 61%, rgba(255, 255, 255, 0) 61.5%),
-    radial-gradient(circle at center, rgba(245, 107, 150, 0.12) 66%, rgba(245, 107, 150, 0.02) 73%, transparent 78%);
+    conic-gradient(
+      from 0deg,
+      rgba(235, 82, 132, 0.92),
+      rgba(255, 173, 197, 0.96),
+      rgba(221, 65, 118, 0.92),
+      rgba(255, 205, 216, 0.94),
+      rgba(235, 82, 132, 0.92)
+    );
   box-shadow:
-    0 0 0 3px rgba(233, 91, 135, 0.14),
-    0 0 24px rgba(233, 91, 135, 0.18);
+    0 0 0 2px rgba(255, 223, 232, 0.54),
+    0 0 24px rgba(233, 91, 135, 0.22);
 }
 
 .profile-avatar-gift-starlight {
@@ -549,18 +567,18 @@ body {
 
 .profile-avatar-gift-starlight .profile-avatar-frame {
   background:
-    radial-gradient(circle at center, transparent 62%, rgba(255, 255, 255, 0) 62.5%),
     conic-gradient(
       from 0deg,
-      rgba(119, 75, 255, 0.95),
-      rgba(249, 142, 255, 0.92),
+      rgba(108, 74, 255, 0.98),
+      rgba(225, 118, 255, 0.94),
       rgba(255, 255, 255, 0.98),
-      rgba(95, 132, 255, 0.95),
-      rgba(119, 75, 255, 0.95)
+      rgba(90, 146, 255, 0.96),
+      rgba(108, 74, 255, 0.98)
     );
   box-shadow:
-    0 0 28px rgba(153, 107, 255, 0.32),
-    0 0 50px rgba(119, 75, 255, 0.2);
+    0 0 0 2px rgba(227, 216, 255, 0.52),
+    0 0 28px rgba(153, 107, 255, 0.34),
+    0 0 50px rgba(119, 75, 255, 0.22);
   filter: saturate(1.14);
 }
 
@@ -573,19 +591,18 @@ body {
 
 .profile-avatar-gift-crown .profile-avatar-frame {
   background:
-    radial-gradient(circle at center, transparent 61%, rgba(255, 255, 255, 0) 61.5%),
     conic-gradient(
       from 0deg,
-      rgba(245, 205, 91, 0.98),
-      rgba(255, 243, 188, 1),
-      rgba(225, 173, 52, 0.96),
-      rgba(255, 236, 144, 1),
-      rgba(245, 205, 91, 0.98)
+      rgba(240, 194, 61, 0.98),
+      rgba(255, 247, 198, 1),
+      rgba(226, 165, 34, 0.96),
+      rgba(255, 229, 118, 1),
+      rgba(240, 194, 61, 0.98)
     );
   box-shadow:
-    0 0 0 2px rgba(255, 240, 189, 0.7),
-    0 0 30px rgba(237, 196, 87, 0.38),
-    0 0 56px rgba(237, 196, 87, 0.2);
+    0 0 0 3px rgba(255, 243, 197, 0.68),
+    0 0 34px rgba(237, 196, 87, 0.42),
+    0 0 60px rgba(237, 196, 87, 0.22);
 }
 
 .profile-avatar-petal,
