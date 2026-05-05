@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
@@ -6,13 +6,12 @@ import {
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
-import { activateBoost, fetchBoostCatalog, fetchOwnProfile } from "../../lib/api";
+import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile } from "../../lib/api";
 import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function MyProfileCard() {
-  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
@@ -22,10 +21,9 @@ export function MyProfileCard() {
     queryFn: fetchBoostCatalog,
   });
   const boostMutation = useMutation({
-    mutationFn: (boostType: string) => activateBoost(boostType),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    mutationFn: (boostType: string) => createBoostCheckout(boostType),
+    onSuccess: (result) => {
+      window.location.href = result.checkoutUrl;
     },
   });
 
@@ -87,6 +85,7 @@ export function MyProfileCard() {
           ]
         }
       </p>
+
       <div className="meta-group">
         <span className="meta-title">Profile boost</span>
         <div className="chip-row">
@@ -113,8 +112,8 @@ export function MyProfileCard() {
               onClick={() => boostMutation.mutate(boost.key)}
             >
               {boostMutation.isPending
-                ? "Activating..."
-                : `Activate ${boost.label} · ${boost.durationHours}h`}
+                ? "Opening checkout..."
+                : `Buy ${boost.label} · ${boost.durationHours}h · $${(boost.priceCents / 100).toFixed(2)}`}
             </button>
           ))}
         </div>
@@ -122,10 +121,11 @@ export function MyProfileCard() {
           <p className="form-error">
             {boostMutation.error instanceof Error
               ? boostMutation.error.message
-              : "Unable to activate boost."}
+              : "Unable to open boost checkout."}
           </p>
         ) : null}
       </div>
+
       {profile.giftEffect.totalReceived > 0 ? (
         <div className="meta-group">
           <span className="meta-title">Gift effects</span>
@@ -147,6 +147,7 @@ export function MyProfileCard() {
           />
         </div>
       ) : null}
+
       <p className="profile-bio">{profile.bio}</p>
 
       {profile.promptEntries.length > 0 ? (

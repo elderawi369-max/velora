@@ -1,24 +1,20 @@
-import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { fetchGiftCatalog, sendGift } from "../../lib/api";
+import { createGiftCheckout, fetchGiftCatalog } from "../../lib/api";
 
 type GiftActionsProps = {
   profileId: string;
 };
 
 export function GiftActions({ profileId }: GiftActionsProps) {
-  const [success, setSuccess] = useState("");
-
   const giftCatalogQuery = useQuery({
     queryKey: ["giftCatalog"],
     queryFn: fetchGiftCatalog,
   });
 
   const giftMutation = useMutation({
-    mutationFn: (giftType: string) => sendGift(profileId, giftType),
-    onSuccess: (_, giftType) => {
-      const gift = giftCatalogQuery.data?.gifts.find((item) => item.key === giftType);
-      setSuccess(gift ? `${gift.label} sent.` : "Gift sent.");
+    mutationFn: (giftType: string) => createGiftCheckout(profileId, giftType),
+    onSuccess: (result) => {
+      window.location.href = result.checkoutUrl;
     },
   });
 
@@ -30,26 +26,26 @@ export function GiftActions({ profileId }: GiftActionsProps) {
             key={gift.key}
             className="gift-button"
             type="button"
-            disabled={giftMutation.isPending}
-            onClick={() => {
-              setSuccess("");
+              disabled={giftMutation.isPending}
+              onClick={() => {
               giftMutation.mutate(gift.key);
             }}
           >
-            {giftMutation.isPending ? "Sending..." : `Send ${gift.label}`}
-          </button>
-        ))}
-      </div>
+              {giftMutation.isPending
+                ? "Opening checkout..."
+                : `Buy ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
+            </button>
+          ))}
+        </div>
 
       {giftMutation.error ? (
         <p className="form-error">
           {giftMutation.error instanceof Error
             ? giftMutation.error.message
-            : "Unable to send gift."}
+            : "Unable to open gift checkout."}
         </p>
       ) : null}
 
-      {success ? <p className="success-message">{success}</p> : null}
     </div>
   );
 }

@@ -130,6 +130,22 @@ export const boosts = sqliteTable("boosts", {
   expiresAt: integer("expires_at").notNull(),
 });
 
+export const purchases = sqliteTable("purchases", {
+  id: text("id").primaryKey(),
+  stripeSessionId: text("stripe_session_id").notNull().unique(),
+  buyerProfileId: text("buyer_profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  targetProfileId: text("target_profile_id").references(() => profiles.id),
+  productKind: text("product_kind").notNull(),
+  itemKey: text("item_key").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status").notNull(),
+  fulfilledAt: integer("fulfilled_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
   profileId: text("profile_id")

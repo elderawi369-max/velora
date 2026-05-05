@@ -1,45 +1,18 @@
 import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
-import { boosts, favorites, gifts, notifications, profiles } from "../db/schema";
+import { favorites, profiles } from "../db/schema";
+import { boostCatalog, createNotification, giftCatalog } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 
-const giftCatalog = [
-  { key: "rose", label: "Rose Aura" },
-  { key: "starlight", label: "Starlight Ring" },
-  { key: "crown", label: "Velora Crown" },
-] as const;
-
-const boostCatalog = [
-  { key: "spark", label: "Spark Boost", durationHours: 6 },
-  { key: "spotlight", label: "Spotlight Boost", durationHours: 24 },
-] as const;
-
 export const socialRoutes = new Hono<{ Bindings: EnvBindings }>();
 
-async function createNotification(
-  env: EnvBindings,
-  input: {
-    profileId: string;
-    actorProfileId: string;
-    type: "favorite" | "gift";
-    giftType?: string;
-  },
-) {
-  const db = getDb(env);
-  await db.insert(notifications).values({
-    id: crypto.randomUUID(),
-    profileId: input.profileId,
-    actorProfileId: input.actorProfileId,
-    type: input.type,
-    giftType: input.giftType ?? null,
-    readAt: null,
-    createdAt: Date.now(),
-  });
-}
-
 socialRoutes.get("/favorites", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -65,7 +38,11 @@ socialRoutes.get("/favorites", async (c) => {
 });
 
 socialRoutes.post("/favorites/:targetProfileId", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -80,7 +57,10 @@ socialRoutes.post("/favorites/:targetProfileId", async (c) => {
     .select({ id: favorites.id })
     .from(favorites)
     .where(
-      and(eq(favorites.profileId, own.profileId), eq(favorites.targetProfileId, targetProfileId)),
+      and(
+        eq(favorites.profileId, own.profileId),
+        eq(favorites.targetProfileId, targetProfileId),
+      ),
     )
     .limit(1);
 
@@ -103,7 +83,11 @@ socialRoutes.post("/favorites/:targetProfileId", async (c) => {
 });
 
 socialRoutes.delete("/favorites/:targetProfileId", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
@@ -126,42 +110,25 @@ socialRoutes.get("/gifts/catalog", (c) => c.json({ gifts: giftCatalog }));
 socialRoutes.get("/boosts/catalog", (c) => c.json({ boosts: boostCatalog }));
 
 socialRoutes.post("/gifts/send", async (c) => {
-  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
   if (!own) {
     return c.json({ error: "Unauthorized." }, 401);
   }
 
-  const body = (await c.req.json()) as { targetProfileId?: string; giftType?: string };
-  if (!body.targetProfileId || !body.giftType) {
-    return c.json({ error: "targetProfileId and giftType are required." }, 400);
+  if (c.env.ENABLE_DEV_ENDPOINTS !== "true") {
+    return c.json({ error: "Direct gift sending is disabled." }, 403);
   }
 
-  if (body.targetProfileId === own.profileId) {
-    return c.json({ error: "You cannot send a gift to yourself." }, 400);
-  }
-
-  const validGift = giftCatalog.some((gift) => gift.key === body.giftType);
-  if (!validGift) {
-    return c.json({ error: "Invalid gift type." }, 400);
-  }
-
-  const db = getDb(c.env);
-  await db.insert(gifts).values({
-    id: crypto.randomUUID(),
-    senderProfileId: own.profileId,
-    targetProfileId: body.targetProfileId,
-    giftType: body.giftType,
-    createdAt: Date.now(),
-  });
-
-  await createNotification(c.env, {
-    profileId: body.targetProfileId,
-    actorProfileId: own.profileId,
-    type: "gift",
-    giftType: body.giftType,
-  });
-
-  return c.json({ ok: true });
+  return c.json(
+    {
+      error: "Direct gift sending is only available in local development.",
+    },
+    403,
+  );
 });
 
 socialRoutes.post("/boosts/activate", async (c) => {
@@ -174,24 +141,14 @@ socialRoutes.post("/boosts/activate", async (c) => {
     return c.json({ error: "Unauthorized." }, 401);
   }
 
-  const body = (await c.req.json()) as { boostType?: string };
-  if (!body.boostType) {
-    return c.json({ error: "boostType is required." }, 400);
+  if (c.env.ENABLE_DEV_ENDPOINTS !== "true") {
+    return c.json({ error: "Direct boost activation is disabled." }, 403);
   }
 
-  const boost = boostCatalog.find((item) => item.key === body.boostType);
-  if (!boost) {
-    return c.json({ error: "Invalid boost type." }, 400);
-  }
-
-  const now = Date.now();
-  await getDb(c.env).insert(boosts).values({
-    id: crypto.randomUUID(),
-    profileId: own.profileId,
-    boostType: boost.key,
-    createdAt: now,
-    expiresAt: now + boost.durationHours * 60 * 60 * 1000,
-  });
-
-  return c.json({ ok: true });
+  return c.json(
+    {
+      error: "Direct boost activation is only available in local development.",
+    },
+    403,
+  );
 });

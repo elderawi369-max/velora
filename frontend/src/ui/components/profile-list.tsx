@@ -15,11 +15,11 @@ import {
 } from "../../config";
 import {
   addFavorite,
+  createGiftCheckout,
   createConversation,
   fetchGiftCatalog,
   fetchProfiles,
   removeFavorite,
-  sendGift,
 } from "../../lib/api";
 import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
@@ -29,7 +29,6 @@ export function ProfileList() {
   const filterStorageKey = "velora-browse-filters";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [giftSuccess, setGiftSuccess] = useState<string>("");
   const savedFilters =
     typeof window !== "undefined"
       ? JSON.parse(window.localStorage.getItem(filterStorageKey) ?? "{}")
@@ -108,10 +107,9 @@ export function ProfileList() {
   });
   const giftMutation = useMutation({
     mutationFn: ({ profileId, giftType }: { profileId: string; giftType: string }) =>
-      sendGift(profileId, giftType),
-    onSuccess: (_, variables) => {
-      const gift = giftCatalogQuery.data?.gifts.find((item) => item.key === variables.giftType);
-      setGiftSuccess(gift ? `${gift.label} sent.` : "Gift sent.");
+      createGiftCheckout(profileId, giftType),
+    onSuccess: (result) => {
+      window.location.href = result.checkoutUrl;
     },
   });
 
@@ -520,11 +518,12 @@ export function ProfileList() {
                 type="button"
                 disabled={giftMutation.isPending}
                 onClick={() => {
-                  setGiftSuccess("");
                   giftMutation.mutate({ profileId: profile.id, giftType: gift.key });
                 }}
               >
-                {giftMutation.isPending ? "Sending..." : `Send ${gift.label}`}
+                {giftMutation.isPending
+                  ? "Opening checkout..."
+                  : `Buy ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
               </button>
             ))}
           </div>
@@ -533,11 +532,10 @@ export function ProfileList() {
             <p className="form-error">
               {giftMutation.error instanceof Error
                 ? giftMutation.error.message
-                : "Unable to send gift."}
+                : "Unable to open gift checkout."}
             </p>
           ) : null}
 
-          {giftSuccess ? <p className="success-message">{giftSuccess}</p> : null}
         </article>
       )})}
       </section>

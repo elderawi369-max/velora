@@ -51,3 +51,9 @@ export const supportTicketSchema = z.object({
   message: z.string().trim().min(10).max(2000),
   turnstileToken: z.string().trim().min(1),
 });
+
+export const checkoutSessionSchema = z.object({
+  productKind: z.enum(["gift", "boost"]),
+  itemKey: z.string().trim().min(1).max(40),
+  targetProfileId: z.string().trim().optional(),
+});

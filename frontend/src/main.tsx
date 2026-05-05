@@ -12,6 +12,8 @@ import { HomePage } from "./ui/pages/home-page";
 import { LoginPage } from "./ui/pages/login-page";
 import { MyProfilePage } from "./ui/pages/my-profile-page";
 import { NotificationsPage } from "./ui/pages/notifications-page";
+import { PaymentCancelPage } from "./ui/pages/payment-cancel-page";
+import { PaymentSuccessPage } from "./ui/pages/payment-success-page";
 import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
 import { SupportPage } from "./ui/pages/support-page";
@@ -67,6 +69,14 @@ const router = createBrowserRouter([
       {
         path: "support",
         element: <SupportPage />,
+      },
+      {
+        path: "payments/success",
+        element: <PaymentSuccessPage />,
+      },
+      {
+        path: "payments/cancel",
+        element: <PaymentCancelPage />,
       },
       {
         path: "chat/:conversationId",

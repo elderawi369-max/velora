@@ -292,28 +292,38 @@ export function removeFavorite(targetProfileId: string) {
 }
 
 export function fetchGiftCatalog() {
-  return request<{ gifts: Array<{ key: string; label: string }> }>(
+  return request<{ gifts: Array<{ key: string; label: string; priceCents: number }> }>(
     "/api/social/gifts/catalog",
   );
 }
 
 export function fetchBoostCatalog() {
   return request<{
-    boosts: Array<{ key: string; label: string; durationHours: number }>;
+    boosts: Array<{ key: string; label: string; durationHours: number; priceCents: number }>;
   }>("/api/social/boosts/catalog");
 }
 
-export function sendGift(targetProfileId: string, giftType: string) {
-  return request<{ ok: true }>("/api/social/gifts/send", {
+export function createGiftCheckout(targetProfileId: string, giftType: string) {
+  return request<{ checkoutUrl: string }>("/api/payments/checkout", {
     method: "POST",
-    body: { targetProfileId, giftType },
+    body: { productKind: "gift", targetProfileId, itemKey: giftType },
   });
 }
 
-export function activateBoost(boostType: string) {
-  return request<{ ok: true }>("/api/social/boosts/activate", {
+export function createBoostCheckout(boostType: string) {
+  return request<{ checkoutUrl: string }>("/api/payments/checkout", {
     method: "POST",
-    body: { boostType },
+    body: { productKind: "boost", itemKey: boostType },
+  });
+}
+
+export function completeCheckoutSession(sessionId: string) {
+  return request<{
+    ok: true;
+    purchase: { id: string; productKind: string; itemKey: string; status: string };
+  }>("/api/payments/checkout/complete", {
+    method: "POST",
+    body: { sessionId },
   });
 }
 
