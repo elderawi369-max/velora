@@ -120,6 +120,16 @@ export const gifts = sqliteTable("gifts", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const boosts = sqliteTable("boosts", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  boostType: text("boost_type").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});
+
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
   profileId: text("profile_id")

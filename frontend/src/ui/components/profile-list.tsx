@@ -21,6 +21,7 @@ import {
   removeFavorite,
   sendGift,
 } from "../../lib/api";
+import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
@@ -47,8 +48,8 @@ export function ProfileList() {
   const [selectedLookingFor, setSelectedLookingFor] = useState<string>(
     savedFilters.selectedLookingFor ?? "all",
   );
-  const [sortMode, setSortMode] = useState<"newest" | "name" | "favorited">(
-    savedFilters.sortMode ?? "newest",
+  const [sortMode, setSortMode] = useState<"recommended" | "newest" | "name" | "favorited">(
+    savedFilters.sortMode ?? "recommended",
   );
   const [favoritesOnly, setFavoritesOnly] = useState(Boolean(savedFilters.favoritesOnly));
   const [recommendedOnly, setRecommendedOnly] = useState(
@@ -185,7 +186,11 @@ export function ProfileList() {
         return left.isFavorited ? -1 : 1;
       }
 
-      return right.createdAt - left.createdAt;
+      if (sortMode === "newest") {
+        return right.createdAt - left.createdAt;
+      }
+
+      return 0;
     });
 
   return (
@@ -293,9 +298,10 @@ export function ProfileList() {
             <select
               value={sortMode}
               onChange={(event) =>
-                setSortMode(event.target.value as "newest" | "name" | "favorited")
+                setSortMode(event.target.value as "recommended" | "newest" | "name" | "favorited")
               }
             >
+              <option value="recommended">Recommended</option>
               <option value="newest">Newest first</option>
               <option value="favorited">Favorited first</option>
               <option value="name">Name</option>
@@ -328,7 +334,7 @@ export function ProfileList() {
               setSelectedIdentity("all");
               setSelectedPersonalityType("all");
               setSelectedLookingFor("all");
-              setSortMode("newest");
+              setSortMode("recommended");
               setFavoritesOnly(false);
               setRecommendedOnly(false);
             }}
@@ -365,6 +371,7 @@ export function ProfileList() {
           </div>
           <div className="chip-row">
             {profile.recommended ? <span className="chip">Recommended match</span> : null}
+            {profile.boostEffect.activeLabel ? <span className="chip">Boosted</span> : null}
             {profile.compatibilityScore > 0 ? (
               <span className="chip chip-muted">Match score {profile.compatibilityScore}</span>
             ) : null}
@@ -395,6 +402,27 @@ export function ProfileList() {
                   </span>
                 ))}
               </div>
+            </div>
+          ) : null}
+          {(profile.boostEffect.totalPurchased > 0 || profile.boostEffect.activeLabel) ? (
+            <div className="meta-group">
+              <span className="meta-title">Boost status</span>
+              <div className="chip-row">
+                {profile.boostEffect.activeLabel ? (
+                  <span className="chip" key={`${profile.id}-${profile.boostEffect.activeLabel}`}>
+                    {profile.boostEffect.activeLabel}
+                  </span>
+                ) : null}
+                <span className="chip chip-muted">
+                  {profile.boostEffect.totalPurchased} boost
+                  {profile.boostEffect.totalPurchased === 1 ? "" : "s"} used
+                </span>
+              </div>
+              <BoostStatus
+                activeLabel={profile.boostEffect.activeLabel}
+                activeExpiresAt={profile.boostEffect.activeExpiresAt}
+                totalPurchased={profile.boostEffect.totalPurchased}
+              />
             </div>
           ) : null}
           {profile.giftEffect.totalReceived > 0 ? (

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
-import { favorites, gifts, notifications, profiles } from "../db/schema";
+import { boosts, favorites, gifts, notifications, profiles } from "../db/schema";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 
@@ -8,6 +8,11 @@ const giftCatalog = [
   { key: "rose", label: "Rose Aura" },
   { key: "starlight", label: "Starlight Ring" },
   { key: "crown", label: "Velora Crown" },
+] as const;
+
+const boostCatalog = [
+  { key: "spark", label: "Spark Boost", durationHours: 6 },
+  { key: "spotlight", label: "Spotlight Boost", durationHours: 24 },
 ] as const;
 
 export const socialRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -118,6 +123,8 @@ socialRoutes.delete("/favorites/:targetProfileId", async (c) => {
 
 socialRoutes.get("/gifts/catalog", (c) => c.json({ gifts: giftCatalog }));
 
+socialRoutes.get("/boosts/catalog", (c) => c.json({ boosts: boostCatalog }));
+
 socialRoutes.post("/gifts/send", async (c) => {
   const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   if (!own) {
@@ -152,6 +159,38 @@ socialRoutes.post("/gifts/send", async (c) => {
     actorProfileId: own.profileId,
     type: "gift",
     giftType: body.giftType,
+  });
+
+  return c.json({ ok: true });
+});
+
+socialRoutes.post("/boosts/activate", async (c) => {
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
+  if (!own) {
+    return c.json({ error: "Unauthorized." }, 401);
+  }
+
+  const body = (await c.req.json()) as { boostType?: string };
+  if (!body.boostType) {
+    return c.json({ error: "boostType is required." }, 400);
+  }
+
+  const boost = boostCatalog.find((item) => item.key === body.boostType);
+  if (!boost) {
+    return c.json({ error: "Invalid boost type." }, 400);
+  }
+
+  const now = Date.now();
+  await getDb(c.env).insert(boosts).values({
+    id: crypto.randomUUID(),
+    profileId: own.profileId,
+    boostType: boost.key,
+    createdAt: now,
+    expiresAt: now + boost.durationHours * 60 * 60 * 1000,
   });
 
   return c.json({ ok: true });

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, inArray, isNull } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { gifts, profiles, reports, users } from "../db/schema";
+import { boosts, gifts, profiles, reports, users } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
@@ -12,6 +12,7 @@ export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type GiftType = "rose" | "starlight" | "crown";
 type TrustLevel = "new" | "established" | "trusted";
+type BoostType = "spark" | "spotlight";
 
 const giftDurationsMs: Record<GiftType, number> = {
   rose: 1000 * 60 * 60 * 24,
@@ -23,6 +24,11 @@ const giftLabels: Record<GiftType, string> = {
   rose: "Rose Aura",
   starlight: "Starlight Ring",
   crown: "Velora Crown",
+};
+
+const boostLabels: Record<BoostType, string> = {
+  spark: "Spark Boost",
+  spotlight: "Spotlight Boost",
 };
 
 function getStrongerGiftType(current: GiftType | null, next: GiftType | null) {
@@ -58,6 +64,23 @@ function getAvatarPresetForPersonality(personalityType: PersonalityType) {
   };
 
   return avatarMap[personalityType];
+}
+
+function getStrongerBoostType(current: BoostType | null, next: BoostType | null) {
+  const priority: Record<BoostType, number> = {
+    spark: 1,
+    spotlight: 2,
+  };
+
+  if (!next) {
+    return current;
+  }
+
+  if (!current) {
+    return next;
+  }
+
+  return priority[next] >= priority[current] ? next : current;
 }
 
 async function getModerationStats(env: EnvBindings, profileIds: string[]) {
@@ -238,6 +261,102 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
   return effects;
 }
 
+async function getBoostEffects(env: EnvBindings, profileIds: string[]) {
+  if (profileIds.length === 0) {
+    return new Map<string, {
+      activeBoostType: BoostType | null;
+      activeLabel: string | null;
+      activeExpiresAt: number | null;
+      remainingMs: number;
+      totalPurchased: number;
+    }>();
+  }
+
+  const db = getDb(env);
+  const rows = await db
+    .select({
+      profileId: boosts.profileId,
+      boostType: boosts.boostType,
+      createdAt: boosts.createdAt,
+      expiresAt: boosts.expiresAt,
+    })
+    .from(boosts)
+    .where(inArray(boosts.profileId, profileIds));
+
+  const effects = new Map<string, {
+    activeBoostType: BoostType | null;
+    activeLabel: string | null;
+    activeExpiresAt: number | null;
+    remainingMs: number;
+    totalPurchased: number;
+  }>();
+  const now = Date.now();
+
+  profileIds.forEach((profileId) => {
+    effects.set(profileId, {
+      activeBoostType: null,
+      activeLabel: null,
+      activeExpiresAt: null,
+      remainingMs: 0,
+      totalPurchased: 0,
+    });
+  });
+
+  for (const row of rows) {
+    const current = effects.get(row.profileId);
+    if (!current) {
+      continue;
+    }
+
+    const normalizedType =
+      row.boostType === "spark" || row.boostType === "spotlight"
+        ? (row.boostType as BoostType)
+        : null;
+    const isActive = normalizedType ? row.expiresAt > now : false;
+    const nextBoostType = isActive
+      ? getStrongerBoostType(current.activeBoostType, normalizedType)
+      : current.activeBoostType;
+    const dominantChanged = nextBoostType !== current.activeBoostType;
+    const shouldRefreshCurrentBoost =
+      isActive &&
+      normalizedType !== null &&
+      nextBoostType === current.activeBoostType &&
+      normalizedType === current.activeBoostType &&
+      row.expiresAt > (current.activeExpiresAt ?? 0);
+
+    effects.set(row.profileId, {
+      activeBoostType: nextBoostType,
+      activeLabel:
+        isActive && nextBoostType
+          ? dominantChanged
+            ? boostLabels[nextBoostType]
+            : shouldRefreshCurrentBoost
+              ? boostLabels[nextBoostType]
+              : current.activeLabel ?? boostLabels[nextBoostType]
+          : current.activeLabel,
+      activeExpiresAt:
+        isActive && nextBoostType
+          ? dominantChanged
+            ? row.expiresAt
+            : shouldRefreshCurrentBoost
+              ? row.expiresAt
+              : current.activeExpiresAt
+          : current.activeExpiresAt,
+      remainingMs:
+        isActive && nextBoostType
+          ? dominantChanged
+            ? Math.max(row.expiresAt - now, 0)
+            : shouldRefreshCurrentBoost
+              ? Math.max(row.expiresAt - now, 0)
+              : current.remainingMs
+          : current.remainingMs,
+      totalPurchased: current.totalPurchased + 1,
+    });
+  }
+
+  return effects;
+}
+
 async function getProfileById(env: EnvBindings, profileId: string) {
   const db = getDb(env);
   const [profile] = await db
@@ -293,6 +412,13 @@ async function getProfileById(env: EnvBindings, profileId: string) {
     remainingMs: 0,
     activeCount: 0,
   };
+  const boostEffect = (await getBoostEffects(env, [profileId])).get(profileId) ?? {
+    activeBoostType: null,
+    activeLabel: null,
+    activeExpiresAt: null,
+    remainingMs: 0,
+    totalPurchased: 0,
+  };
 
   return {
     ...profile,
@@ -312,6 +438,7 @@ async function getProfileById(env: EnvBindings, profileId: string) {
     compatibilityScore: 0,
     matchReasons: [] as string[],
     giftEffect: giftEffects,
+    boostEffect,
   };
 }
 
@@ -515,6 +642,10 @@ profileRoutes.get("/", async (c) => {
     c.env,
     visibleProfiles.map((profile) => profile.id),
   );
+  const boostEffects = await getBoostEffects(
+    c.env,
+    visibleProfiles.map((profile) => profile.id),
+  );
   const ownProfile = own
     ? visibleProfiles.find((profile) => profile.id === own.profileId)
     : undefined;
@@ -598,6 +729,13 @@ profileRoutes.get("/", async (c) => {
           remainingMs: 0,
           activeCount: 0,
         },
+        boostEffect: boostEffects.get(profile.id) ?? {
+          activeBoostType: null,
+          activeLabel: null,
+          activeExpiresAt: null,
+          remainingMs: 0,
+          totalPurchased: 0,
+        },
       };
     }),
   );
@@ -608,6 +746,21 @@ profileRoutes.get("/", async (c) => {
   );
 
   rankedProfiles.sort((left, right) => {
+    const leftBoosted = Boolean(left.boostEffect.activeBoostType);
+    const rightBoosted = Boolean(right.boostEffect.activeBoostType);
+
+    if (leftBoosted !== rightBoosted) {
+      return leftBoosted ? -1 : 1;
+    }
+
+    if (
+      left.boostEffect.activeExpiresAt !== null &&
+      right.boostEffect.activeExpiresAt !== null &&
+      right.boostEffect.activeExpiresAt !== left.boostEffect.activeExpiresAt
+    ) {
+      return right.boostEffect.activeExpiresAt - left.boostEffect.activeExpiresAt;
+    }
+
     if (right.compatibilityScore !== left.compatibilityScore) {
       return right.compatibilityScore - left.compatibilityScore;
     }
@@ -711,6 +864,13 @@ profileRoutes.post("/", async (c) => {
         remainingMs: 0,
         activeCount: 0,
       },
+      boostEffect: {
+        activeBoostType: null,
+        activeLabel: null,
+        activeExpiresAt: null,
+        remainingMs: 0,
+        totalPurchased: 0,
+      },
     },
   }, 201);
 });
@@ -803,6 +963,13 @@ profileRoutes.put("/me", async (c) => {
         activeExpiresAt: null,
         remainingMs: 0,
         activeCount: 0,
+      },
+      boostEffect: (await getBoostEffects(c.env, [existingProfile.id])).get(existingProfile.id) ?? {
+        activeBoostType: null,
+        activeLabel: null,
+        activeExpiresAt: null,
+        remainingMs: 0,
+        totalPurchased: 0,
       },
     },
   });

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
@@ -6,14 +6,27 @@ import {
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
-import { fetchOwnProfile } from "../../lib/api";
+import { activateBoost, fetchBoostCatalog, fetchOwnProfile } from "../../lib/api";
+import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function MyProfileCard() {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
+  });
+  const boostCatalogQuery = useQuery({
+    queryKey: ["boostCatalog"],
+    queryFn: fetchBoostCatalog,
+  });
+  const boostMutation = useMutation({
+    mutationFn: (boostType: string) => activateBoost(boostType),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    },
   });
 
   if (isLoading) {
@@ -74,6 +87,45 @@ export function MyProfileCard() {
           ]
         }
       </p>
+      <div className="meta-group">
+        <span className="meta-title">Profile boost</span>
+        <div className="chip-row">
+          {profile.boostEffect.activeLabel ? (
+            <span className="chip">{profile.boostEffect.activeLabel}</span>
+          ) : null}
+          <span className="chip chip-muted">
+            {profile.boostEffect.totalPurchased} boost
+            {profile.boostEffect.totalPurchased === 1 ? "" : "s"} used
+          </span>
+        </div>
+        <BoostStatus
+          activeLabel={profile.boostEffect.activeLabel}
+          activeExpiresAt={profile.boostEffect.activeExpiresAt}
+          totalPurchased={profile.boostEffect.totalPurchased}
+        />
+        <div className="gift-row">
+          {(boostCatalogQuery.data?.boosts ?? []).map((boost) => (
+            <button
+              key={boost.key}
+              className="secondary-button"
+              type="button"
+              disabled={boostMutation.isPending}
+              onClick={() => boostMutation.mutate(boost.key)}
+            >
+              {boostMutation.isPending
+                ? "Activating..."
+                : `Activate ${boost.label} · ${boost.durationHours}h`}
+            </button>
+          ))}
+        </div>
+        {boostMutation.error ? (
+          <p className="form-error">
+            {boostMutation.error instanceof Error
+              ? boostMutation.error.message
+              : "Unable to activate boost."}
+          </p>
+        ) : null}
+      </div>
       {profile.giftEffect.totalReceived > 0 ? (
         <div className="meta-group">
           <span className="meta-title">Gift effects</span>

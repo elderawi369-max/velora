@@ -645,6 +645,12 @@ body {
   color: #7f5b67;
 }
 
+.boost-status {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #7f5b67;
+}
+
 .message-list {
   display: grid;
   gap: 12px;

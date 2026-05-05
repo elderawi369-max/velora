@@ -114,6 +114,13 @@ export type PublicProfile = {
     remainingMs: number;
     activeCount: number;
   };
+  boostEffect: {
+    activeBoostType: "spark" | "spotlight" | null;
+    activeLabel: string | null;
+    activeExpiresAt: number | null;
+    remainingMs: number;
+    totalPurchased: number;
+  };
   createdAt: number;
 };
 
@@ -290,10 +297,23 @@ export function fetchGiftCatalog() {
   );
 }
 
+export function fetchBoostCatalog() {
+  return request<{
+    boosts: Array<{ key: string; label: string; durationHours: number }>;
+  }>("/api/social/boosts/catalog");
+}
+
 export function sendGift(targetProfileId: string, giftType: string) {
   return request<{ ok: true }>("/api/social/gifts/send", {
     method: "POST",
     body: { targetProfileId, giftType },
+  });
+}
+
+export function activateBoost(boostType: string) {
+  return request<{ ok: true }>("/api/social/boosts/activate", {
+    method: "POST",
+    body: { boostType },
   });
 }
 
