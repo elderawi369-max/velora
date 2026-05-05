@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { login, saveAuthToken, signup } from "../../lib/api";
+import { TurnstileWidget } from "./turnstile-widget";
 
 type AuthMode = "signup" | "login";
 
@@ -14,6 +15,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,7 +26,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "signup") {
-        const result = await signup({ email, password });
+        const result = await signup({ email, password, turnstileToken });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         navigate("/create-profile");
@@ -80,9 +82,17 @@ export function AuthForm({ mode }: AuthFormProps) {
           />
         </label>
 
+        {mode === "signup" ? (
+          <TurnstileWidget onTokenChange={setTurnstileToken} />
+        ) : null}
+
         {error ? <p className="form-error">{error}</p> : null}
 
-        <button className="primary-button" type="submit" disabled={isSubmitting}>
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={isSubmitting || (mode === "signup" && !turnstileToken)}
+        >
           {isSubmitting
             ? "Please wait..."
             : mode === "signup"

@@ -6,6 +6,7 @@ export type EnvBindings = {
   ADMIN_SECRET?: string;
   APP_ENV?: string;
   ENABLE_DEV_ENDPOINTS?: string;
+  TURNSTILE_SECRET_KEY?: string;
 };
 
 export function getDb(env: EnvBindings) {

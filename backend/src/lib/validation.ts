@@ -5,9 +5,13 @@ const usernameRegex = /^[a-z0-9_]{3,20}$/;
 export const signupSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8).max(72),
+  turnstileToken: z.string().trim().min(1),
 });
 
-export const loginSchema = signupSchema;
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(8).max(72),
+});
 
 export const profileSchema = z.object({
   username: z.string().trim().toLowerCase().regex(usernameRegex),
@@ -45,4 +49,5 @@ export const supportTicketSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   subject: z.string().trim().min(4).max(120),
   message: z.string().trim().min(10).max(2000),
+  turnstileToken: z.string().trim().min(1),
 });

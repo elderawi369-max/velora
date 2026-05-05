@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getDb, type EnvBindings } from "../lib/db";
 import { supportTickets } from "../db/schema";
 import { getOwnProfileContext } from "../lib/profile-context";
+import { verifyTurnstileToken } from "../lib/turnstile";
 import { supportTicketSchema } from "../lib/validation";
 
 export const supportRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -16,6 +17,16 @@ supportRoutes.post("/tickets", async (c) => {
 
   if (!payload.success) {
     return c.json({ error: "Invalid support ticket payload." }, 400);
+  }
+
+  const turnstileValid = await verifyTurnstileToken(
+    c.env,
+    payload.data.turnstileToken,
+    c.req.header("CF-Connecting-IP"),
+  );
+
+  if (!turnstileValid) {
+    return c.json({ error: "Please complete the human verification check." }, 400);
   }
 
   await getDb(c.env).insert(supportTickets).values({

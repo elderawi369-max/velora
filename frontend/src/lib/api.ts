@@ -65,6 +65,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export type SignupPayload = {
   email: string;
   password: string;
+  turnstileToken: string;
+};
+
+export type LoginPayload = {
+  email: string;
+  password: string;
 };
 
 export type ProfilePayload = {
@@ -115,6 +121,7 @@ export type SupportTicketPayload = {
   email: string;
   subject: string;
   message: string;
+  turnstileToken: string;
 };
 
 export type Conversation = {
@@ -166,7 +173,7 @@ export function signup(payload: SignupPayload) {
   });
 }
 
-export function login(payload: SignupPayload) {
+export function login(payload: LoginPayload) {
   return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
     method: "POST",
     body: payload,

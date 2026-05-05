@@ -11,6 +11,7 @@ import {
   resolveCookiePolicy,
 } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/crypto";
+import { verifyTurnstileToken } from "../lib/turnstile";
 import { loginSchema, signupSchema } from "../lib/validation";
 import { profiles } from "../db/schema";
 
@@ -20,6 +21,16 @@ authRoutes.post("/signup", async (c) => {
   const payload = signupSchema.safeParse(await c.req.json());
   if (!payload.success) {
     return c.json({ error: "Invalid signup payload." }, 400);
+  }
+
+  const turnstileValid = await verifyTurnstileToken(
+    c.env,
+    payload.data.turnstileToken,
+    c.req.header("CF-Connecting-IP"),
+  );
+
+  if (!turnstileValid) {
+    return c.json({ error: "Please complete the human verification check." }, 400);
   }
 
   const db = getDb(c.env);

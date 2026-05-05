@@ -1,11 +1,13 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { submitSupportTicket } from "../../lib/api";
+import { TurnstileWidget } from "./turnstile-widget";
 
 export function SupportForm() {
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [success, setSuccess] = useState("");
 
   const supportMutation = useMutation({
@@ -52,6 +54,8 @@ export function SupportForm() {
         />
       </label>
 
+      <TurnstileWidget onTokenChange={setTurnstileToken} />
+
       {supportMutation.error ? (
         <p className="form-error">
           {supportMutation.error instanceof Error
@@ -65,10 +69,10 @@ export function SupportForm() {
       <button
         className="primary-button"
         type="button"
-        disabled={supportMutation.isPending}
+        disabled={supportMutation.isPending || !turnstileToken}
         onClick={() => {
           setSuccess("");
-          supportMutation.mutate({ email, subject, message });
+          supportMutation.mutate({ email, subject, message, turnstileToken });
         }}
       >
         {supportMutation.isPending ? "Sending..." : "Send support ticket"}
