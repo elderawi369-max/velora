@@ -109,10 +109,6 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
             ? "Refine the profile people return to."
             : "Create a profile people will want to return to."}
         </h1>
-        <p className="intro">
-          In Velora, the profile is the product. It needs a memorable tone,
-          clear preferences, and a vibe that feels intentional.
-        </p>
       </div>
 
       <form className="panel form-panel" onSubmit={handleSubmit}>

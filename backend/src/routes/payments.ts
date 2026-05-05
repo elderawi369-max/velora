@@ -26,14 +26,27 @@ function resolveFrontendOrigin(origin: string | undefined) {
   return "";
 }
 
-async function createStripeCheckoutSession(env: EnvBindings, input: {
+function getConfiguredPaymentProvider(env: EnvBindings) {
+  if ((env.PAYMENTS_PROVIDER ?? "").toLowerCase() === "stripe" && env.STRIPE_SECRET_KEY) {
+    return "stripe" as const;
+  }
+
+  if (env.STRIPE_SECRET_KEY) {
+    return "stripe" as const;
+  }
+
+  return null;
+}
+
+async function createHostedCheckoutSession(env: EnvBindings, input: {
   origin: string;
   productName: string;
   amountCents: number;
   metadata: Record<string, string>;
 }): Promise<{ id: string; url: string }> {
-  if (!env.STRIPE_SECRET_KEY) {
-    throw new Error("Stripe is not configured yet.");
+  const provider = getConfiguredPaymentProvider(env);
+  if (provider !== "stripe" || !env.STRIPE_SECRET_KEY) {
+    throw new Error("Payments are not configured yet.");
   }
 
   const formData = new URLSearchParams();
@@ -61,7 +74,7 @@ async function createStripeCheckoutSession(env: EnvBindings, input: {
   const data = (await response.json()) as { id?: string; url?: string; error?: { message?: string } };
 
   if (!response.ok || !data.id || !data.url) {
-    throw new Error(data.error?.message ?? "Unable to create Stripe checkout session.");
+    throw new Error(data.error?.message ?? "Unable to create checkout session.");
   }
 
   return {
@@ -70,9 +83,10 @@ async function createStripeCheckoutSession(env: EnvBindings, input: {
   };
 }
 
-async function fetchStripeCheckoutSession(env: EnvBindings, sessionId: string) {
-  if (!env.STRIPE_SECRET_KEY) {
-    throw new Error("Stripe is not configured yet.");
+async function fetchCheckoutSessionStatus(env: EnvBindings, sessionId: string) {
+  const provider = getConfiguredPaymentProvider(env);
+  if (provider !== "stripe" || !env.STRIPE_SECRET_KEY) {
+    throw new Error("Payments are not configured yet.");
   }
 
   const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, {
@@ -89,7 +103,7 @@ async function fetchStripeCheckoutSession(env: EnvBindings, sessionId: string) {
   };
 
   if (!response.ok || !data.id) {
-    throw new Error(data.error?.message ?? "Unable to verify Stripe checkout session.");
+    throw new Error(data.error?.message ?? "Unable to verify checkout session.");
   }
 
   return data;
@@ -142,7 +156,7 @@ paymentRoutes.post("/checkout", async (c) => {
     }
 
     const purchaseId = crypto.randomUUID();
-    const session = await createStripeCheckoutSession(c.env, {
+    const session = await createHostedCheckoutSession(c.env, {
       origin,
       productName: gift.label,
       amountCents: gift.priceCents,
@@ -178,7 +192,7 @@ paymentRoutes.post("/checkout", async (c) => {
   }
 
   const purchaseId = crypto.randomUUID();
-  const session = await createStripeCheckoutSession(c.env, {
+  const session = await createHostedCheckoutSession(c.env, {
     origin,
     productName: boost.label,
     amountCents: boost.priceCents,
@@ -222,12 +236,12 @@ paymentRoutes.post("/checkout/complete", async (c) => {
     return c.json({ error: "sessionId is required." }, 400);
   }
 
-  const stripeSession = await fetchStripeCheckoutSession(c.env, body.sessionId);
-  if (stripeSession.payment_status !== "paid") {
+  const checkoutSession = await fetchCheckoutSessionStatus(c.env, body.sessionId);
+  if (checkoutSession.payment_status !== "paid") {
     return c.json({ error: "Payment is not completed yet." }, 400);
   }
 
-  const purchaseId = stripeSession.metadata?.purchaseId;
+  const purchaseId = checkoutSession.metadata?.purchaseId;
   if (!purchaseId) {
     return c.json({ error: "Purchase metadata is missing." }, 400);
   }

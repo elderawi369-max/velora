@@ -58,10 +58,6 @@ export function ChatPage() {
       <section className="section-copy">
         <p className="eyebrow">Chat</p>
         <h1>Stay inside the app and let the tone build over time.</h1>
-        <p className="intro">
-          The first version uses simple polling, which is enough to validate the
-          core connection loop without adding realtime infrastructure yet.
-        </p>
       </section>
 
       {otherProfile ? (

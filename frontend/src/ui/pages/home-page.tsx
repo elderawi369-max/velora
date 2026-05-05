@@ -22,11 +22,6 @@ export function HomePage() {
         <div className="section-copy">
           <p className="eyebrow">Human-powered companionship</p>
           <h1>Velora feels like AI chat, but there is a real person behind the profile.</h1>
-          <p className="intro">
-            The first version is built to prove one thing: people will come back
-            for recurring text-only chemistry when the profiles feel distinct and
-            the boundaries stay clear.
-          </p>
         </div>
 
         <div className="hero-actions">
@@ -43,10 +38,6 @@ export function HomePage() {
         {pillars.map((item) => (
           <article className="card" key={item}>
             <h2>{item}</h2>
-            <p>
-              We are designing for recurring connection, not random anonymous
-              chat. That means identity, boundaries, and return visits matter.
-            </p>
           </article>
         ))}
       </section>

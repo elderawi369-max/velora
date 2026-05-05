@@ -75,11 +75,6 @@ export function AdminPage() {
       <section className="section-copy">
         <p className="eyebrow">Admin</p>
         <h1>Review reports and suspend problem profiles.</h1>
-        <p className="intro">
-          This is the first moderation console for Velora. It is intentionally
-          simple, but it gives us real visibility into abuse before scale makes
-          that painful.
-        </p>
       </section>
 
       <section className="panel form-panel">
