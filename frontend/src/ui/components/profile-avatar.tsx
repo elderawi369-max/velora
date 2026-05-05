@@ -44,21 +44,35 @@ export function ProfileAvatar({
 
   return (
     <div className={classes} aria-hidden="true">
+      {dominantGiftType ? <span className="profile-avatar-frame" /> : null}
+
       {dominantGiftType === "crown" ? (
-        <span className="profile-avatar-crown">👑</span>
-      ) : null}
-      {dominantGiftType === "rose" ? (
         <>
-          <span className="profile-avatar-petal profile-avatar-petal-a">✿</span>
-          <span className="profile-avatar-petal profile-avatar-petal-b">✿</span>
+          <span className="profile-avatar-crown">👑</span>
+          <span className="profile-avatar-crown-shine" />
         </>
       ) : null}
+
+      {dominantGiftType === "rose" ? (
+        <>
+          <span className="profile-avatar-petal profile-avatar-petal-1">🌹</span>
+          <span className="profile-avatar-petal profile-avatar-petal-2">🌹</span>
+          <span className="profile-avatar-petal profile-avatar-petal-3">🌹</span>
+          <span className="profile-avatar-petal profile-avatar-petal-4">🌹</span>
+          <span className="profile-avatar-petal profile-avatar-petal-5">🌹</span>
+          <span className="profile-avatar-petal profile-avatar-petal-6">🌹</span>
+        </>
+      ) : null}
+
       {dominantGiftType === "starlight" ? (
         <>
           <span className="profile-avatar-sparkle profile-avatar-sparkle-a">✦</span>
           <span className="profile-avatar-sparkle profile-avatar-sparkle-b">✦</span>
+          <span className="profile-avatar-sparkle profile-avatar-sparkle-c">✦</span>
+          <span className="profile-avatar-sparkle profile-avatar-sparkle-d">✦</span>
         </>
       ) : null}
+
       <span className="profile-avatar-icon">{icon}</span>
     </div>
   );
