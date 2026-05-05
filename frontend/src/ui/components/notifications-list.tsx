@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -65,6 +66,11 @@ export function NotificationsList() {
       <div className="panel empty-state">
         <h2>No activity yet.</h2>
         <p>Favorites and gifts you receive will show up here.</p>
+        <div className="action-row">
+          <Link className="primary-button" to="/browse">
+            Explore profiles
+          </Link>
+        </div>
       </div>
     );
   }

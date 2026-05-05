@@ -28,6 +28,11 @@ export function ConversationList() {
       <div className="panel empty-state">
         <h2>No conversations yet.</h2>
         <p>Start with a profile you like, then the reconnect loop begins here.</p>
+        <div className="action-row">
+          <Link className="primary-button" to="/browse">
+            Browse profiles
+          </Link>
+        </div>
       </div>
     );
   }

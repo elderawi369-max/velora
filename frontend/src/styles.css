@@ -61,6 +61,13 @@ body {
   border-radius: 999px;
 }
 
+.nav-button-link {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
 .nav-badge,
 .unread-bubble {
   display: inline-flex;
@@ -115,6 +122,10 @@ body {
   gap: 12px;
 }
 
+.compact-copy {
+  gap: 8px;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -141,6 +152,21 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 18px;
+}
+
+.onboarding-panel {
+  gap: 18px;
+}
+
+.onboarding-grid .card,
+.settings-subpanel {
+  height: 100%;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .panel,
@@ -330,6 +356,10 @@ body {
   border-radius: 999px;
   font: inherit;
   cursor: pointer;
+}
+
+.danger-panel {
+  border-color: rgba(180, 35, 24, 0.18);
 }
 
 .danger-button {

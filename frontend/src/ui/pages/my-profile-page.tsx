@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOwnProfile } from "../../lib/api";
+import { AccountSettingsPanel } from "../components/account-settings-panel";
 import { BlockedUsersList } from "../components/blocked-users-list";
 import { ProfileForm } from "../components/profile-form";
 import { MyProfileCard } from "../components/my-profile-card";
@@ -41,6 +42,8 @@ export function MyProfilePage() {
       </section>
 
       <BlockedUsersList />
+
+      <AccountSettingsPanel />
     </main>
   );
 }

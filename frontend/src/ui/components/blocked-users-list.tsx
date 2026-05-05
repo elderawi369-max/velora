@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { fetchBlocks, unblockProfile } from "../../lib/api";
 import { ProfileAvatar } from "./profile-avatar";
 
@@ -36,6 +37,11 @@ export function BlockedUsersList() {
       <div className="panel empty-state">
         <h2>No blocked users.</h2>
         <p>If you block someone, you'll be able to review and undo it here.</p>
+        <div className="action-row">
+          <Link className="secondary-button" to="/browse">
+            Back to browse
+          </Link>
+        </div>
       </div>
     );
   }

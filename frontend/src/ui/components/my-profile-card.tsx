@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
@@ -46,6 +47,11 @@ export function MyProfileCard() {
       <div className="panel empty-state">
         <h2>No profile yet.</h2>
         <p>Create one to shape how people find and return to you.</p>
+        <div className="action-row">
+          <Link className="primary-button" to="/create-profile">
+            Create profile
+          </Link>
+        </div>
       </div>
     );
   }

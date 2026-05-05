@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { fetchFavorites } from "../../lib/api";
 import { ProfileAvatar } from "./profile-avatar";
 
@@ -27,6 +28,11 @@ export function FavoritesList() {
       <div className="panel empty-state">
         <h2>No favorites yet.</h2>
         <p>Favorite the profiles you want to come back to later.</p>
+        <div className="action-row">
+          <Link className="primary-button" to="/browse">
+            Find profiles
+          </Link>
+        </div>
       </div>
     );
   }

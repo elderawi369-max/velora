@@ -193,6 +193,26 @@ export function logout() {
   });
 }
 
+export function changePassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  return request<{ ok: true }>("/api/auth/change-password", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function deleteAccount(payload: {
+  currentPassword: string;
+  confirmationText: "DELETE";
+}) {
+  return request<{ ok: true }>("/api/auth/account", {
+    method: "DELETE",
+    body: payload,
+  });
+}
+
 export function createProfile(payload: ProfilePayload) {
   return request<{ profile: PublicProfile }>("/api/profiles", {
     method: "POST",

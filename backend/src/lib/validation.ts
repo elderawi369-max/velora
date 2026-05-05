@@ -13,6 +13,16 @@ export const loginSchema = z.object({
   password: z.string().min(8).max(72),
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(8).max(72),
+  newPassword: z.string().min(8).max(72),
+});
+
+export const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(8).max(72),
+  confirmationText: z.literal("DELETE"),
+});
+
 export const profileSchema = z.object({
   username: z.string().trim().toLowerCase().regex(usernameRegex),
   displayName: z.string().trim().min(2).max(30),
