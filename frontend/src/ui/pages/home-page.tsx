@@ -13,16 +13,19 @@ export function HomePage() {
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
     retry: false,
+    refetchInterval: 15000,
   });
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
     retry: false,
+    refetchInterval: 8000,
   });
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
     retry: false,
+    refetchInterval: 8000,
   });
   const hasProfile = Boolean(ownProfileQuery.data?.profile);
   const isLoggedIn = ownProfileQuery.data?.profile !== null || typeof window !== "undefined" && Boolean(window.localStorage.getItem("velora-auth-token"));

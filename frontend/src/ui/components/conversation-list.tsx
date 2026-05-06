@@ -8,6 +8,7 @@ export function ConversationList() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
+    refetchInterval: 8000,
   });
 
   const deleteMutation = useMutation({

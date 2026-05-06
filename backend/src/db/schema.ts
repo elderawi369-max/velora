@@ -42,6 +42,17 @@ export const sessions = sqliteTable("sessions", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const passwordResetTokens = sqliteTable("password_reset_tokens", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: integer("expires_at").notNull(),
+  usedAt: integer("used_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   profileAId: text("profile_a_id")

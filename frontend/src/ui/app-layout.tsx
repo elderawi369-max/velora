@@ -10,27 +10,37 @@ export function AppLayout() {
 
   useEffect(() => {
     setShowAdmin(Boolean(window.localStorage.getItem("velora-admin-key")));
+    function handleAdminKeyUpdate() {
+      setShowAdmin(Boolean(window.localStorage.getItem("velora-admin-key")));
+    }
+
+    window.addEventListener("velora-admin-key-updated", handleAdminKeyUpdate);
+    return () => window.removeEventListener("velora-admin-key-updated", handleAdminKeyUpdate);
   }, []);
 
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
     retry: false,
+    refetchInterval: 15000,
   });
   const sessionQuery = useQuery({
     queryKey: ["session"],
     queryFn: fetchSession,
     retry: false,
+    refetchInterval: 15000,
   });
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
     retry: false,
+    refetchInterval: 8000,
   });
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
     retry: false,
+    refetchInterval: 8000,
   });
 
   useEffect(() => {

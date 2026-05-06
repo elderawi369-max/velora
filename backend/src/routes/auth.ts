@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { eq, or } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
@@ -11,6 +11,7 @@ import {
   messages,
   notifications,
   eventLogs,
+  passwordResetTokens,
   profiles,
   purchases,
   reports,
@@ -26,17 +27,25 @@ import {
   revokeSession,
   resolveCookiePolicy,
 } from "../lib/auth";
-import { hashPassword, verifyPassword } from "../lib/crypto";
+import { hashPassword, hashToken, verifyPassword } from "../lib/crypto";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { logEvent } from "../lib/analytics";
 import {
   changePasswordSchema,
   deleteAccountSchema,
+  forgotPasswordSchema,
   loginSchema,
+  resetPasswordSchema,
   signupSchema,
 } from "../lib/validation";
 
 export const authRoutes = new Hono<{ Bindings: EnvBindings }>();
+
+const PASSWORD_RESET_TTL_MS = 1000 * 60 * 60;
+
+function resolveFrontendOrigin(c: Context<{ Bindings: EnvBindings }>) {
+  return c.req.header("Origin") ?? "https://app.velorachat.com";
+}
 
 authRoutes.get("/me", async (c) => {
   const userId = await getUserIdFromSession(
@@ -202,6 +211,130 @@ authRoutes.post("/login", async (c) => {
   });
 });
 
+authRoutes.post("/forgot-password", async (c) => {
+  const payload = forgotPasswordSchema.safeParse(await c.req.json());
+  if (!payload.success) {
+    return c.json({ error: "Invalid forgot-password request." }, 400);
+  }
+
+  const turnstileValid = await verifyTurnstileToken(
+    c.env,
+    payload.data.turnstileToken,
+    c.req.header("CF-Connecting-IP"),
+  );
+
+  if (!turnstileValid) {
+    return c.json({ error: "Please complete the human verification check." }, 400);
+  }
+
+  const db = getDb(c.env);
+  const [user] = await db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.email, payload.data.email))
+    .limit(1);
+
+  if (user) {
+    const now = Date.now();
+    const rawToken = crypto.randomUUID() + crypto.randomUUID().replaceAll("-", "");
+    const frontendOrigin = resolveFrontendOrigin(c);
+    const resetLink = `${frontendOrigin}/reset-password?token=${encodeURIComponent(rawToken)}`;
+
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+    await db.insert(passwordResetTokens).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      tokenHash: await hashToken(rawToken),
+      expiresAt: now + PASSWORD_RESET_TTL_MS,
+      usedAt: null,
+      createdAt: now,
+    });
+
+    await db.insert(supportTickets).values({
+      id: crypto.randomUUID(),
+      profileId: null,
+      email: user.email,
+      subject: "Password reset requested",
+      message: `Password reset requested for ${user.email}. Manual reset link: ${resetLink}`,
+      status: "open",
+      createdAt: now,
+    });
+
+    await logEvent(c.env, {
+      eventType: "password_reset_requested",
+      userId: user.id,
+      eventData: {
+        delivery: "support-fallback",
+      },
+    });
+  }
+
+  return c.json({
+    ok: true,
+    delivery: "support-fallback",
+    message:
+      "If that email exists, a reset request is now ready. Automated reset email is not live yet, so support/admin needs to issue the reset link.",
+  });
+});
+
+authRoutes.post("/reset-password", async (c) => {
+  const payload = resetPasswordSchema.safeParse(await c.req.json());
+  if (!payload.success) {
+    return c.json({ error: "Invalid reset-password request." }, 400);
+  }
+
+  const db = getDb(c.env);
+  const tokenHash = await hashToken(payload.data.token);
+  const [resetToken] = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    .limit(1);
+
+  if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= Date.now()) {
+    return c.json({ error: "This reset link is invalid or has expired." }, 400);
+  }
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, resetToken.userId))
+    .limit(1);
+
+  if (!user) {
+    return c.json({ error: "User not found." }, 404);
+  }
+
+  const { hash, salt } = await hashPassword(payload.data.newPassword);
+  const now = Date.now();
+
+  await db
+    .update(users)
+    .set({
+      passwordHash: hash,
+      passwordSalt: salt,
+      updatedAt: now,
+    })
+    .where(eq(users.id, user.id));
+
+  await db
+    .update(passwordResetTokens)
+    .set({ usedAt: now })
+    .where(eq(passwordResetTokens.id, resetToken.id));
+
+  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+  await db.delete(sessions).where(eq(sessions.userId, user.id));
+
+  await logEvent(c.env, {
+    eventType: "password_reset_completed",
+    userId: user.id,
+    eventData: {},
+  });
+
+  return c.json({ ok: true });
+});
+
 authRoutes.post("/logout", async (c) => {
   await revokeSession(
     c.env,
@@ -263,6 +396,7 @@ authRoutes.post("/change-password", async (c) => {
       updatedAt: Date.now(),
     })
     .where(eq(users.id, user.id));
+  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
 
   return c.json({ ok: true });
 });
@@ -398,6 +532,7 @@ authRoutes.delete("/account", async (c) => {
     }
 
     await db.delete(eventLogs).where(eq(eventLogs.userId, userId));
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
 
     await db.delete(sessions).where(eq(sessions.userId, userId));
     await db.delete(users).where(eq(users.id, userId));

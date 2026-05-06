@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { changePassword, clearAuthToken, deleteAccount, logout } from "../../lib/api";
 
+const adminStorageKey = "velora-admin-key";
+
 export function AccountSettingsPanel() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -13,6 +15,11 @@ export function AccountSettingsPanel() {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [adminKey, setAdminKey] = useState(
+    typeof window !== "undefined"
+      ? window.localStorage.getItem(adminStorageKey) ?? ""
+      : "",
+  );
 
   const changePasswordMutation = useMutation({
     mutationFn: changePassword,
@@ -129,6 +136,50 @@ export function AccountSettingsPanel() {
             {deleteAccountMutation.isPending ? "Deleting..." : "Delete account"}
           </button>
         </form>
+      </div>
+
+      <div className="settings-grid">
+        <section className="panel form-panel settings-subpanel">
+          <span className="meta-title">Admin access</span>
+          <p className="status-message">
+            Keep the moderation console hidden from regular navigation, but still reachable when
+            you have the admin key.
+          </p>
+          <label className="field">
+            <span>Admin key</span>
+            <input
+              type="password"
+              value={adminKey}
+              onChange={(event) => setAdminKey(event.target.value)}
+              placeholder="Paste the admin key"
+            />
+          </label>
+          <div className="action-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                window.localStorage.setItem(adminStorageKey, adminKey);
+                navigate("/admin");
+                window.dispatchEvent(new Event("velora-admin-key-updated"));
+              }}
+              disabled={!adminKey.trim()}
+            >
+              Open admin console
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                window.localStorage.removeItem(adminStorageKey);
+                setAdminKey("");
+                window.dispatchEvent(new Event("velora-admin-key-updated"));
+              }}
+            >
+              Clear admin key
+            </button>
+          </div>
+        </section>
       </div>
     </section>
   );

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -27,10 +28,11 @@ function describeNotification(item: NotificationItem) {
 
 export function NotificationsList() {
   const queryClient = useQueryClient();
+  const autoMarkedRef = useRef(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
-    refetchInterval: 15000,
+    refetchInterval: 8000,
   });
 
   const markOneMutation = useMutation({
@@ -76,6 +78,25 @@ export function NotificationsList() {
   }
 
   const unreadCount = data.notifications.filter((item) => !item.readAt).length;
+
+  useEffect(() => {
+    if (!data) {
+      autoMarkedRef.current = false;
+      return;
+    }
+
+    if (unreadCount === 0) {
+      autoMarkedRef.current = false;
+      return;
+    }
+
+    if (document.visibilityState !== "visible" || autoMarkedRef.current) {
+      return;
+    }
+
+    autoMarkedRef.current = true;
+    markAllMutation.mutate();
+  }, [data, markAllMutation, unreadCount]);
 
   return (
     <div className="content-section">

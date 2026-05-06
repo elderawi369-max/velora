@@ -124,6 +124,12 @@ export function AuthForm({ mode }: AuthFormProps) {
             {mode === "signup" ? "Log in" : "Sign up"}
           </Link>
         </p>
+
+        {mode === "login" ? (
+          <p className="form-hint">
+            Forgot your password? <Link to="/forgot-password">Reset it</Link>
+          </p>
+        ) : null}
       </form>
     </section>
   );

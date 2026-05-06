@@ -20,6 +20,8 @@ import { PrivacyPage } from "./ui/pages/privacy-page";
 import { SupportPage } from "./ui/pages/support-page";
 import { TermsPage } from "./ui/pages/terms-page";
 import { GuidelinesPage } from "./ui/pages/guidelines-page";
+import { ForgotPasswordPage } from "./ui/pages/forgot-password-page";
+import { ResetPasswordPage } from "./ui/pages/reset-password-page";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -44,6 +46,14 @@ const router = createBrowserRouter([
       {
         path: "login",
         element: <LoginPage />,
+      },
+      {
+        path: "forgot-password",
+        element: <ForgotPasswordPage />,
+      },
+      {
+        path: "reset-password",
+        element: <ResetPasswordPage />,
       },
       {
         path: "create-profile",

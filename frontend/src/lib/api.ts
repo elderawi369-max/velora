@@ -78,6 +78,16 @@ export type LoginPayload = {
   password: string;
 };
 
+export type ForgotPasswordPayload = {
+  email: string;
+  turnstileToken: string;
+};
+
+export type ResetPasswordPayload = {
+  token: string;
+  newPassword: string;
+};
+
 export type ProfilePayload = {
   username: string;
   displayName: string;
@@ -187,6 +197,20 @@ export function signup(payload: SignupPayload) {
 
 export function login(payload: LoginPayload) {
   return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function requestPasswordReset(payload: ForgotPasswordPayload) {
+  return request<{ ok: true; delivery: string; message: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function resetPassword(payload: ResetPasswordPayload) {
+  return request<{ ok: true }>("/api/auth/reset-password", {
     method: "POST",
     body: payload,
   });
