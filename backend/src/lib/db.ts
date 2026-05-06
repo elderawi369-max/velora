@@ -10,6 +10,7 @@ export type EnvBindings = {
   STRIPE_SECRET_KEY?: string;
   PAYPAL_CLIENT_ID?: string;
   PAYPAL_SECRET?: string;
+  PAYPAL_WEBHOOK_ID?: string;
   PAYMENTS_PROVIDER?: string;
 };
 

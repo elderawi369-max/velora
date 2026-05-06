@@ -7,6 +7,7 @@ import { enforceConversationStartLimit, enforceMessageLimit } from "../lib/limit
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
+import { logEvent } from "../lib/analytics";
 
 export const chatRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -170,6 +171,15 @@ chatRoutes.post("/conversations", async (c) => {
   };
 
   await db.insert(conversations).values(conversation);
+
+  await logEvent(c.env, {
+    eventType: "conversation_started",
+    profileId: own.profileId,
+    eventData: {
+      conversationId: conversation.id,
+      targetProfileId: body.targetProfileId,
+    },
+  });
 
   return c.json({ conversation }, 201);
 });

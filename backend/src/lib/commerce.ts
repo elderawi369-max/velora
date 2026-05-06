@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { boosts, gifts, notifications, purchases } from "../db/schema";
 import { getDb, type EnvBindings } from "./db";
+import { logEvent } from "./analytics";
 
 export type GiftType = "rose" | "starlight" | "crown";
 export type BoostType = "spark" | "spotlight";
@@ -98,6 +99,20 @@ export async function fulfillPurchase(env: EnvBindings, purchaseId: string) {
       fulfilledAt: now,
     })
     .where(eq(purchases.id, purchase.id));
+
+  await logEvent(env, {
+    eventType:
+      purchase.productKind === "gift" ? "gift_purchase_completed" : "boost_purchase_completed",
+    profileId: purchase.buyerProfileId,
+    eventData: {
+      purchaseId: purchase.id,
+      productKind: purchase.productKind,
+      itemKey: purchase.itemKey,
+      targetProfileId: purchase.targetProfileId,
+      amountCents: purchase.amountCents,
+      currency: purchase.currency,
+    },
+  });
 
   return {
     ...purchase,

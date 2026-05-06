@@ -10,6 +10,7 @@ import {
   gifts,
   messages,
   notifications,
+  eventLogs,
   profiles,
   purchases,
   reports,
@@ -27,6 +28,7 @@ import {
 } from "../lib/auth";
 import { hashPassword, verifyPassword } from "../lib/crypto";
 import { verifyTurnstileToken } from "../lib/turnstile";
+import { logEvent } from "../lib/analytics";
 import {
   changePasswordSchema,
   deleteAccountSchema,
@@ -74,6 +76,14 @@ authRoutes.post("/signup", async (c) => {
     passwordSalt: salt,
     createdAt: now,
     updatedAt: now,
+  });
+
+  await logEvent(c.env, {
+    eventType: "signup_completed",
+    userId,
+    eventData: {
+      emailDomain: payload.data.email.split("@")[1] ?? "",
+    },
   });
 
   const sessionToken = await createSession(c.env, userId);
@@ -328,6 +338,14 @@ authRoutes.delete("/account", async (c) => {
           ),
         );
       await db.delete(supportTickets).where(eq(supportTickets.profileId, profile.id));
+      await db
+        .delete(eventLogs)
+        .where(
+          or(
+            eq(eventLogs.userId, userId),
+            eq(eventLogs.profileId, profile.id),
+          ),
+        );
 
       for (const conversationId of conversationIds) {
         await db.delete(conversations).where(eq(conversations.id, conversationId));
@@ -335,6 +353,8 @@ authRoutes.delete("/account", async (c) => {
 
       await db.delete(profiles).where(eq(profiles.id, profile.id));
     }
+
+    await db.delete(eventLogs).where(eq(eventLogs.userId, userId));
 
     await db.delete(sessions).where(eq(sessions.userId, userId));
     await db.delete(users).where(eq(users.id, userId));

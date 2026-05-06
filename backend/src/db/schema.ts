@@ -169,3 +169,23 @@ export const supportTickets = sqliteTable("support_tickets", {
   status: text("status").notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+export const eventLogs = sqliteTable("event_logs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
+  profileId: text("profile_id").references(() => profiles.id),
+  eventType: text("event_type").notNull(),
+  eventData: text("event_data").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const paymentWebhookEvents = sqliteTable("payment_webhook_events", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  resourceId: text("resource_id"),
+  payload: text("payload").notNull(),
+  processedAt: integer("processed_at"),
+  createdAt: integer("created_at").notNull(),
+});

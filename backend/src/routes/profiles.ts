@@ -7,6 +7,7 @@ import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { profileSchema } from "../lib/validation";
+import { logEvent } from "../lib/analytics";
 
 export const profileRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -837,6 +838,19 @@ profileRoutes.post("/", async (c) => {
     updatedAt: now,
   });
 
+  await logEvent(c.env, {
+    eventType: "profile_created",
+    userId,
+    profileId,
+    eventData: {
+      personalityType: payload.data.personalityType,
+      identity: payload.data.identity,
+      lookingFor: payload.data.lookingFor,
+      vibeCount: payload.data.vibeTags.length,
+      promptCount: payload.data.promptEntries.length,
+    },
+  });
+
   return c.json({
     profile: {
       id: profileId,
@@ -928,6 +942,19 @@ profileRoutes.put("/me", async (c) => {
       updatedAt: Date.now(),
     })
     .where(eq(profiles.id, existingProfile.id));
+
+  await logEvent(c.env, {
+    eventType: "profile_updated",
+    userId,
+    profileId: existingProfile.id,
+    eventData: {
+      personalityType: payload.data.personalityType,
+      identity: payload.data.identity,
+      lookingFor: payload.data.lookingFor,
+      vibeCount: payload.data.vibeTags.length,
+      promptCount: payload.data.promptEntries.length,
+    },
+  });
 
   const [userRow] = await db
     .select({ emailVerifiedAt: users.emailVerifiedAt })

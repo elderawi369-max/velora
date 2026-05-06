@@ -4,7 +4,8 @@ import { boostCatalog, fulfillPurchase, giftCatalog } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { checkoutSessionSchema } from "../lib/validation";
-import { profiles, purchases } from "../db/schema";
+import { paymentWebhookEvents, profiles, purchases } from "../db/schema";
+import { logEvent } from "../lib/analytics";
 
 export const paymentRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -322,6 +323,21 @@ async function completeHostedCheckout(env: EnvBindings, externalId: string) {
   throw new Error("Payments are not configured yet.");
 }
 
+async function fulfillPurchaseByExternalId(env: EnvBindings, externalId: string) {
+  const db = getDb(env);
+  const [purchase] = await db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.stripeSessionId, externalId))
+    .limit(1);
+
+  if (!purchase) {
+    throw new Error("Purchase not found.");
+  }
+
+  return fulfillPurchase(env, purchase.id);
+}
+
 paymentRoutes.post("/checkout", async (c) => {
   try {
     const own = await getOwnProfileContext(
@@ -397,6 +413,18 @@ paymentRoutes.post("/checkout", async (c) => {
         createdAt: Date.now(),
       });
 
+      await logEvent(c.env, {
+        eventType: "gift_checkout_started",
+        profileId: own.profileId,
+        eventData: {
+          purchaseId,
+          checkoutId: session.id,
+          targetProfileId: payload.data.targetProfileId,
+          itemKey: gift.key,
+          amountCents: gift.priceCents,
+        },
+      });
+
       return c.json({ checkoutUrl: session.url, checkoutId: session.id });
     }
 
@@ -432,6 +460,17 @@ paymentRoutes.post("/checkout", async (c) => {
       createdAt: Date.now(),
     });
 
+    await logEvent(c.env, {
+      eventType: "boost_checkout_started",
+      profileId: own.profileId,
+      eventData: {
+        purchaseId,
+        checkoutId: session.id,
+        itemKey: boost.key,
+        amountCents: boost.priceCents,
+      },
+    });
+
     return c.json({ checkoutUrl: session.url, checkoutId: session.id });
   } catch (error) {
     return c.json(
@@ -457,8 +496,25 @@ paymentRoutes.post("/checkout/complete", async (c) => {
       return c.json({ error: "sessionId is required." }, 400);
     }
 
-    const checkout = await completeHostedCheckout(c.env, body.sessionId);
     const db = getDb(c.env);
+    const [existingPurchaseByExternalId] = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.stripeSessionId, body.sessionId))
+      .limit(1);
+
+    if (
+      getConfiguredPaymentProvider(c.env) === "paypal" &&
+      existingPurchaseByExternalId?.status === "fulfilled"
+    ) {
+      if (existingPurchaseByExternalId.buyerProfileId !== own.profileId) {
+        return c.json({ error: "This checkout does not belong to you." }, 403);
+      }
+
+      return c.json({ ok: true, purchase: existingPurchaseByExternalId });
+    }
+
+    const checkout = await completeHostedCheckout(c.env, body.sessionId);
     const [purchase] = await db
       .select()
       .from(purchases)
@@ -478,6 +534,102 @@ paymentRoutes.post("/checkout/complete", async (c) => {
   } catch (error) {
     return c.json(
       { error: error instanceof Error ? error.message : "Unable to confirm purchase." },
+      500,
+    );
+  }
+});
+
+paymentRoutes.post("/webhook/paypal", async (c) => {
+  try {
+    const payload = (await c.req.json()) as {
+      id?: string;
+      event_type?: string;
+      resource?: {
+        id?: string;
+        purchase_units?: Array<{ custom_id?: string }>;
+        supplementary_data?: {
+          related_ids?: {
+            order_id?: string;
+          };
+        };
+      };
+    };
+
+    if (!payload.id || !payload.event_type) {
+      return c.json({ error: "Invalid webhook payload." }, 400);
+    }
+
+    const db = getDb(c.env);
+    const [existing] = await db
+      .select({ id: paymentWebhookEvents.id })
+      .from(paymentWebhookEvents)
+      .where(eq(paymentWebhookEvents.eventId, payload.id))
+      .limit(1);
+
+    if (existing) {
+      return c.json({ ok: true, duplicate: true });
+    }
+
+    await db.insert(paymentWebhookEvents).values({
+      id: crypto.randomUUID(),
+      provider: "paypal",
+      eventId: payload.id,
+      eventType: payload.event_type,
+      resourceId:
+        payload.resource?.id ??
+        payload.resource?.supplementary_data?.related_ids?.order_id ??
+        null,
+      payload: JSON.stringify(payload),
+      processedAt: null,
+      createdAt: Date.now(),
+    });
+
+    let fulfilledPurchaseId: string | null = null;
+
+    if (payload.event_type === "CHECKOUT.ORDER.APPROVED" && payload.resource?.id) {
+      const checkout = await completeHostedCheckout(c.env, payload.resource.id);
+      const fulfilled = await fulfillPurchase(c.env, checkout.purchaseId);
+      fulfilledPurchaseId = fulfilled.id;
+    }
+
+    if (
+      payload.event_type === "PAYMENT.CAPTURE.COMPLETED" &&
+      payload.resource?.supplementary_data?.related_ids?.order_id
+    ) {
+      const fulfilled = await fulfillPurchaseByExternalId(
+        c.env,
+        payload.resource.supplementary_data.related_ids.order_id,
+      );
+      fulfilledPurchaseId = fulfilled.id;
+    }
+
+    await db
+      .update(paymentWebhookEvents)
+      .set({ processedAt: Date.now() })
+      .where(eq(paymentWebhookEvents.eventId, payload.id));
+
+    await logEvent(c.env, {
+      eventType: "paypal_webhook_received",
+      eventData: {
+        eventId: payload.id,
+        eventType: payload.event_type,
+        resourceId:
+          payload.resource?.id ??
+          payload.resource?.supplementary_data?.related_ids?.order_id ??
+          null,
+        fulfilledPurchaseId,
+      },
+    });
+
+    return c.json({ ok: true, fulfilledPurchaseId });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to process PayPal webhook.",
+      },
       500,
     );
   }

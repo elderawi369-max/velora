@@ -4,6 +4,7 @@ import { favorites, profiles } from "../db/schema";
 import { boostCatalog, createNotification, giftCatalog } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
+import { logEvent } from "../lib/analytics";
 
 export const socialRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -76,6 +77,14 @@ socialRoutes.post("/favorites/:targetProfileId", async (c) => {
       profileId: targetProfileId,
       actorProfileId: own.profileId,
       type: "favorite",
+    });
+
+    await logEvent(c.env, {
+      eventType: "profile_favorited",
+      profileId: own.profileId,
+      eventData: {
+        targetProfileId,
+      },
     });
   }
 
