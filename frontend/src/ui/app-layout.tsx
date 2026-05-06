@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, logout } from "../lib/api";
+import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
 import { useEffect, useState } from "react";
 
 export function AppLayout() {
@@ -17,6 +17,11 @@ export function AppLayout() {
     queryFn: fetchOwnProfile,
     retry: false,
   });
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+  });
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
@@ -28,6 +33,13 @@ export function AppLayout() {
     retry: false,
   });
 
+  useEffect(() => {
+    if (sessionQuery.data?.authenticated === false && hasStoredAuthToken()) {
+      clearAuthToken();
+      void queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+    }
+  }, [queryClient, sessionQuery.data]);
+
   const conversationUnreadCount =
     conversationsQuery.data?.conversations.reduce(
       (sum, conversation) =>
@@ -36,13 +48,14 @@ export function AppLayout() {
     ) ?? 0;
   const notificationUnreadCount =
     notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
-  const hasProfile = Boolean(ownProfileQuery.data?.profile);
-  const isLoggedIn = ownProfileQuery.data?.profile !== null || Boolean(window.localStorage.getItem("velora-auth-token"));
+  const hasProfile = Boolean(sessionQuery.data?.hasProfile);
+  const isLoggedIn = Boolean(sessionQuery.data?.authenticated);
   const logoutMutation = useMutation({
     mutationFn: logout,
-    onSuccess: async () => {
+    onSettled: async () => {
       clearAuthToken();
       await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+      await queryClient.invalidateQueries({ queryKey: ["session"] });
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
       await queryClient.invalidateQueries({ queryKey: ["notifications"] });
       navigate("/login");

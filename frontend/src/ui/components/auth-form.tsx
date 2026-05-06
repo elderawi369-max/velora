@@ -30,11 +30,13 @@ export function AuthForm({ mode }: AuthFormProps) {
         const result = await signup({ email, password, turnstileToken, ageConfirmed });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        await queryClient.invalidateQueries({ queryKey: ["session"] });
         navigate("/create-profile");
       } else {
         const result = await login({ email, password });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        await queryClient.invalidateQueries({ queryKey: ["session"] });
         navigate(result.hasProfile ? "/my-profile" : "/create-profile");
       }
     } catch (submissionError) {

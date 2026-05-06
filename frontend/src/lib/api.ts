@@ -26,6 +26,10 @@ export function clearAuthToken() {
   window.localStorage.removeItem(authTokenStorageKey);
 }
 
+export function hasStoredAuthToken() {
+  return Boolean(getAuthToken());
+}
+
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -186,6 +190,14 @@ export function login(payload: LoginPayload) {
     method: "POST",
     body: payload,
   });
+}
+
+export function fetchSession() {
+  return request<{
+    authenticated: boolean;
+    user: { id: string; email: string; emailVerified: boolean } | null;
+    hasProfile: boolean;
+  }>("/api/auth/me");
 }
 
 export function logout() {

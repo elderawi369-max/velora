@@ -38,6 +38,49 @@ import {
 
 export const authRoutes = new Hono<{ Bindings: EnvBindings }>();
 
+authRoutes.get("/me", async (c) => {
+  const userId = await getUserIdFromSession(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
+
+  if (!userId) {
+    return c.json({ authenticated: false, user: null, hasProfile: false });
+  }
+
+  const db = getDb(c.env);
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      emailVerifiedAt: users.emailVerifiedAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) {
+    return c.json({ authenticated: false, user: null, hasProfile: false });
+  }
+
+  const [profile] = await db
+    .select({ id: profiles.id })
+    .from(profiles)
+    .where(eq(profiles.userId, userId))
+    .limit(1);
+
+  return c.json({
+    authenticated: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
+    },
+    hasProfile: Boolean(profile),
+  });
+});
+
 authRoutes.post("/signup", async (c) => {
   const payload = signupSchema.safeParse(await c.req.json());
   if (!payload.success) {
