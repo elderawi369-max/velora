@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { conversations, messages, profiles } from "../db/schema";
+import { conversations, messages, profiles, reports } from "../db/schema";
 import { enforceConversationStartLimit, enforceMessageLimit } from "../lib/limits";
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -289,6 +289,46 @@ chatRoutes.get("/conversations/:conversationId/messages", async (c) => {
     .where(eq(conversations.id, conversation.id));
 
   return c.json({ messages: items, ownProfileId: own.profileId });
+});
+
+chatRoutes.delete("/conversations/:conversationId", async (c) => {
+  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
+  if (!own) {
+    return c.json({ error: "Unauthorized." }, 401);
+  }
+
+  const db = getDb(c.env);
+  const [conversation] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, c.req.param("conversationId")))
+    .limit(1);
+
+  if (!conversation) {
+    return c.json({ error: "Conversation not found." }, 404);
+  }
+
+  const isMember =
+    conversation.profileAId === own.profileId ||
+    conversation.profileBId === own.profileId;
+
+  if (!isMember) {
+    return c.json({ error: "Forbidden." }, 403);
+  }
+
+  await db.delete(messages).where(eq(messages.conversationId, conversation.id));
+  await db.delete(reports).where(eq(reports.conversationId, conversation.id));
+  await db.delete(conversations).where(eq(conversations.id, conversation.id));
+
+  await logEvent(c.env, {
+    eventType: "conversation_deleted",
+    profileId: own.profileId,
+    eventData: {
+      conversationId: conversation.id,
+    },
+  });
+
+  return c.json({ ok: true });
 });
 
 chatRoutes.post("/conversations/:conversationId/messages", async (c) => {

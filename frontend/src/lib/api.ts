@@ -269,6 +269,12 @@ export function fetchConversation(conversationId: string) {
   );
 }
 
+export function deleteConversation(conversationId: string) {
+  return request<{ ok: true }>(`/api/chat/conversations/${conversationId}`, {
+    method: "DELETE",
+  });
+}
+
 export function fetchNotifications() {
   return request<{ notifications: NotificationItem[] }>("/api/notifications");
 }

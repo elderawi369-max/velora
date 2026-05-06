@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { addFavorite, fetchConversation, removeFavorite } from "../../lib/api";
+import { addFavorite, deleteConversation, fetchConversation, removeFavorite } from "../../lib/api";
 import { ChatPanel } from "../components/chat-panel";
 import { ChatSafetyPanel } from "../components/chat-safety-panel";
 import { GiftActions } from "../components/gift-actions";
@@ -10,6 +10,7 @@ import { ProfileAvatar } from "../components/profile-avatar";
 export function ChatPage() {
   const params = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   if (!params.conversationId) {
     return (
@@ -47,6 +48,16 @@ export function ChatPage() {
       await queryClient.invalidateQueries({
         queryKey: ["favorites"],
       });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteConversation(params.conversationId!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+      });
+      navigate("/conversations");
     },
   });
 
@@ -89,6 +100,18 @@ export function ChatPage() {
                   ? "Unfavorite"
                   : "Favorite"}
             </button>
+            <button
+              className="secondary-button danger-button"
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (window.confirm("Delete this conversation from your inbox?")) {
+                  deleteMutation.mutate();
+                }
+              }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete conversation"}
+            </button>
             <span className={conversation?.isFavorited ? "chip" : "chip chip-muted"}>
               {conversation?.isFavorited ? "Favorited" : "Not favorited"}
             </span>
@@ -98,6 +121,14 @@ export function ChatPage() {
       ) : null}
 
       <ChatPanel conversationId={params.conversationId} />
+
+      {deleteMutation.error ? (
+        <p className="form-error">
+          {deleteMutation.error instanceof Error
+            ? deleteMutation.error.message
+            : "Unable to delete conversation."}
+        </p>
+      ) : null}
 
       {otherProfile ? (
         <ChatSafetyPanel

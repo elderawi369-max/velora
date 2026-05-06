@@ -1,12 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { fetchConversations } from "../../lib/api";
+import { deleteConversation, fetchConversations } from "../../lib/api";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function ConversationList() {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (conversationId: string) => deleteConversation(conversationId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
   });
 
   if (isLoading) {
@@ -45,41 +53,63 @@ export function ConversationList() {
             conversation.unreadCount ?? (conversation.unread ? 1 : 0);
 
           return (
-        <Link
+        <article
           className={
             conversation.unread
               ? "conversation-item unread-item"
               : "conversation-item"
           }
           key={conversation.id}
-          to={`/chat/${conversation.id}`}
         >
-          <ProfileAvatar
-            personalityType={conversation.otherProfile?.personalityType}
-            identity={conversation.otherProfile?.identity}
-            size="small"
-          />
-          <div className="conversation-copy">
-            <h2>{conversation.otherProfile?.displayName ?? "Unknown profile"}</h2>
-            <p>@{conversation.otherProfile?.username ?? "missing-profile"}</p>
-            <p className="conversation-preview">
-              {conversation.lastMessagePreview || "No messages yet."}
-            </p>
-            <div className="conversation-meta">
-              <span className={conversation.unread ? "chip" : "chip chip-muted"}>
-                {conversation.unread
-                  ? `${unreadCount} new`
-                  : "Read"}
-              </span>
-              <span className={conversation.isFavorited ? "chip" : "chip chip-muted"}>
-                {conversation.isFavorited ? "Favorited" : "Not favorited"}
-              </span>
+          <Link className="conversation-link" to={`/chat/${conversation.id}`}>
+            <ProfileAvatar
+              personalityType={conversation.otherProfile?.personalityType}
+              identity={conversation.otherProfile?.identity}
+              size="small"
+            />
+            <div className="conversation-copy">
+              <h2>{conversation.otherProfile?.displayName ?? "Unknown profile"}</h2>
+              <p>@{conversation.otherProfile?.username ?? "missing-profile"}</p>
+              <p className="conversation-preview">
+                {conversation.lastMessagePreview || "No messages yet."}
+              </p>
+              <div className="conversation-meta">
+                <span className={conversation.unread ? "chip" : "chip chip-muted"}>
+                  {conversation.unread
+                    ? `${unreadCount} new`
+                    : "Read"}
+                </span>
+                <span className={conversation.isFavorited ? "chip" : "chip chip-muted"}>
+                  {conversation.isFavorited ? "Favorited" : "Not favorited"}
+                </span>
+              </div>
             </div>
+            {unreadCount > 0 ? (
+              <div className="unread-bubble">{unreadCount}</div>
+            ) : null}
+          </Link>
+          <div className="conversation-actions">
+            <button
+              className="text-button danger-button"
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (window.confirm("Delete this conversation from your inbox?")) {
+                  deleteMutation.mutate(conversation.id);
+                }
+              }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </button>
           </div>
-          {unreadCount > 0 ? (
-            <div className="unread-bubble">{unreadCount}</div>
+          {deleteMutation.error ? (
+            <p className="form-error">
+              {deleteMutation.error instanceof Error
+                ? deleteMutation.error.message
+                : "Unable to delete conversation."}
+            </p>
           ) : null}
-        </Link>
+        </article>
           );
         })()
       ))}

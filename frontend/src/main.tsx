@@ -16,7 +16,10 @@ import { PaymentCancelPage } from "./ui/pages/payment-cancel-page";
 import { PaymentSuccessPage } from "./ui/pages/payment-success-page";
 import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
+import { PrivacyPage } from "./ui/pages/privacy-page";
 import { SupportPage } from "./ui/pages/support-page";
+import { TermsPage } from "./ui/pages/terms-page";
+import { GuidelinesPage } from "./ui/pages/guidelines-page";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -69,6 +72,18 @@ const router = createBrowserRouter([
       {
         path: "support",
         element: <SupportPage />,
+      },
+      {
+        path: "privacy",
+        element: <PrivacyPage />,
+      },
+      {
+        path: "terms",
+        element: <TermsPage />,
+      },
+      {
+        path: "guidelines",
+        element: <GuidelinesPage />,
       },
       {
         path: "payments/success",

@@ -101,6 +101,20 @@ export function AppLayout() {
       </header>
 
       <Outlet />
+
+      <footer className="site-footer">
+        <div className="footer-links">
+          <NavLink to="/privacy" className="footer-link">
+            Privacy
+          </NavLink>
+          <NavLink to="/terms" className="footer-link">
+            Terms
+          </NavLink>
+          <NavLink to="/guidelines" className="footer-link">
+            Community Guidelines
+          </NavLink>
+        </div>
+      </footer>
     </div>
   );
 }
