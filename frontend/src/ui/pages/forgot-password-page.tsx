@@ -48,9 +48,8 @@ export function ForgotPasswordPage() {
           />
         </label>
 
-        <p className="status-message">
-          Automated reset emails are not live yet. This request prepares a secure reset for
-          support/admin to issue manually.
+        <p className="form-hint">
+          Enter the email on your account and we&apos;ll send a secure reset link if it exists.
         </p>
 
         <TurnstileWidget onTokenChange={setTurnstileToken} />

@@ -5,11 +5,13 @@ import { resetPassword } from "../../lib/api";
 export function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [token, setToken] = useState(searchParams.get("token") ?? "");
+  const initialToken = searchParams.get("token") ?? "";
+  const [token, setToken] = useState(initialToken);
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasLinkToken = Boolean(initialToken);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,16 +42,22 @@ export function ResetPasswordPage() {
       </section>
 
       <form className="panel form-panel" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Reset token</span>
-          <input
-            type="text"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder="Paste the reset token or use the full reset link"
-            required
-          />
-        </label>
+        {hasLinkToken ? (
+          <p className="form-hint">
+            Your secure reset link is ready. Choose a new password below.
+          </p>
+        ) : (
+          <label className="field">
+            <span>Reset token</span>
+            <input
+              type="text"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="Paste the reset token or use the full reset link"
+              required
+            />
+          </label>
+        )}
 
         <label className="field">
           <span>New password</span>
