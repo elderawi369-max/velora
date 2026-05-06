@@ -21,8 +21,11 @@ function resolveFrontendOrigin(origin: string | undefined) {
     return origin;
   }
 
-  const pagesPattern = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i;
-  if (pagesPattern.test(origin)) {
+  const allowedOrigins = [
+    "https://app.velorachat.com",
+  ];
+
+  if (allowedOrigins.includes(origin)) {
     return origin;
   }
 

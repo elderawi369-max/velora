@@ -16,15 +16,8 @@ function resolveCorsOrigin(origin: string | undefined) {
     return origin;
   }
 
-  const pagesPattern = /^https:\/\/[a-z0-9-]+\.pages\.dev$/i;
-  if (pagesPattern.test(origin)) {
-    return origin;
-  }
-
   const allowedOrigins: string[] = [
     "https://app.velorachat.com",
-    "https://velora-1um.pages.dev",
-    "https://velora-web.pages.dev",
   ];
 
   if (allowedOrigins.includes(origin)) {
