@@ -12,6 +12,10 @@ export type EnvBindings = {
   PAYPAL_SECRET?: string;
   PAYPAL_WEBHOOK_ID?: string;
   PAYMENTS_PROVIDER?: string;
+  APPLE_BUNDLE_ID?: string;
+  APPLE_SHARED_SECRET?: string;
+  GOOGLE_PLAY_PACKAGE_NAME?: string;
+  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?: string;
 };
 
 export function getDb(env: EnvBindings) {

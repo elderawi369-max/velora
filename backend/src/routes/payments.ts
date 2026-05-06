@@ -3,13 +3,26 @@ import { eq } from "drizzle-orm";
 import { boostCatalog, fulfillPurchase, giftCatalog } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
-import { checkoutSessionSchema } from "../lib/validation";
+import {
+  checkoutSessionSchema,
+  mobilePurchaseVerificationSchema,
+} from "../lib/validation";
 import { paymentWebhookEvents, profiles, purchases } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 
 export const paymentRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type CheckoutProvider = "paypal" | "stripe";
+type MobileProvider = "apple" | "google";
+
+class PaymentRouteError extends Error {
+  status: number;
+
+  constructor(message: string, status = 500) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function resolveFrontendOrigin(origin: string | undefined) {
   if (!origin) {
@@ -341,6 +354,149 @@ async function fulfillPurchaseByExternalId(env: EnvBindings, externalId: string)
   return fulfillPurchase(env, purchase.id);
 }
 
+function assertCatalogItem(input: { productKind: "gift" | "boost"; itemKey: string }) {
+  if (input.productKind === "gift") {
+    const gift = giftCatalog.find((item) => item.key === input.itemKey);
+    if (!gift) {
+      throw new PaymentRouteError("Invalid gift type.", 400);
+    }
+
+    return gift;
+  }
+
+  const boost = boostCatalog.find((item) => item.key === input.itemKey);
+  if (!boost) {
+    throw new PaymentRouteError("Invalid boost type.", 400);
+  }
+
+  return boost;
+}
+
+async function assertValidGiftTarget(
+  env: EnvBindings,
+  ownProfileId: string,
+  targetProfileId: string | undefined,
+) {
+  if (!targetProfileId) {
+    throw new PaymentRouteError("Gift purchases need a target profile.", 400);
+  }
+
+  if (targetProfileId === ownProfileId) {
+    throw new PaymentRouteError("You cannot send a gift to yourself.", 400);
+  }
+
+  const db = getDb(env);
+  const [target] = await db
+    .select({ id: profiles.id })
+    .from(profiles)
+    .where(eq(profiles.id, targetProfileId))
+    .limit(1);
+
+  if (!target) {
+    throw new PaymentRouteError("Target profile not found.", 404);
+  }
+}
+
+async function verifyApplePurchase(
+  env: EnvBindings,
+  _input: {
+    receiptData: string;
+    transactionId: string;
+  },
+) {
+  if (!env.APPLE_BUNDLE_ID || !env.APPLE_SHARED_SECRET) {
+    throw new PaymentRouteError("Apple mobile billing is not configured yet.", 501);
+  }
+
+  throw new PaymentRouteError(
+    "Apple mobile purchase verification is not connected yet. Add StoreKit receipt verification next.",
+    501,
+  );
+}
+
+async function verifyGooglePurchase(
+  env: EnvBindings,
+  _input: {
+    packageName: string;
+    productId: string;
+    purchaseToken: string;
+    orderId?: string;
+  },
+) {
+  if (!env.GOOGLE_PLAY_PACKAGE_NAME || !env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON) {
+    throw new PaymentRouteError("Google Play billing is not configured yet.", 501);
+  }
+
+  throw new PaymentRouteError(
+    "Google Play purchase verification is not connected yet. Add Play Developer API verification next.",
+    501,
+  );
+}
+
+async function upsertAndFulfillMobilePurchase(
+  env: EnvBindings,
+  input: {
+    provider: MobileProvider;
+    externalPaymentId: string;
+    buyerProfileId: string;
+    targetProfileId: string | null;
+    productKind: "gift" | "boost";
+    itemKey: string;
+    amountCents: number;
+    rawPayload: Record<string, string | null | undefined>;
+  },
+) {
+  const db = getDb(env);
+  const [existingPurchase] = await db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.stripeSessionId, input.externalPaymentId))
+    .limit(1);
+
+  if (existingPurchase) {
+    if (existingPurchase.buyerProfileId !== input.buyerProfileId) {
+      throw new PaymentRouteError("This purchase does not belong to you.", 403);
+    }
+
+    if (existingPurchase.status === "fulfilled") {
+      return existingPurchase;
+    }
+
+    return fulfillPurchase(env, existingPurchase.id);
+  }
+
+  const purchaseId = crypto.randomUUID();
+  await db.insert(purchases).values({
+    id: purchaseId,
+    stripeSessionId: input.externalPaymentId,
+    buyerProfileId: input.buyerProfileId,
+    targetProfileId: input.targetProfileId,
+    productKind: input.productKind,
+    itemKey: input.itemKey,
+    amountCents: input.amountCents,
+    currency: "usd",
+    status: "pending",
+    fulfilledAt: null,
+    createdAt: Date.now(),
+  });
+
+  await logEvent(env, {
+    eventType: "mobile_purchase_verified",
+    profileId: input.buyerProfileId,
+    eventData: {
+      provider: input.provider,
+      purchaseId,
+      externalPaymentId: input.externalPaymentId,
+      productKind: input.productKind,
+      itemKey: input.itemKey,
+      targetProfileId: input.targetProfileId,
+      ...input.rawPayload,
+    },
+  });
+
+  return fulfillPurchase(env, purchaseId);
+}
+
 paymentRoutes.post("/checkout", async (c) => {
   try {
     const own = await getOwnProfileContext(
@@ -365,28 +521,9 @@ paymentRoutes.post("/checkout", async (c) => {
     const db = getDb(c.env);
 
     if (payload.data.productKind === "gift") {
-      if (!payload.data.targetProfileId) {
-        return c.json({ error: "Gift purchases need a target profile." }, 400);
-      }
-
-      if (payload.data.targetProfileId === own.profileId) {
-        return c.json({ error: "You cannot send a gift to yourself." }, 400);
-      }
-
-      const [target] = await db
-        .select({ id: profiles.id })
-        .from(profiles)
-        .where(eq(profiles.id, payload.data.targetProfileId))
-        .limit(1);
-
-      if (!target) {
-        return c.json({ error: "Target profile not found." }, 404);
-      }
-
-      const gift = giftCatalog.find((item) => item.key === payload.data.itemKey);
-      if (!gift) {
-        return c.json({ error: "Invalid gift type." }, 400);
-      }
+      await assertValidGiftTarget(c.env, own.profileId, payload.data.targetProfileId);
+      const targetProfileId = payload.data.targetProfileId!;
+      const gift = assertCatalogItem(payload.data);
 
       const purchaseId = crypto.randomUUID();
       const session = await createHostedCheckoutSession(c.env, {
@@ -398,7 +535,7 @@ paymentRoutes.post("/checkout", async (c) => {
           buyerProfileId: own.profileId,
           productKind: "gift",
           itemKey: gift.key,
-          targetProfileId: payload.data.targetProfileId,
+          targetProfileId,
         },
       });
 
@@ -406,7 +543,7 @@ paymentRoutes.post("/checkout", async (c) => {
         id: purchaseId,
         stripeSessionId: session.id,
         buyerProfileId: own.profileId,
-        targetProfileId: payload.data.targetProfileId,
+        targetProfileId,
         productKind: "gift",
         itemKey: gift.key,
         amountCents: gift.priceCents,
@@ -422,7 +559,7 @@ paymentRoutes.post("/checkout", async (c) => {
         eventData: {
           purchaseId,
           checkoutId: session.id,
-          targetProfileId: payload.data.targetProfileId,
+          targetProfileId,
           itemKey: gift.key,
           amountCents: gift.priceCents,
         },
@@ -431,10 +568,7 @@ paymentRoutes.post("/checkout", async (c) => {
       return c.json({ checkoutUrl: session.url, checkoutId: session.id });
     }
 
-    const boost = boostCatalog.find((item) => item.key === payload.data.itemKey);
-    if (!boost) {
-      return c.json({ error: "Invalid boost type." }, 400);
-    }
+    const boost = assertCatalogItem(payload.data);
 
     const purchaseId = crypto.randomUUID();
     const session = await createHostedCheckoutSession(c.env, {
@@ -476,9 +610,16 @@ paymentRoutes.post("/checkout", async (c) => {
 
     return c.json({ checkoutUrl: session.url, checkoutId: session.id });
   } catch (error) {
+    const status = (error instanceof PaymentRouteError ? error.status : 500) as
+      | 400
+      | 401
+      | 403
+      | 404
+      | 500
+      | 501;
     return c.json(
       { error: error instanceof Error ? error.message : "Unable to start checkout." },
-      500,
+      status,
     );
   }
 });
@@ -540,6 +681,139 @@ paymentRoutes.post("/checkout/complete", async (c) => {
       500,
     );
   }
+});
+
+paymentRoutes.post("/mobile/verify/apple", async (c) => {
+  try {
+    const own = await getOwnProfileContext(
+      c.env,
+      c.req.header("Cookie"),
+      c.req.header("Authorization"),
+    );
+    if (!own) {
+      return c.json({ error: "Unauthorized." }, 401);
+    }
+
+    const payload = mobilePurchaseVerificationSchema.safeParse(await c.req.json());
+    if (!payload.success || payload.data.provider !== "apple") {
+      return c.json({ error: "Invalid Apple purchase verification payload." }, 400);
+    }
+
+    const product = assertCatalogItem(payload.data);
+    if (payload.data.productKind === "gift") {
+      await assertValidGiftTarget(c.env, own.profileId, payload.data.targetProfileId);
+    }
+
+    await verifyApplePurchase(c.env, {
+      receiptData: payload.data.receiptData,
+      transactionId: payload.data.transactionId,
+    });
+
+    const purchase = await upsertAndFulfillMobilePurchase(c.env, {
+      provider: "apple",
+      externalPaymentId: `apple:${payload.data.transactionId}`,
+      buyerProfileId: own.profileId,
+      targetProfileId: payload.data.targetProfileId ?? null,
+      productKind: payload.data.productKind,
+      itemKey: payload.data.itemKey,
+      amountCents: product.priceCents,
+      rawPayload: {
+        transactionId: payload.data.transactionId,
+      },
+    });
+
+    return c.json({ ok: true, purchase });
+  } catch (error) {
+    const status = (error instanceof PaymentRouteError ? error.status : 500) as
+      | 400
+      | 401
+      | 403
+      | 404
+      | 500
+      | 501;
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to verify Apple purchase.",
+      },
+      status,
+    );
+  }
+});
+
+paymentRoutes.post("/mobile/verify/google", async (c) => {
+  try {
+    const own = await getOwnProfileContext(
+      c.env,
+      c.req.header("Cookie"),
+      c.req.header("Authorization"),
+    );
+    if (!own) {
+      return c.json({ error: "Unauthorized." }, 401);
+    }
+
+    const payload = mobilePurchaseVerificationSchema.safeParse(await c.req.json());
+    if (!payload.success || payload.data.provider !== "google") {
+      return c.json({ error: "Invalid Google purchase verification payload." }, 400);
+    }
+
+    const product = assertCatalogItem(payload.data);
+    if (payload.data.productKind === "gift") {
+      await assertValidGiftTarget(c.env, own.profileId, payload.data.targetProfileId);
+    }
+
+    await verifyGooglePurchase(c.env, {
+      packageName: payload.data.packageName,
+      productId: payload.data.productId,
+      purchaseToken: payload.data.purchaseToken,
+      orderId: payload.data.orderId,
+    });
+
+    const purchase = await upsertAndFulfillMobilePurchase(c.env, {
+      provider: "google",
+      externalPaymentId: `google:${payload.data.purchaseToken}`,
+      buyerProfileId: own.profileId,
+      targetProfileId: payload.data.targetProfileId ?? null,
+      productKind: payload.data.productKind,
+      itemKey: payload.data.itemKey,
+      amountCents: product.priceCents,
+      rawPayload: {
+        orderId: payload.data.orderId ?? null,
+        packageName: payload.data.packageName,
+        productId: payload.data.productId,
+      },
+    });
+
+    return c.json({ ok: true, purchase });
+  } catch (error) {
+    const status = (error instanceof PaymentRouteError ? error.status : 500) as
+      | 400
+      | 401
+      | 403
+      | 404
+      | 500
+      | 501;
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to verify Google purchase.",
+      },
+      status,
+    );
+  }
+});
+
+paymentRoutes.post("/mobile/verify", async (c) => {
+  return c.json(
+    {
+      error: "Use /mobile/verify/apple or /mobile/verify/google for platform-specific verification.",
+    },
+    400,
+  );
 });
 
 paymentRoutes.post("/webhook/paypal", async (c) => {
