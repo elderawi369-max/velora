@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { conversations, messages, profiles, reports } from "../db/schema";
+import { conversations, messages, profiles } from "../db/schema";
 import { enforceConversationStartLimit, enforceMessageLimit } from "../lib/limits";
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -17,6 +17,15 @@ function getOwnReadAt(conversation: typeof conversations.$inferSelect, ownProfil
     : conversation.lastReadAtB;
 }
 
+function getOwnHiddenAt(
+  conversation: typeof conversations.$inferSelect,
+  ownProfileId: string,
+) {
+  return conversation.profileAId === ownProfileId
+    ? conversation.hiddenAtA
+    : conversation.hiddenAtB;
+}
+
 function readStatePatch(
   conversation: typeof conversations.$inferSelect,
   ownProfileId: string,
@@ -25,6 +34,32 @@ function readStatePatch(
   return conversation.profileAId === ownProfileId
     ? { lastReadAtA: timestamp }
     : { lastReadAtB: timestamp };
+}
+
+function hideStatePatch(
+  conversation: typeof conversations.$inferSelect,
+  ownProfileId: string,
+  timestamp: number,
+) {
+  return conversation.profileAId === ownProfileId
+    ? { hiddenAtA: timestamp }
+    : { hiddenAtB: timestamp };
+}
+
+function clearHiddenStatePatch(
+  conversation: typeof conversations.$inferSelect,
+  ownProfileId: string,
+) {
+  return conversation.profileAId === ownProfileId
+    ? { hiddenAtA: null }
+    : { hiddenAtB: null };
+}
+
+function clearHiddenForBothPatch(conversation: typeof conversations.$inferSelect) {
+  return {
+    ...clearHiddenStatePatch(conversation, conversation.profileAId),
+    ...clearHiddenStatePatch(conversation, conversation.profileBId),
+  };
 }
 
 chatRoutes.get("/conversations", async (c) => {
@@ -39,8 +74,14 @@ chatRoutes.get("/conversations", async (c) => {
     .from(conversations)
     .where(
       or(
-        eq(conversations.profileAId, own.profileId),
-        eq(conversations.profileBId, own.profileId),
+        and(
+          eq(conversations.profileAId, own.profileId),
+          sql`${conversations.hiddenAtA} IS NULL`,
+        ),
+        and(
+          eq(conversations.profileBId, own.profileId),
+          sql`${conversations.hiddenAtB} IS NULL`,
+        ),
       ),
     )
     .orderBy(desc(conversations.lastMessageAt))
@@ -154,7 +195,13 @@ chatRoutes.post("/conversations", async (c) => {
     .limit(1);
 
   if (existingConversation) {
-    return c.json({ conversation: existingConversation });
+    const [reopenedConversation] = await db
+      .update(conversations)
+      .set(clearHiddenStatePatch(existingConversation, own.profileId))
+      .where(eq(conversations.id, existingConversation.id))
+      .returning();
+
+    return c.json({ conversation: reopenedConversation ?? existingConversation });
   }
 
   const now = Date.now();
@@ -167,6 +214,8 @@ chatRoutes.post("/conversations", async (c) => {
     lastMessageSenderProfileId: own.profileId,
     lastReadAtA: now,
     lastReadAtB: 0,
+    hiddenAtA: null,
+    hiddenAtB: null,
     createdAt: now,
   };
 
@@ -207,6 +256,10 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
 
   if (!isMember) {
     return c.json({ error: "Forbidden." }, 403);
+  }
+
+  if (getOwnHiddenAt(conversation, own.profileId)) {
+    return c.json({ error: "Conversation not found." }, 404);
   }
 
   const otherProfileId =
@@ -276,6 +329,10 @@ chatRoutes.get("/conversations/:conversationId/messages", async (c) => {
     return c.json({ error: "Forbidden." }, 403);
   }
 
+  if (getOwnHiddenAt(conversation, own.profileId)) {
+    return c.json({ error: "Conversation not found." }, 404);
+  }
+
   const items = await db
     .select()
     .from(messages)
@@ -316,9 +373,10 @@ chatRoutes.delete("/conversations/:conversationId", async (c) => {
     return c.json({ error: "Forbidden." }, 403);
   }
 
-  await db.delete(messages).where(eq(messages.conversationId, conversation.id));
-  await db.delete(reports).where(eq(reports.conversationId, conversation.id));
-  await db.delete(conversations).where(eq(conversations.id, conversation.id));
+  await db
+    .update(conversations)
+    .set(hideStatePatch(conversation, own.profileId, Date.now()))
+    .where(eq(conversations.id, conversation.id));
 
   await logEvent(c.env, {
     eventType: "conversation_deleted",
@@ -374,6 +432,10 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
     return c.json({ error: "Forbidden." }, 403);
   }
 
+  if (getOwnHiddenAt(conversation, own.profileId)) {
+    return c.json({ error: "Conversation not found." }, 404);
+  }
+
   const otherProfileId =
     conversation.profileAId === own.profileId
       ? conversation.profileBId
@@ -407,6 +469,7 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
       lastMessagePreview: trimmedBody.slice(0, 140),
       lastMessageSenderProfileId: own.profileId,
       ...readStatePatch(conversation, own.profileId, now),
+      ...clearHiddenForBothPatch(conversation),
     })
     .where(eq(conversations.id, conversation.id));
 

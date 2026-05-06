@@ -57,6 +57,8 @@ export const conversations = sqliteTable("conversations", {
     .references(() => profiles.id),
   lastReadAtA: integer("last_read_at_a").notNull(),
   lastReadAtB: integer("last_read_at_b").notNull(),
+  hiddenAtA: integer("hidden_at_a"),
+  hiddenAtB: integer("hidden_at_b"),
   createdAt: integer("created_at").notNull(),
 });
 

@@ -99,7 +99,7 @@ export function ConversationList() {
                 }
               }}
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Removing..." : "Remove"}
             </button>
           </div>
           {deleteMutation.error ? (

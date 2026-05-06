@@ -110,7 +110,7 @@ export function ChatPage() {
                 }
               }}
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete conversation"}
+              {deleteMutation.isPending ? "Removing..." : "Remove from inbox"}
             </button>
             <span className={conversation?.isFavorited ? "chip" : "chip chip-muted"}>
               {conversation?.isFavorited ? "Favorited" : "Not favorited"}
