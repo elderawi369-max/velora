@@ -215,128 +215,144 @@ authRoutes.post("/change-password", async (c) => {
 });
 
 authRoutes.delete("/account", async (c) => {
-  const userId = await getUserIdFromSession(
-    c.env,
-    c.req.header("Cookie"),
-    c.req.header("Authorization"),
-  );
-  if (!userId) {
-    return c.json({ error: "Unauthorized." }, 401);
-  }
-
-  const payload = deleteAccountSchema.safeParse(await c.req.json());
-  if (!payload.success) {
-    return c.json({ error: "Invalid delete-account request." }, 400);
-  }
-
-  const db = getDb(c.env);
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  if (!user) {
-    return c.json({ error: "User not found." }, 404);
-  }
-
-  const isValid = await verifyPassword(
-    payload.data.currentPassword,
-    user.passwordSalt,
-    user.passwordHash,
-  );
-  if (!isValid) {
-    return c.json({ error: "Current password is incorrect." }, 401);
-  }
-
-  const [profile] = await db
-    .select({ id: profiles.id })
-    .from(profiles)
-    .where(eq(profiles.userId, userId))
-    .limit(1);
-
-  if (profile) {
-    const relatedConversations = await db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(
-        or(
-          eq(conversations.profileAId, profile.id),
-          eq(conversations.profileBId, profile.id),
-        ),
-      );
-    const conversationIds = relatedConversations.map((item) => item.id);
-
-    await db
-      .delete(reports)
-      .where(
-        or(
-          eq(reports.reporterProfileId, profile.id),
-          eq(reports.targetProfileId, profile.id),
-        ),
-      );
-
-    for (const conversationId of conversationIds) {
-      await db.delete(messages).where(eq(messages.conversationId, conversationId));
+  try {
+    const userId = await getUserIdFromSession(
+      c.env,
+      c.req.header("Cookie"),
+      c.req.header("Authorization"),
+    );
+    if (!userId) {
+      return c.json({ error: "Unauthorized." }, 401);
     }
 
-    if (conversationIds.length > 0) {
+    const payload = deleteAccountSchema.safeParse(await c.req.json());
+    if (!payload.success) {
+      return c.json({ error: "Invalid delete-account request." }, 400);
+    }
+
+    const db = getDb(c.env);
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return c.json({ error: "User not found." }, 404);
+    }
+
+    const isValid = await verifyPassword(
+      payload.data.currentPassword,
+      user.passwordSalt,
+      user.passwordHash,
+    );
+    if (!isValid) {
+      return c.json({ error: "Current password is incorrect." }, 401);
+    }
+
+    const [profile] = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+
+    if (profile) {
+      const relatedConversations = await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(
+          or(
+            eq(conversations.profileAId, profile.id),
+            eq(conversations.profileBId, profile.id),
+          ),
+        );
+      const conversationIds = relatedConversations.map((item) => item.id);
+
+      for (const conversationId of conversationIds) {
+        await db.delete(messages).where(eq(messages.conversationId, conversationId));
+      }
+
+      await db
+        .delete(reports)
+        .where(
+          or(
+            eq(reports.reporterProfileId, profile.id),
+            eq(reports.targetProfileId, profile.id),
+          ),
+        );
+
+      for (const conversationId of conversationIds) {
+        await db.delete(reports).where(eq(reports.conversationId, conversationId));
+      }
+
+      await db
+        .delete(notifications)
+        .where(
+          or(
+            eq(notifications.profileId, profile.id),
+            eq(notifications.actorProfileId, profile.id),
+          ),
+        );
+
+      await db
+        .delete(favorites)
+        .where(
+          or(
+            eq(favorites.profileId, profile.id),
+            eq(favorites.targetProfileId, profile.id),
+          ),
+        );
+      await db
+        .delete(blocks)
+        .where(
+          or(
+            eq(blocks.profileId, profile.id),
+            eq(blocks.targetProfileId, profile.id),
+          ),
+        );
+      await db
+        .delete(gifts)
+        .where(
+          or(
+            eq(gifts.senderProfileId, profile.id),
+            eq(gifts.targetProfileId, profile.id),
+          ),
+        );
+      await db.delete(boosts).where(eq(boosts.profileId, profile.id));
+      await db
+        .delete(purchases)
+        .where(
+          or(
+            eq(purchases.buyerProfileId, profile.id),
+            eq(purchases.targetProfileId, profile.id),
+          ),
+        );
+      await db.delete(supportTickets).where(eq(supportTickets.profileId, profile.id));
+
       for (const conversationId of conversationIds) {
         await db.delete(conversations).where(eq(conversations.id, conversationId));
       }
+
+      await db.delete(profiles).where(eq(profiles.id, profile.id));
     }
 
-    await db
-      .delete(favorites)
-      .where(
-        or(
-          eq(favorites.profileId, profile.id),
-          eq(favorites.targetProfileId, profile.id),
-        ),
-      );
-    await db
-      .delete(blocks)
-      .where(
-        or(
-          eq(blocks.profileId, profile.id),
-          eq(blocks.targetProfileId, profile.id),
-        ),
-      );
-    await db
-      .delete(gifts)
-      .where(
-        or(
-          eq(gifts.senderProfileId, profile.id),
-          eq(gifts.targetProfileId, profile.id),
-        ),
-      );
-    await db.delete(boosts).where(eq(boosts.profileId, profile.id));
-    await db
-      .delete(purchases)
-      .where(
-        or(
-          eq(purchases.buyerProfileId, profile.id),
-          eq(purchases.targetProfileId, profile.id),
-        ),
-      );
-    await db
-      .delete(notifications)
-      .where(
-        or(
-          eq(notifications.profileId, profile.id),
-          eq(notifications.actorProfileId, profile.id),
-        ),
-      );
-    await db.delete(supportTickets).where(eq(supportTickets.profileId, profile.id));
-    await db.delete(profiles).where(eq(profiles.id, profile.id));
+    await db.delete(sessions).where(eq(sessions.userId, userId));
+    await db.delete(users).where(eq(users.id, userId));
+
+    c.header(
+      "Set-Cookie",
+      clearSessionCookie(resolveCookiePolicy(c.req.url, c.env.APP_ENV)),
+    );
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to delete account right now.",
+      },
+      500,
+    );
   }
-
-  await db.delete(sessions).where(eq(sessions.userId, userId));
-  await db.delete(users).where(eq(users.id, userId));
-
-  c.header(
-    "Set-Cookie",
-    clearSessionCookie(resolveCookiePolicy(c.req.url, c.env.APP_ENV)),
-  );
-  return c.json({ ok: true });
 });

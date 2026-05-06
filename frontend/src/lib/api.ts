@@ -66,6 +66,7 @@ export type SignupPayload = {
   email: string;
   password: string;
   turnstileToken: string;
+  ageConfirmed: boolean;
 };
 
 export type LoginPayload = {

@@ -6,6 +6,7 @@ export const signupSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8).max(72),
   turnstileToken: z.string().trim().min(1),
+  ageConfirmed: z.literal(true),
 });
 
 export const loginSchema = z.object({

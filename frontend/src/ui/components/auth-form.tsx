@@ -15,6 +15,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +27,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "signup") {
-        const result = await signup({ email, password, turnstileToken });
+        const result = await signup({ email, password, turnstileToken, ageConfirmed });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         navigate("/create-profile");
@@ -83,7 +84,19 @@ export function AuthForm({ mode }: AuthFormProps) {
         </label>
 
         {mode === "signup" ? (
-          <TurnstileWidget onTokenChange={setTurnstileToken} />
+          <>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(event) => setAgeConfirmed(event.target.checked)}
+                required
+              />
+              <span>I confirm that I am 18 or older.</span>
+            </label>
+
+            <TurnstileWidget onTokenChange={setTurnstileToken} />
+          </>
         ) : null}
 
         {error ? <p className="form-error">{error}</p> : null}
@@ -91,7 +104,10 @@ export function AuthForm({ mode }: AuthFormProps) {
         <button
           className="primary-button"
           type="submit"
-          disabled={isSubmitting || (mode === "signup" && !turnstileToken)}
+          disabled={
+            isSubmitting ||
+            (mode === "signup" && (!turnstileToken || !ageConfirmed))
+          }
         >
           {isSubmitting
             ? "Please wait..."
