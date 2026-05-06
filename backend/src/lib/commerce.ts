@@ -7,12 +7,12 @@ export type BoostType = "spark" | "spotlight";
 
 export const giftCatalog = [
   { key: "rose", label: "Rose Aura", priceCents: 99 },
-  { key: "starlight", label: "Starlight Ring", priceCents: 199 },
-  { key: "crown", label: "Velora Crown", priceCents: 399 },
+  { key: "starlight", label: "Starlight Ring", priceCents: 299 },
+  { key: "crown", label: "Velora Crown", priceCents: 499 },
 ] as const;
 
 export const boostCatalog = [
-  { key: "spark", label: "Spark Boost", durationHours: 6, priceCents: 299 },
+  { key: "spark", label: "Spark Boost", durationHours: 6, priceCents: 399 },
   { key: "spotlight", label: "Spotlight Boost", durationHours: 24, priceCents: 699 },
 ] as const;
 
