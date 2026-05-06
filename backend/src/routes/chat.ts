@@ -8,6 +8,7 @@ import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { logEvent } from "../lib/analytics";
+import { sendPushToUser } from "../lib/push";
 
 export const chatRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -266,6 +267,11 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
     conversation.profileAId === own.profileId
       ? conversation.profileBId
       : conversation.profileAId;
+  const [ownProfileRow] = await db
+    .select({ displayName: profiles.displayName })
+    .from(profiles)
+    .where(eq(profiles.id, own.profileId))
+    .limit(1);
 
   const [otherProfile] = await db
     .select({
@@ -440,6 +446,11 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
     conversation.profileAId === own.profileId
       ? conversation.profileBId
       : conversation.profileAId;
+  const [ownProfileRow] = await db
+    .select({ displayName: profiles.displayName })
+    .from(profiles)
+    .where(eq(profiles.id, own.profileId))
+    .limit(1);
 
   if (await areProfilesBlocked(c.env, own.profileId, otherProfileId)) {
     return c.json({ error: "This connection is unavailable." }, 403);
@@ -472,6 +483,20 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
       ...clearHiddenForBothPatch(conversation),
     })
     .where(eq(conversations.id, conversation.id));
+
+  const [targetUser] = await db
+    .select({ userId: profiles.userId, displayName: profiles.displayName })
+    .from(profiles)
+    .where(eq(profiles.id, otherProfileId))
+    .limit(1);
+
+  if (targetUser?.userId) {
+    await sendPushToUser(c.env, targetUser.userId, {
+      title: `${ownProfileRow?.displayName ?? "Someone"} sent a message`,
+      body: trimmedBody.slice(0, 120),
+      link: `/chat/${conversation.id}`,
+    }).catch(() => undefined);
+  }
 
   return c.json({ message }, 201);
 });

@@ -462,3 +462,21 @@ export function submitSupportTicket(payload: SupportTicketPayload) {
     body: payload,
   });
 }
+
+export function registerPushToken(payload: {
+  token: string;
+  platform: "web" | "android";
+  deviceLabel?: string;
+}) {
+  return request<{ ok: true }>("/api/push/register", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function unregisterPushToken(token: string) {
+  return request<{ ok: true }>("/api/push/unregister", {
+    method: "POST",
+    body: { token },
+  });
+}

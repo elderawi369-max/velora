@@ -183,6 +183,19 @@ export const supportTickets = sqliteTable("support_tickets", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const pushDevices = sqliteTable("push_devices", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  token: text("token").notNull().unique(),
+  platform: text("platform").notNull(),
+  deviceLabel: text("device_label"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+});
+
 export const eventLogs = sqliteTable("event_logs", {
   id: text("id").primaryKey(),
   userId: text("user_id").references(() => users.id),

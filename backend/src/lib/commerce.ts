@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
-import { boosts, gifts, notifications, purchases } from "../db/schema";
+import { boosts, gifts, notifications, profiles, purchases } from "../db/schema";
 import { getDb, type EnvBindings } from "./db";
 import { logEvent } from "./analytics";
+import { sendPushToUser } from "./push";
 
 export type GiftType = "rose" | "starlight" | "crown";
 export type BoostType = "spark" | "spotlight";
@@ -36,6 +37,36 @@ export async function createNotification(
     readAt: null,
     createdAt: Date.now(),
   });
+
+  const [targetProfile] = await db
+    .select({ userId: profiles.userId })
+    .from(profiles)
+    .where(eq(profiles.id, input.profileId))
+    .limit(1);
+  const [actorProfile] = await db
+    .select({ displayName: profiles.displayName })
+    .from(profiles)
+    .where(eq(profiles.id, input.actorProfileId))
+    .limit(1);
+
+  if (targetProfile?.userId) {
+    const body =
+      input.type === "gift"
+        ? `${actorProfile?.displayName ?? "Someone"} sent you a ${
+            input.giftType === "rose"
+              ? "Rose Aura"
+              : input.giftType === "starlight"
+                ? "Starlight Ring"
+                : "Velora Crown"
+          }.`
+        : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
+
+    await sendPushToUser(env, targetProfile.userId, {
+      title: "Velora activity",
+      body,
+      link: "/activity",
+    }).catch(() => undefined);
+  }
 }
 
 export async function fulfillPurchase(env: EnvBindings, purchaseId: string) {

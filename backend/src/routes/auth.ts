@@ -30,6 +30,7 @@ import {
 import { hashPassword, hashToken, verifyPassword } from "../lib/crypto";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { logEvent } from "../lib/analytics";
+import { sendPasswordResetEmail } from "../lib/email";
 import {
   changePasswordSchema,
   deleteAccountSchema,
@@ -228,6 +229,7 @@ authRoutes.post("/forgot-password", async (c) => {
   }
 
   const db = getDb(c.env);
+  const emailDeliveryReady = Boolean(c.env.RESEND_API_KEY && c.env.RESEND_FROM_EMAIL);
   const [user] = await db
     .select({ id: users.id, email: users.email })
     .from(users)
@@ -251,30 +253,40 @@ authRoutes.post("/forgot-password", async (c) => {
       createdAt: now,
     });
 
-    await db.insert(supportTickets).values({
-      id: crypto.randomUUID(),
-      profileId: null,
-      email: user.email,
-      subject: "Password reset requested",
-      message: `Password reset requested for ${user.email}. Manual reset link: ${resetLink}`,
-      status: "open",
-      createdAt: now,
+    const emailResult = await sendPasswordResetEmail(c.env, {
+      to: user.email,
+      resetLink,
+    }).catch(async (error) => {
+      await db.insert(supportTickets).values({
+        id: crypto.randomUUID(),
+        profileId: null,
+        email: user.email,
+        subject: "Password reset requested",
+        message: `Password reset requested for ${user.email}. Email delivery failed, manual reset link: ${resetLink}. Error: ${
+          error instanceof Error ? error.message : "Unknown email delivery error."
+        }`,
+        status: "open",
+        createdAt: now,
+      });
+
+      return { delivered: false, provider: "fallback" as const };
     });
 
     await logEvent(c.env, {
       eventType: "password_reset_requested",
       userId: user.id,
       eventData: {
-        delivery: "support-fallback",
+        delivery: emailResult.provider,
       },
     });
   }
 
   return c.json({
     ok: true,
-    delivery: "support-fallback",
     message:
-      "If that email exists, a reset request is now ready. Automated reset email is not live yet, so support/admin needs to issue the reset link.",
+      emailDeliveryReady
+        ? "If that email exists, a reset email is on the way."
+        : "If that email exists, the reset request is recorded. Email delivery is not configured yet, so support can still issue it manually.",
   });
 });
 

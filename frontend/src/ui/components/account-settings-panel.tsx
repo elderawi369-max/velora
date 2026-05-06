@@ -2,6 +2,11 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { changePassword, clearAuthToken, deleteAccount, logout } from "../../lib/api";
+import {
+  canUsePushNotifications,
+  disablePushNotifications,
+  enablePushNotifications,
+} from "../../lib/push";
 
 const adminStorageKey = "velora-admin-key";
 
@@ -15,6 +20,8 @@ export function AccountSettingsPanel() {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [pushMessage, setPushMessage] = useState("");
+  const [pushError, setPushError] = useState("");
   const [adminKey, setAdminKey] = useState(
     typeof window !== "undefined"
       ? window.localStorage.getItem(adminStorageKey) ?? ""
@@ -45,6 +52,37 @@ export function AccountSettingsPanel() {
     },
     onError: (error) => {
       setDeleteError(error instanceof Error ? error.message : "Unable to delete account.");
+    },
+  });
+
+  const enablePushMutation = useMutation({
+    mutationFn: async () => {
+      const supported = await canUsePushNotifications();
+      if (!supported) {
+        throw new Error("Push notifications are not available until Firebase web push is configured.");
+      }
+
+      return enablePushNotifications();
+    },
+    onSuccess: () => {
+      setPushError("");
+      setPushMessage("Push notifications enabled for this browser.");
+    },
+    onError: (error) => {
+      setPushMessage("");
+      setPushError(error instanceof Error ? error.message : "Unable to enable push notifications.");
+    },
+  });
+
+  const disablePushMutation = useMutation({
+    mutationFn: disablePushNotifications,
+    onSuccess: () => {
+      setPushError("");
+      setPushMessage("Push notifications disabled for this browser.");
+    },
+    onError: (error) => {
+      setPushMessage("");
+      setPushError(error instanceof Error ? error.message : "Unable to disable push notifications.");
     },
   });
 
@@ -139,6 +177,42 @@ export function AccountSettingsPanel() {
       </div>
 
       <div className="settings-grid">
+        <section className="panel form-panel settings-subpanel">
+          <span className="meta-title">Push notifications</span>
+          <p className="status-message">
+            Enable real browser notifications for new messages, gifts, and activity when Firebase
+            web push is configured.
+          </p>
+          {pushError ? <p className="form-error">{pushError}</p> : null}
+          {pushMessage ? <p className="success-message">{pushMessage}</p> : null}
+          <div className="action-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setPushError("");
+                setPushMessage("");
+                enablePushMutation.mutate();
+              }}
+              disabled={enablePushMutation.isPending}
+            >
+              {enablePushMutation.isPending ? "Enabling..." : "Enable notifications"}
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setPushError("");
+                setPushMessage("");
+                disablePushMutation.mutate();
+              }}
+              disabled={disablePushMutation.isPending}
+            >
+              {disablePushMutation.isPending ? "Disabling..." : "Disable on this device"}
+            </button>
+          </div>
+        </section>
+
         <section className="panel form-panel settings-subpanel">
           <span className="meta-title">Admin access</span>
           <p className="status-message">
