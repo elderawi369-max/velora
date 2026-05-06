@@ -6,8 +6,17 @@
 	"vars": {
 		"APP_NAME": "Velora API",
 		"APP_ENV": "production",
-		"ENABLE_DEV_ENDPOINTS": "false"
+		"ENABLE_DEV_ENDPOINTS": "false",
+		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
+		"RESEND_FROM_NAME": "Velora"
 	},
+	"routes": [
+		{
+			"pattern": "api.velorachat.com",
+			"zone_name": "velorachat.com",
+			"custom_domain": true
+		}
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
