@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Velora</string>
+    <string name="title_activity_main">Velora</string>
+    <string name="package_name">com.velorachat.app</string>
+    <string name="custom_url_scheme">com.velorachat.app</string>
+</resources>
