@@ -397,7 +397,7 @@ paymentRoutes.post("/checkout", async (c) => {
         createdAt: Date.now(),
       });
 
-      return c.json({ checkoutUrl: session.url });
+      return c.json({ checkoutUrl: session.url, checkoutId: session.id });
     }
 
     const boost = boostCatalog.find((item) => item.key === payload.data.itemKey);
@@ -432,7 +432,7 @@ paymentRoutes.post("/checkout", async (c) => {
       createdAt: Date.now(),
     });
 
-    return c.json({ checkoutUrl: session.url });
+    return c.json({ checkoutUrl: session.url, checkoutId: session.id });
   } catch (error) {
     return c.json(
       { error: error instanceof Error ? error.message : "Unable to start checkout." },

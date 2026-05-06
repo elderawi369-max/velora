@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { completeCheckoutSession } from "../../lib/api";
+import { clearPendingCheckoutId, completeCheckoutSession, getPendingCheckoutId } from "../../lib/api";
 
 export function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
@@ -13,7 +13,8 @@ export function PaymentSuccessPage() {
     const currentSessionId =
       searchParams.get("session_id") ??
       searchParams.get("token") ??
-      searchParams.get("orderId");
+      searchParams.get("orderId") ??
+      getPendingCheckoutId();
     if (!currentSessionId) {
       setStatus("error");
       setMessage("Missing payment session.");
@@ -23,6 +24,7 @@ export function PaymentSuccessPage() {
     async function complete(sessionId: string) {
       try {
         const result = await completeCheckoutSession(sessionId);
+        clearPendingCheckoutId();
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["profiles"] });
         await queryClient.invalidateQueries({ queryKey: ["notifications"] });

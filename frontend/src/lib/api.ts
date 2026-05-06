@@ -323,15 +323,41 @@ export function fetchBoostCatalog() {
   }>("/api/social/boosts/catalog");
 }
 
+const pendingCheckoutStorageKey = "velora-pending-checkout";
+
+export function savePendingCheckoutId(checkoutId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(pendingCheckoutStorageKey, checkoutId);
+}
+
+export function getPendingCheckoutId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.sessionStorage.getItem(pendingCheckoutStorageKey) ?? "";
+}
+
+export function clearPendingCheckoutId() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(pendingCheckoutStorageKey);
+}
+
 export function createGiftCheckout(targetProfileId: string, giftType: string) {
-  return request<{ checkoutUrl: string }>("/api/payments/checkout", {
+  return request<{ checkoutUrl: string; checkoutId: string }>("/api/payments/checkout", {
     method: "POST",
     body: { productKind: "gift", targetProfileId, itemKey: giftType },
   });
 }
 
 export function createBoostCheckout(boostType: string) {
-  return request<{ checkoutUrl: string }>("/api/payments/checkout", {
+  return request<{ checkoutUrl: string; checkoutId: string }>("/api/payments/checkout", {
     method: "POST",
     body: { productKind: "boost", itemKey: boostType },
   });

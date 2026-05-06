@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createGiftCheckout, fetchGiftCatalog } from "../../lib/api";
+import { createGiftCheckout, fetchGiftCatalog, savePendingCheckoutId } from "../../lib/api";
 
 type GiftActionsProps = {
   profileId: string;
@@ -14,6 +14,7 @@ export function GiftActions({ profileId }: GiftActionsProps) {
   const giftMutation = useMutation({
     mutationFn: (giftType: string) => createGiftCheckout(profileId, giftType),
     onSuccess: (result) => {
+      savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
     },
   });

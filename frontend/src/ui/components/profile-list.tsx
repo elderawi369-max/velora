@@ -16,6 +16,7 @@ import {
 import {
   addFavorite,
   createGiftCheckout,
+  savePendingCheckoutId,
   createConversation,
   fetchGiftCatalog,
   fetchProfiles,
@@ -109,6 +110,7 @@ export function ProfileList() {
     mutationFn: ({ profileId, giftType }: { profileId: string; giftType: string }) =>
       createGiftCheckout(profileId, giftType),
     onSuccess: (result) => {
+      savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
     },
   });

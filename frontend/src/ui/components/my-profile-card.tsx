@@ -7,7 +7,7 @@ import {
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
-import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile } from "../../lib/api";
+import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile, savePendingCheckoutId } from "../../lib/api";
 import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
@@ -24,6 +24,7 @@ export function MyProfileCard() {
   const boostMutation = useMutation({
     mutationFn: (boostType: string) => createBoostCheckout(boostType),
     onSuccess: (result) => {
+      savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
     },
   });
@@ -198,3 +199,4 @@ export function MyProfileCard() {
     </article>
   );
 }
+
