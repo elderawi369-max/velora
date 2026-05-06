@@ -10,7 +10,10 @@ export function PaymentSuccessPage() {
   const [message, setMessage] = useState("Confirming your purchase...");
 
   useEffect(() => {
-    const currentSessionId = searchParams.get("session_id");
+    const currentSessionId =
+      searchParams.get("session_id") ??
+      searchParams.get("token") ??
+      searchParams.get("orderId");
     if (!currentSessionId) {
       setStatus("error");
       setMessage("Missing payment session.");

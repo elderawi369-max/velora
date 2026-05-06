@@ -8,6 +8,8 @@ export type EnvBindings = {
   ENABLE_DEV_ENDPOINTS?: string;
   TURNSTILE_SECRET_KEY?: string;
   STRIPE_SECRET_KEY?: string;
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_SECRET?: string;
   PAYMENTS_PROVIDER?: string;
 };
 
