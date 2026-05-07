@@ -14,6 +14,11 @@ export const paymentRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 type CheckoutProvider = "paypal" | "stripe";
 type MobileProvider = "apple" | "google";
+type GoogleServiceAccountCredentials = {
+  client_email: string;
+  private_key: string;
+  token_uri?: string;
+};
 
 class PaymentRouteError extends Error {
   status: number;
@@ -72,6 +77,111 @@ function getPayPalBaseUrl(env: EnvBindings) {
   return mode === "live"
     ? "https://api-m.paypal.com"
     : "https://api-m.sandbox.paypal.com";
+}
+
+function toBase64UrlString(input: string) {
+  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function toBase64UrlBytes(input: ArrayBuffer) {
+  const bytes = new Uint8Array(input);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodePemPrivateKey(privateKeyPem: string) {
+  const normalized = privateKeyPem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes.buffer;
+}
+
+async function getGooglePlayAccessToken(env: EnvBindings) {
+  if (!env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON) {
+    throw new PaymentRouteError("Google Play billing is not configured yet.", 501);
+  }
+
+  let credentials: GoogleServiceAccountCredentials;
+  try {
+    credentials = JSON.parse(env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON) as GoogleServiceAccountCredentials;
+  } catch {
+    throw new PaymentRouteError("Google Play service account JSON is invalid.", 500);
+  }
+
+  if (!credentials.client_email || !credentials.private_key) {
+    throw new PaymentRouteError("Google Play service account credentials are incomplete.", 500);
+  }
+
+  const tokenAudience = credentials.token_uri ?? "https://oauth2.googleapis.com/token";
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const unsignedToken = [
+    toBase64UrlString(JSON.stringify({ alg: "RS256", typ: "JWT" })),
+    toBase64UrlString(
+      JSON.stringify({
+        iss: credentials.client_email,
+        scope: "https://www.googleapis.com/auth/androidpublisher",
+        aud: tokenAudience,
+        iat: nowSeconds,
+        exp: nowSeconds + 3600,
+      }),
+    ),
+  ].join(".");
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    decodePemPrivateKey(credentials.private_key),
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256",
+    },
+    false,
+    ["sign"],
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsignedToken),
+  );
+
+  const assertion = `${unsignedToken}.${toBase64UrlBytes(signature)}`;
+  const response = await fetch(tokenAudience, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+
+  const data = (await response.json()) as {
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (!response.ok || !data.access_token) {
+    throw new PaymentRouteError(
+      data.error_description ?? data.error ?? "Unable to authenticate with Google Play Developer API.",
+      500,
+    );
+  }
+
+  return data.access_token;
 }
 
 async function getPayPalAccessToken(env: EnvBindings) {
@@ -423,7 +533,7 @@ async function verifyApplePurchase(
 
 async function verifyGooglePurchase(
   env: EnvBindings,
-  _input: {
+  input: {
     packageName: string;
     productId: string;
     purchaseToken: string;
@@ -434,10 +544,59 @@ async function verifyGooglePurchase(
     throw new PaymentRouteError("Google Play billing is not configured yet.", 501);
   }
 
-  throw new PaymentRouteError(
-    "Google Play purchase verification is not connected yet. Add Play Developer API verification next.",
-    501,
+  if (input.packageName !== env.GOOGLE_PLAY_PACKAGE_NAME) {
+    throw new PaymentRouteError("Google Play purchase package does not match this app.", 400);
+  }
+
+  const accessToken = await getGooglePlayAccessToken(env);
+  const response = await fetch(
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(
+      input.packageName,
+    )}/purchases/products/${encodeURIComponent(input.productId)}/tokens/${encodeURIComponent(
+      input.purchaseToken,
+    )}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
   );
+
+  const data = (await response.json()) as {
+    purchaseState?: number;
+    consumptionState?: number;
+    acknowledgementState?: number;
+    orderId?: string;
+    error?: {
+      code?: number;
+      message?: string;
+    };
+  };
+
+  if (!response.ok) {
+    throw new PaymentRouteError(
+      data.error?.message ?? "Unable to verify Google Play purchase.",
+      response.status === 401 || response.status === 403 ? 501 : 500,
+    );
+  }
+
+  if (typeof data.purchaseState !== "number") {
+    throw new PaymentRouteError("Google Play purchase response is incomplete.", 500);
+  }
+
+  if (data.purchaseState === 2) {
+    throw new PaymentRouteError("Google Play purchase is still pending.", 400);
+  }
+
+  if (data.purchaseState !== 0) {
+    throw new PaymentRouteError("Google Play purchase is not completed.", 400);
+  }
+
+  if (input.orderId && data.orderId && input.orderId !== data.orderId) {
+    throw new PaymentRouteError("Google Play order verification did not match the expected order.", 400);
+  }
+
+  return data;
 }
 
 async function upsertAndFulfillMobilePurchase(

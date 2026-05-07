@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   formatIdentityLabel,
@@ -8,11 +8,13 @@ import {
   platformRules,
 } from "../../config";
 import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile, savePendingCheckoutId } from "../../lib/api";
+import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
 import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function MyProfileCard() {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
@@ -22,10 +24,28 @@ export function MyProfileCard() {
     queryFn: fetchBoostCatalog,
   });
   const boostMutation = useMutation({
-    mutationFn: (boostType: string) => createBoostCheckout(boostType),
-    onSuccess: (result) => {
+    mutationFn: async (boostType: string) => {
+      if (isNativeAndroidApp()) {
+        return completeGooglePlayPurchase({
+          productKind: "boost",
+          itemKey: boostType,
+        });
+      }
+
+      const checkout = await createBoostCheckout(boostType);
+      return { mode: "checkout" as const, ...checkout };
+    },
+    onSuccess: async (result) => {
+      if ("mode" in result) {
       savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      if (!result.cancelled) {
+        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      }
     },
   });
 

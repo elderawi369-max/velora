@@ -22,6 +22,7 @@ import {
   fetchProfiles,
   removeFavorite,
 } from "../../lib/api";
+import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function ProfileList() {
@@ -105,11 +106,29 @@ export function ProfileList() {
     },
   });
   const giftMutation = useMutation({
-    mutationFn: ({ profileId, giftType }: { profileId: string; giftType: string }) =>
-      createGiftCheckout(profileId, giftType),
-    onSuccess: (result) => {
+    mutationFn: async ({ profileId, giftType }: { profileId: string; giftType: string }) => {
+      if (isNativeAndroidApp()) {
+        return completeGooglePlayPurchase({
+          productKind: "gift",
+          itemKey: giftType,
+          targetProfileId: profileId,
+        });
+      }
+
+      const checkout = await createGiftCheckout(profileId, giftType);
+      return { mode: "checkout" as const, ...checkout };
+    },
+    onSuccess: async (result) => {
+      if ("mode" in result) {
       savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      if (!result.cancelled) {
+        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      }
     },
   });
 

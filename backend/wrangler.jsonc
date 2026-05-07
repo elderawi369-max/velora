@@ -9,6 +9,7 @@
 		"APP_NAME": "Velora API",
 		"APP_ENV": "production",
 		"ENABLE_DEV_ENDPOINTS": "false",
+		"GOOGLE_PLAY_PACKAGE_NAME": "com.velorachat.app",
 		"PAYPAL_ENV": "live",
 		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
 		"RESEND_FROM_NAME": "Velora"

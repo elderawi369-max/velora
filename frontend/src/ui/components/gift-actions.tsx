@@ -1,21 +1,43 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createGiftCheckout, fetchGiftCatalog, savePendingCheckoutId } from "../../lib/api";
+import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
 
 type GiftActionsProps = {
   profileId: string;
 };
 
 export function GiftActions({ profileId }: GiftActionsProps) {
+  const queryClient = useQueryClient();
   const giftCatalogQuery = useQuery({
     queryKey: ["giftCatalog"],
     queryFn: fetchGiftCatalog,
   });
 
   const giftMutation = useMutation({
-    mutationFn: (giftType: string) => createGiftCheckout(profileId, giftType),
-    onSuccess: (result) => {
+    mutationFn: async (giftType: string) => {
+      if (isNativeAndroidApp()) {
+        return completeGooglePlayPurchase({
+          productKind: "gift",
+          itemKey: giftType,
+          targetProfileId: profileId,
+        });
+      }
+
+      const checkout = await createGiftCheckout(profileId, giftType);
+      return { mode: "checkout" as const, ...checkout };
+    },
+    onSuccess: async (result) => {
+      if ("mode" in result) {
       savePendingCheckoutId(result.checkoutId);
       window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      if (!result.cancelled) {
+        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+        await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      }
     },
   });
 

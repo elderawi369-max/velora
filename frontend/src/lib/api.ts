@@ -406,6 +406,25 @@ export function createBoostCheckout(boostType: string) {
   });
 }
 
+export function verifyGoogleMobilePurchase(payload: {
+  provider: "google";
+  productKind: "gift" | "boost";
+  itemKey: string;
+  targetProfileId?: string;
+  purchaseToken: string;
+  packageName: string;
+  productId: string;
+  orderId?: string;
+}) {
+  return request<{
+    ok: true;
+    purchase: { id: string; productKind: string; itemKey: string; status: string };
+  }>("/api/payments/mobile/verify/google", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export function completeCheckoutSession(sessionId: string) {
   return request<{
     ok: true;
