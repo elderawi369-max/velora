@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
 import { useEffect, useState } from "react";
 import { syncPushNotificationsIfGranted } from "../lib/push";
+import { VeloraLogo } from "./components/velora-logo";
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -96,7 +97,7 @@ export function AppLayout() {
     <div className="page-shell">
       <header className="topbar">
         <NavLink to="/" className="brand">
-          Velora
+          <VeloraLogo />
         </NavLink>
         <nav className="topnav">
           {navItems.map((item) => (
