@@ -67,13 +67,20 @@ function getConfiguredPaymentProvider(env: EnvBindings): CheckoutProvider | null
   return null;
 }
 
+function getPayPalBaseUrl(env: EnvBindings) {
+  const mode = (env.PAYPAL_ENV ?? "").toLowerCase();
+  return mode === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
+}
+
 async function getPayPalAccessToken(env: EnvBindings) {
   if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_SECRET) {
     throw new Error("PayPal is not configured yet.");
   }
 
   const credentials = btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_SECRET}`);
-  const response = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+  const response = await fetch(`${getPayPalBaseUrl(env)}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -107,7 +114,7 @@ async function createPayPalOrder(
   const accessToken = await getPayPalAccessToken(env);
   const amount = (input.amountCents / 100).toFixed(2);
 
-  const response = await fetch("https://api-m.sandbox.paypal.com/v2/checkout/orders", {
+  const response = await fetch(`${getPayPalBaseUrl(env)}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -166,7 +173,7 @@ async function createPayPalOrder(
 
 async function capturePayPalOrder(env: EnvBindings, orderId: string) {
   const accessToken = await getPayPalAccessToken(env);
-  const response = await fetch(`https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderId}/capture`, {
+  const response = await fetch(`${getPayPalBaseUrl(env)}/v2/checkout/orders/${orderId}/capture`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
