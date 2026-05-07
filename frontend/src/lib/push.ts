@@ -13,7 +13,8 @@ function ensureFirebaseApp() {
 }
 
 async function getServiceWorkerRegistration() {
-  return navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  return navigator.serviceWorker.ready;
 }
 
 export async function canUsePushNotifications() {
