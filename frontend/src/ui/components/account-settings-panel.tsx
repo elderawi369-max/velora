@@ -6,6 +6,7 @@ import {
   canUsePushNotifications,
   disablePushNotifications,
   enablePushNotifications,
+  getPushAvailabilityMessage,
 } from "../../lib/push";
 
 const adminStorageKey = "velora-admin-key";
@@ -59,7 +60,10 @@ export function AccountSettingsPanel() {
     mutationFn: async () => {
       const supported = await canUsePushNotifications();
       if (!supported) {
-        throw new Error("Push notifications are not available until Firebase web push is configured.");
+        throw new Error(
+          (await getPushAvailabilityMessage()) ??
+            "Push notifications are not available on this browser yet.",
+        );
       }
 
       return enablePushNotifications();
