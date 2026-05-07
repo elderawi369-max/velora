@@ -22,8 +22,6 @@ import {
   fetchProfiles,
   removeFavorite,
 } from "../../lib/api";
-import { BoostStatus } from "./boost-status";
-import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function ProfileList() {
@@ -371,7 +369,6 @@ export function ProfileList() {
           </div>
           <div className="chip-row">
             {profile.recommended ? <span className="chip">Recommended match</span> : null}
-            {profile.boostEffect.activeLabel ? <span className="chip">Boosted</span> : null}
             {profile.compatibilityScore > 0 ? (
               <span className="chip chip-muted">Match score {profile.compatibilityScore}</span>
             ) : null}
@@ -402,48 +399,6 @@ export function ProfileList() {
                   </span>
                 ))}
               </div>
-            </div>
-          ) : null}
-          {(profile.boostEffect.totalPurchased > 0 || profile.boostEffect.activeLabel) ? (
-            <div className="meta-group">
-              <span className="meta-title">Boost status</span>
-              <div className="chip-row">
-                {profile.boostEffect.activeLabel ? (
-                  <span className="chip" key={`${profile.id}-${profile.boostEffect.activeLabel}`}>
-                    {profile.boostEffect.activeLabel}
-                  </span>
-                ) : null}
-                <span className="chip chip-muted">
-                  {profile.boostEffect.totalPurchased} boost
-                  {profile.boostEffect.totalPurchased === 1 ? "" : "s"} used
-                </span>
-              </div>
-              <BoostStatus
-                activeLabel={profile.boostEffect.activeLabel}
-                activeExpiresAt={profile.boostEffect.activeExpiresAt}
-                totalPurchased={profile.boostEffect.totalPurchased}
-              />
-            </div>
-          ) : null}
-          {profile.giftEffect.totalReceived > 0 ? (
-            <div className="meta-group">
-              <span className="meta-title">Gift effects</span>
-              <div className="chip-row">
-                {profile.giftEffect.activeLabel ? (
-                  <span className="chip" key={`${profile.id}-${profile.giftEffect.activeLabel}`}>
-                    {profile.giftEffect.activeLabel}
-                  </span>
-                ) : null}
-                <span className="chip chip-muted">
-                  {profile.giftEffect.totalReceived} gift
-                  {profile.giftEffect.totalReceived === 1 ? "" : "s"} received
-                </span>
-              </div>
-              <GiftEffectStatus
-                activeLabel={profile.giftEffect.activeLabel}
-                activeExpiresAt={profile.giftEffect.activeExpiresAt}
-                totalReceived={profile.giftEffect.totalReceived}
-              />
             </div>
           ) : null}
           <p className="profile-bio">{profile.bio}</p>
