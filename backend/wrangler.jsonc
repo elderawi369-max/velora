@@ -9,7 +9,7 @@
 		"APP_NAME": "Velora API",
 		"APP_ENV": "production",
 		"ENABLE_DEV_ENDPOINTS": "false",
-		"PAYPAL_ENV": "sandbox",
+		"PAYPAL_ENV": "live",
 		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
 		"RESEND_FROM_NAME": "Velora"
 	},
