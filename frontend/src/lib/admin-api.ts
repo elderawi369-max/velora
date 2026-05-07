@@ -52,6 +52,58 @@ export type SupportTicket = {
   createdAt: number;
 };
 
+export type AdminAnalytics = {
+  overview: {
+    totalUsers: number;
+    totalProfiles: number;
+    verifiedProfiles: number;
+    openSupportTickets: number;
+    totalReports: number;
+    activeBoosts: number;
+    fulfilledPurchases: number;
+    revenueUsdCents: number;
+  };
+  funnelLast7d: {
+    signups: number;
+    profilesCreated: number;
+    conversationsStarted: number;
+    giftsPurchased: number;
+    boostsPurchased: number;
+    passwordResetRequests: number;
+    revenueUsdCents: number;
+  };
+  topProfiles: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    favoritesReceived: number;
+    giftsReceived: number;
+    reportsReceived: number;
+    activeBoostCount: number;
+    purchaseRevenueCents: number;
+  }>;
+  recentEvents: Array<{
+    id: string;
+    eventType: string;
+    createdAt: number;
+    profile: {
+      id: string;
+      username: string;
+      displayName: string;
+    } | null;
+    targetProfile: {
+      id: string;
+      username: string;
+      displayName: string;
+    } | null;
+    data: Record<string, unknown>;
+  }>;
+};
+
+export function fetchAdminAnalytics(adminKey: string) {
+  return adminRequest<AdminAnalytics>("/api/admin/analytics", adminKey);
+}
+
 export function fetchAdminReports(adminKey: string) {
   return adminRequest<{ reports: AdminReport[] }>("/api/admin/reports", adminKey);
 }
