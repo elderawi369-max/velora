@@ -111,6 +111,48 @@ Tasks:
 5. Content declarations
 6. Test internal release track
 
+## Current status
+
+Already done:
+1. Capacitor Android shell exists
+2. production API points to `https://api.velorachat.com`
+3. launcher icon and splash branding are in place
+4. a release Android App Bundle can be generated at:
+   - `frontend/android/app/build/outputs/bundle/release/app-release.aab`
+
+Build command:
+- `cmd /c npm --workspace frontend run android:bundle:release`
+
+Important note:
+- the AAB build path is working
+- before uploading broadly, use a proper upload keystore and Play App Signing workflow rather than treating the current local release signing as the final store setup
+
+## Immediate Play Console path
+
+Use this order:
+1. create the Play Console app entry
+2. set package name:
+   - `com.velorachat.app`
+3. upload the first internal-testing AAB
+4. add testers
+5. verify install on a real Android device
+6. create Play Billing in-app products
+7. then wire the Android client purchase flow to:
+   - `POST /api/payments/mobile/verify/google`
+
+## Product ids to create in Google Play
+
+Create in-app products matching the backend catalog:
+- `rose_aura`
+- `starlight_ring`
+- `velora_crown`
+- `spark_boost`
+- `spotlight_boost`
+
+Recommendation:
+- keep the ids exactly the same as Velora's internal product ids
+- that makes Android verification and fulfillment much cleaner
+
 ## Product behavior recommendation during transition
 
 ### Web
@@ -172,4 +214,3 @@ When ready to move from planning to implementation:
 1. install Capacitor
 2. add the Android platform
 3. create the first internal Android build without billing
-
