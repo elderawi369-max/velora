@@ -22,6 +22,7 @@ import { TermsPage } from "./ui/pages/terms-page";
 import { GuidelinesPage } from "./ui/pages/guidelines-page";
 import { ForgotPasswordPage } from "./ui/pages/forgot-password-page";
 import { ResetPasswordPage } from "./ui/pages/reset-password-page";
+import { DeleteAccountPage } from "./ui/pages/delete-account-page";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -82,6 +83,10 @@ const router = createBrowserRouter([
       {
         path: "support",
         element: <SupportPage />,
+      },
+      {
+        path: "delete-account",
+        element: <DeleteAccountPage />,
       },
       {
         path: "privacy",
