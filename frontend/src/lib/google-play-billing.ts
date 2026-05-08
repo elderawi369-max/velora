@@ -35,7 +35,10 @@ type GooglePlayBillingPlugin = {
 const GooglePlayBilling = registerPlugin<GooglePlayBillingPlugin>("GooglePlayBilling");
 
 export function isNativeAndroidApp() {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+  return (
+    Capacitor.getPlatform() === "android" &&
+    (Capacitor.isNativePlatform() || Capacitor.isPluginAvailable("GooglePlayBilling"))
+  );
 }
 
 export async function ensureGooglePlayBillingAvailable() {
@@ -45,6 +48,23 @@ export async function ensureGooglePlayBillingAvailable() {
 
   const result = await GooglePlayBilling.isAvailable();
   return Boolean(result.available);
+}
+
+export async function shouldUseGooglePlayBilling() {
+  if (!isNativeAndroidApp()) {
+    return false;
+  }
+
+  if (!Capacitor.isPluginAvailable("GooglePlayBilling")) {
+    throw new Error("This Android build does not have Google Play Billing enabled yet.");
+  }
+
+  const available = await ensureGooglePlayBillingAvailable();
+  if (!available) {
+    throw new Error("Google Play Billing is unavailable on this Android device right now.");
+  }
+
+  return true;
 }
 
 export async function completeGooglePlayPurchase(input: {

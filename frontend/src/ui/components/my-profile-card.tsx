@@ -8,7 +8,11 @@ import {
   platformRules,
 } from "../../config";
 import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile, savePendingCheckoutId } from "../../lib/api";
-import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
+import {
+  completeGooglePlayPurchase,
+  isNativeAndroidApp,
+  shouldUseGooglePlayBilling,
+} from "../../lib/google-play-billing";
 import { BoostStatus } from "./boost-status";
 import { GiftEffectStatus } from "./gift-effect-status";
 import { ProfileAvatar } from "./profile-avatar";
@@ -25,11 +29,15 @@ export function MyProfileCard() {
   });
   const boostMutation = useMutation({
     mutationFn: async (boostType: string) => {
-      if (isNativeAndroidApp()) {
+      if (await shouldUseGooglePlayBilling()) {
         return completeGooglePlayPurchase({
           productKind: "boost",
           itemKey: boostType,
         });
+      }
+
+      if (isNativeAndroidApp()) {
+        throw new Error("This Android build should use Google Play Billing, not web checkout.");
       }
 
       const checkout = await createBoostCheckout(boostType);

@@ -22,7 +22,11 @@ import {
   fetchProfiles,
   removeFavorite,
 } from "../../lib/api";
-import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
+import {
+  completeGooglePlayPurchase,
+  isNativeAndroidApp,
+  shouldUseGooglePlayBilling,
+} from "../../lib/google-play-billing";
 import { ProfileAvatar } from "./profile-avatar";
 
 export function ProfileList() {
@@ -107,12 +111,16 @@ export function ProfileList() {
   });
   const giftMutation = useMutation({
     mutationFn: async ({ profileId, giftType }: { profileId: string; giftType: string }) => {
-      if (isNativeAndroidApp()) {
+      if (await shouldUseGooglePlayBilling()) {
         return completeGooglePlayPurchase({
           productKind: "gift",
           itemKey: giftType,
           targetProfileId: profileId,
         });
+      }
+
+      if (isNativeAndroidApp()) {
+        throw new Error("This Android build should use Google Play Billing, not web checkout.");
       }
 
       const checkout = await createGiftCheckout(profileId, giftType);

@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import { firebaseConfig, firebaseWebPushVapidKey, isFirebasePushConfigured } from "../config";
@@ -26,6 +27,10 @@ function isStandaloneDisplayMode() {
   );
 }
 
+function isNativeAndroidApp() {
+  return Capacitor.getPlatform() === "android" && Capacitor.isNativePlatform();
+}
+
 function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = enableTimeoutMs) {
   return Promise.race<T>([
     promise,
@@ -52,6 +57,10 @@ export async function canUsePushNotifications() {
     return false;
   }
 
+  if (isNativeAndroidApp()) {
+    return false;
+  }
+
   if (isIosBrowser() && !isStandaloneDisplayMode()) {
     return false;
   }
@@ -68,6 +77,10 @@ export async function canUsePushNotifications() {
 export async function getPushAvailabilityMessage() {
   if (typeof window === "undefined") {
     return "Push notifications are only available in the browser.";
+  }
+
+  if (isNativeAndroidApp()) {
+    return "The Android app will use native notifications instead of browser web push.";
   }
 
   if (!isFirebasePushConfigured()) {

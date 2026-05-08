@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createGiftCheckout, fetchGiftCatalog, savePendingCheckoutId } from "../../lib/api";
-import { completeGooglePlayPurchase, isNativeAndroidApp } from "../../lib/google-play-billing";
+import {
+  completeGooglePlayPurchase,
+  isNativeAndroidApp,
+  shouldUseGooglePlayBilling,
+} from "../../lib/google-play-billing";
 
 type GiftActionsProps = {
   profileId: string;
@@ -15,12 +19,16 @@ export function GiftActions({ profileId }: GiftActionsProps) {
 
   const giftMutation = useMutation({
     mutationFn: async (giftType: string) => {
-      if (isNativeAndroidApp()) {
+      if (await shouldUseGooglePlayBilling()) {
         return completeGooglePlayPurchase({
           productKind: "gift",
           itemKey: giftType,
           targetProfileId: profileId,
         });
+      }
+
+      if (isNativeAndroidApp()) {
+        throw new Error("This Android build should use Google Play Billing, not web checkout.");
       }
 
       const checkout = await createGiftCheckout(profileId, giftType);
