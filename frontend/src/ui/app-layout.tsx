@@ -140,6 +140,9 @@ export function AppLayout() {
           <NavLink to="/privacy" className="footer-link">
             Privacy
           </NavLink>
+          <NavLink to="/child-safety" className="footer-link">
+            Child Safety
+          </NavLink>
           <NavLink to="/terms" className="footer-link">
             Terms
           </NavLink>

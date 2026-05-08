@@ -23,6 +23,8 @@ supportRoutes.post("/tickets", async (c) => {
     c.env,
     payload.data.turnstileToken,
     c.req.header("CF-Connecting-IP"),
+    c.req.header("X-Velora-Client-Platform"),
+    c.req.header("Origin"),
   );
 
   if (!turnstileValid) {

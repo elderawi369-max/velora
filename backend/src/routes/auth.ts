@@ -48,6 +48,10 @@ function resolveFrontendOrigin(c: Context<{ Bindings: EnvBindings }>) {
   return c.req.header("Origin") ?? "https://app.velorachat.com";
 }
 
+function getClientPlatform(c: Context<{ Bindings: EnvBindings }>) {
+  return c.req.header("X-Velora-Client-Platform");
+}
+
 authRoutes.get("/me", async (c) => {
   const userId = await getUserIdFromSession(
     c.env,
@@ -101,6 +105,8 @@ authRoutes.post("/signup", async (c) => {
     c.env,
     payload.data.turnstileToken,
     c.req.header("CF-Connecting-IP"),
+    getClientPlatform(c),
+    c.req.header("Origin"),
   );
 
   if (!turnstileValid) {
@@ -222,6 +228,8 @@ authRoutes.post("/forgot-password", async (c) => {
     c.env,
     payload.data.turnstileToken,
     c.req.header("CF-Connecting-IP"),
+    getClientPlatform(c),
+    c.req.header("Origin"),
   );
 
   if (!turnstileValid) {

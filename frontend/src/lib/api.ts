@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { apiBaseUrl } from "../config";
 
 const authTokenStorageKey = "velora-auth-token";
@@ -35,14 +36,34 @@ type RequestOptions = {
   body?: unknown;
 };
 
+function getClientPlatformHeaders() {
+  const headers: Record<string, string> = {};
+
+  if (
+    Capacitor.getPlatform() === "android" &&
+    Capacitor.isNativePlatform()
+  ) {
+    headers["X-Velora-Client-Platform"] = "android-native";
+  }
+
+  return headers;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...getClientPlatformHeaders(),
+  };
+
+  const authToken = getAuthToken();
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: options.method ?? "GET",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 

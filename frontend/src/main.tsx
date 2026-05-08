@@ -16,6 +16,7 @@ import { PaymentCancelPage } from "./ui/pages/payment-cancel-page";
 import { PaymentSuccessPage } from "./ui/pages/payment-success-page";
 import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
+import { ChildSafetyPage } from "./ui/pages/child-safety-page";
 import { PrivacyPage } from "./ui/pages/privacy-page";
 import { SupportPage } from "./ui/pages/support-page";
 import { TermsPage } from "./ui/pages/terms-page";
@@ -91,6 +92,10 @@ const router = createBrowserRouter([
       {
         path: "privacy",
         element: <PrivacyPage />,
+      },
+      {
+        path: "child-safety",
+        element: <ChildSafetyPage />,
       },
       {
         path: "terms",

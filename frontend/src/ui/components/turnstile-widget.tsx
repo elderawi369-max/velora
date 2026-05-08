@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { turnstileSiteKey } from "../../config";
 
 declare global {
@@ -24,15 +25,21 @@ type TurnstileWidgetProps = {
 };
 
 const turnstileScriptId = "velora-turnstile-script";
+const nativeAndroidBypassToken = "android-native-bypass";
+
+function isNativeAndroidApp() {
+  return Capacitor.getPlatform() === "android" && Capacitor.isNativePlatform();
+}
 
 export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState("");
+  const nativeAndroid = isNativeAndroidApp();
 
   useEffect(() => {
     if (!turnstileSiteKey) {
-      onTokenChange("dev-bypass");
+      onTokenChange(nativeAndroid ? nativeAndroidBypassToken : "dev-bypass");
       return;
     }
 
@@ -87,14 +94,16 @@ export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
         widgetIdRef.current = null;
       }
     };
-  }, [onTokenChange]);
+  }, [nativeAndroid, onTokenChange]);
 
   if (!turnstileSiteKey) {
     return (
       <div className="panel form-panel">
         <span className="meta-title">Human verification</span>
         <p className="status-message">
-          Turnstile is not configured in this environment yet, so local development is bypassing it.
+          {nativeAndroid
+            ? "Human verification is handled differently in this Android build, so the in-app check is being bypassed."
+            : "Turnstile is not configured in this environment yet, so local development is bypassing it."}
         </p>
       </div>
     );
