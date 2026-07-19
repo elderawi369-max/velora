@@ -12,6 +12,12 @@ import { sendPushToUser } from "../lib/push";
 
 export const chatRoutes = new Hono<{ Bindings: EnvBindings }>();
 
+function getOtherReadAt(conversation: typeof conversations.$inferSelect, ownProfileId: string) {
+  return conversation.profileAId === ownProfileId
+    ? conversation.lastReadAtB
+    : conversation.lastReadAtA;
+}
+
 function getOwnReadAt(conversation: typeof conversations.$inferSelect, ownProfileId: string) {
   return conversation.profileAId === ownProfileId
     ? conversation.lastReadAtA
@@ -134,6 +140,13 @@ chatRoutes.get("/conversations", async (c) => {
         lastMessagePreview: conversation.lastMessagePreview,
         unread: unreadCount > 0,
         unreadCount,
+        awaitingReply:
+          unreadCount > 0 &&
+          conversation.lastMessageSenderProfileId === otherProfileId,
+        needsTheirReply:
+          conversation.lastMessagePreview.length > 0 &&
+          conversation.lastMessageSenderProfileId === own.profileId &&
+          getOtherReadAt(conversation, own.profileId) < conversation.lastMessageAt,
         createdAt: conversation.createdAt,
       };
     }),
@@ -281,6 +294,9 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
       personalityType: profiles.personalityType,
       identity: profiles.identity,
       avatarPreset: profiles.avatarPreset,
+      bio: profiles.bio,
+      promptEntries: profiles.promptEntries,
+      vibeTags: profiles.vibeTags,
     })
     .from(profiles)
     .where(eq(profiles.id, otherProfileId))
@@ -289,7 +305,16 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
   return c.json({
     conversation: {
       id: conversation.id,
-      otherProfile,
+      otherProfile: otherProfile
+        ? {
+            ...otherProfile,
+            vibeTags: JSON.parse(otherProfile.vibeTags) as string[],
+            promptEntries: JSON.parse(otherProfile.promptEntries) as Array<{
+              question: string;
+              answer: string;
+            }>,
+          }
+        : null,
       isFavorited: otherProfile
         ? await isFavorited(c.env, own.profileId, otherProfile.id)
         : false,
@@ -305,6 +330,15 @@ chatRoutes.get("/conversations/:conversationId", async (c) => {
       )
         ? 1
         : 0,
+      awaitingReply: Boolean(
+        conversation.lastMessageSenderProfileId !== own.profileId &&
+          conversation.lastMessageAt > getOwnReadAt(conversation, own.profileId),
+      ),
+      needsTheirReply: Boolean(
+        conversation.lastMessagePreview &&
+          conversation.lastMessageSenderProfileId === own.profileId &&
+          getOtherReadAt(conversation, own.profileId) < conversation.lastMessageAt
+      ),
       createdAt: conversation.createdAt,
     },
   });
@@ -473,6 +507,20 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
 
   await db.insert(messages).values(message);
 
+  const existingMessageCountRow = await db
+    .select({
+      count: sql<number>`count(*)`,
+    })
+    .from(messages)
+    .where(eq(messages.conversationId, conversation.id));
+  const totalMessagesInConversation = Number(existingMessageCountRow[0]?.count ?? 0);
+  const priorMessageCount = Math.max(totalMessagesInConversation - 1, 0);
+  const wasFirstMessage = priorMessageCount === 0;
+  const wasFirstReply =
+    priorMessageCount >= 1 &&
+    conversation.lastMessageSenderProfileId !== own.profileId &&
+    getOwnReadAt(conversation, own.profileId) === 0;
+
   await db
     .update(conversations)
     .set({
@@ -496,6 +544,49 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
       body: trimmedBody.slice(0, 120),
       link: `/chat/${conversation.id}`,
     }).catch(() => undefined);
+  }
+
+  await logEvent(c.env, {
+    eventType: "message_sent",
+    profileId: own.profileId,
+    eventData: {
+      conversationId: conversation.id,
+      targetProfileId: otherProfileId,
+      priorMessageCount,
+    },
+  });
+
+  if (wasFirstMessage) {
+    await logEvent(c.env, {
+      eventType: "first_message_sent",
+      profileId: own.profileId,
+      eventData: {
+        conversationId: conversation.id,
+        targetProfileId: otherProfileId,
+      },
+    });
+  }
+
+  if (wasFirstReply) {
+    await logEvent(c.env, {
+      eventType: "first_reply_sent",
+      profileId: own.profileId,
+      eventData: {
+        conversationId: conversation.id,
+        targetProfileId: otherProfileId,
+      },
+    });
+
+    if (now - conversation.createdAt <= 1000 * 60 * 60 * 24) {
+      await logEvent(c.env, {
+        eventType: "conversation_got_reply_within_24h",
+        profileId: own.profileId,
+        eventData: {
+          conversationId: conversation.id,
+          targetProfileId: otherProfileId,
+        },
+      });
+    }
   }
 
   return c.json({ message }, 201);

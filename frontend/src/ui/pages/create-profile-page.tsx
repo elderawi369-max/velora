@@ -27,5 +27,18 @@ export function CreateProfilePage() {
     return null;
   }
 
-  return <ProfileForm />;
+  return (
+    <>
+      <section className="panel onboarding-panel">
+        <div className="section-copy compact-copy">
+          <p className="eyebrow">Fast start</p>
+          <h2>You can enter Browse with just the essentials.</h2>
+          <p className="status-message">
+            Profile prompts, vibe tags, and preferences are optional during setup. You can skip them now and improve the profile later from My Profile.
+          </p>
+        </div>
+      </section>
+      <ProfileForm />
+    </>
+  );
 }

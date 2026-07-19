@@ -36,8 +36,8 @@ export function GiftActions({ profileId }: GiftActionsProps) {
     },
     onSuccess: async (result) => {
       if ("mode" in result) {
-      savePendingCheckoutId(result.checkoutId);
-      window.location.href = result.checkoutUrl;
+        savePendingCheckoutId(result.checkoutId);
+        window.location.href = result.checkoutUrl;
         return;
       }
 
@@ -51,23 +51,27 @@ export function GiftActions({ profileId }: GiftActionsProps) {
 
   return (
     <div className="gift-actions">
+      <p className="gift-explainer">
+        Send a small signal that lingers. Gifts add a visible aura and make your attention feel harder to ignore.
+      </p>
+
       <div className="gift-row">
         {(giftCatalogQuery.data?.gifts ?? []).map((gift) => (
           <button
             key={gift.key}
             className="gift-button"
             type="button"
-              disabled={giftMutation.isPending}
-              onClick={() => {
+            disabled={giftMutation.isPending}
+            onClick={() => {
               giftMutation.mutate(gift.key);
             }}
           >
-              {giftMutation.isPending
-                ? "Opening checkout..."
-                : `Buy ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
-            </button>
-          ))}
-        </div>
+            {giftMutation.isPending
+              ? "Opening checkout..."
+              : `Buy ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
+          </button>
+        ))}
+      </div>
 
       {giftMutation.error ? (
         <p className="form-error">
@@ -76,7 +80,6 @@ export function GiftActions({ profileId }: GiftActionsProps) {
             : "Unable to open gift checkout."}
         </p>
       ) : null}
-
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AdminPage } from "./ui/pages/admin-page";
+import { fetchSession } from "./lib/api";
 import { AppLayout } from "./ui/app-layout";
 import { BrowsePage } from "./ui/pages/browse-page";
 import { ChatPage } from "./ui/pages/chat-page";
@@ -24,9 +26,28 @@ import { GuidelinesPage } from "./ui/pages/guidelines-page";
 import { ForgotPasswordPage } from "./ui/pages/forgot-password-page";
 import { ResetPasswordPage } from "./ui/pages/reset-password-page";
 import { DeleteAccountPage } from "./ui/pages/delete-account-page";
+import { ProfileDetailPage } from "./ui/pages/profile-detail-page";
 import "./styles.css";
 
 const queryClient = new QueryClient();
+
+const founderEmail = "elderawi369@gmail.com";
+
+function FounderConsoleRoute() {
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+  });
+  const isFounder =
+    sessionQuery.data?.user?.email?.toLowerCase() === founderEmail;
+
+  if (sessionQuery.isLoading) {
+    return null;
+  }
+
+  return isFounder ? <AdminPage /> : <Navigate to="/" replace />;
+}
 
 const router = createBrowserRouter([
   {
@@ -39,7 +60,11 @@ const router = createBrowserRouter([
       },
       {
         path: "admin",
-        element: <AdminPage />,
+        element: <Navigate to="/" replace />,
+      },
+      {
+        path: "founder-console",
+        element: <FounderConsoleRoute />,
       },
       {
         path: "signup",
@@ -68,6 +93,10 @@ const router = createBrowserRouter([
       {
         path: "browse",
         element: <BrowsePage />,
+      },
+      {
+        path: "browse/:username",
+        element: <ProfileDetailPage />,
       },
       {
         path: "conversations",

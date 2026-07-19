@@ -1,24 +1,13 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
-import { useEffect, useState } from "react";
-import { syncPushNotificationsIfGranted } from "../lib/push";
+import { useEffect } from "react";
+import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } from "../lib/push";
 import { VeloraLogo } from "./components/velora-logo";
 
 export function AppLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [showAdmin, setShowAdmin] = useState(false);
-
-  useEffect(() => {
-    setShowAdmin(Boolean(window.localStorage.getItem("velora-admin-key")));
-    function handleAdminKeyUpdate() {
-      setShowAdmin(Boolean(window.localStorage.getItem("velora-admin-key")));
-    }
-
-    window.addEventListener("velora-admin-key-updated", handleAdminKeyUpdate);
-    return () => window.removeEventListener("velora-admin-key-updated", handleAdminKeyUpdate);
-  }, []);
 
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
@@ -57,6 +46,7 @@ export function AppLayout() {
       return;
     }
 
+    void ensureNativeAndroidPushPromptedOnce().catch(() => undefined);
     void syncPushNotificationsIfGranted().catch(() => undefined);
   }, [sessionQuery.data?.authenticated]);
 
@@ -88,7 +78,6 @@ export function AppLayout() {
     { to: "/conversations", label: "Conversations" },
     { to: "/activity", label: "Activity" },
     { to: "/favorites", label: "Favorites" },
-    ...(showAdmin ? [{ to: "/admin", label: "Admin" }] : []),
     { to: hasProfile ? "/my-profile" : "/create-profile", label: hasProfile ? "My Profile" : "Create Profile" },
     { to: "/support", label: "Support" },
   ];

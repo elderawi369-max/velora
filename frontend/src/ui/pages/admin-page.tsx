@@ -1,21 +1,300 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  fetchAdminConversation,
   fetchAdminAnalytics,
   fetchAdminReports,
   fetchSupportTickets,
   suspendProfile,
   unverifyProfile,
   unsuspendProfile,
+  updateProfileContent,
   verifyProfile,
+  type AdminConversation,
+  type AdminReport,
+  type DailyTrendPoint,
+  type EngagementPeriod,
+  type SignupFunnelPeriod,
 } from "../../lib/admin-api";
 
 const adminStorageKey = "velora-admin-key";
+
+function formatUsd(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / 100);
+}
+
+function formatEventLabel(eventType: string) {
+  return eventType.replaceAll("_", " ");
+}
+
+function formatRelativeTime(timestamp: number) {
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function formatDate(timestamp: number) {
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getPromptDraft(
+  promptEntries: Array<{ question: string; answer: string }>,
+  index: number,
+) {
+  return promptEntries[index] ?? { question: "", answer: "" };
+}
+
+function getFunnelSteps(funnel: SignupFunnelPeriod) {
+  const counts = [
+    { label: "Signups", value: funnel.signups },
+    { label: "Profiles created", value: funnel.profilesCreated },
+    { label: "Started a conversation", value: funnel.usersStartedConversation },
+    { label: "Sent a message", value: funnel.usersSentMessage },
+    { label: "Received a reply", value: funnel.usersReceivedReply },
+  ];
+
+  return counts.map((step, index) => {
+    const previous = index === 0 ? step.value : counts[index - 1].value;
+    const fromPrevious = previous > 0 ? (step.value / previous) * 100 : 0;
+    const fromSignup = counts[0].value > 0 ? (step.value / counts[0].value) * 100 : 0;
+
+    return {
+      ...step,
+      fromPrevious,
+      fromSignup,
+    };
+  });
+}
+
+function getTrendSeries(points: DailyTrendPoint[], key: keyof Omit<DailyTrendPoint, "day">) {
+  const max = Math.max(1, ...points.map((point) => point[key]));
+
+  return points.map((point) => ({
+    day: point.day,
+    value: point[key],
+    heightPercent: (point[key] / max) * 100,
+  }));
+}
+
+function MetricGrid({
+  title,
+  eyebrow,
+  items,
+}: {
+  title: string;
+  eyebrow: string;
+  items: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <section className="panel">
+      <div className="section-copy compact-copy">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      <section className="card-grid">
+        {items.map((item) => (
+          <article className="card profile-card" key={item.label}>
+            <div className="meta-group">
+              <span className="meta-title">{item.label}</span>
+              <h2>{item.value}</h2>
+            </div>
+          </article>
+        ))}
+      </section>
+    </section>
+  );
+}
+
+function EngagementPanel({
+  title,
+  eyebrow,
+  period,
+}: {
+  title: string;
+  eyebrow: string;
+  period: EngagementPeriod;
+}) {
+  const metrics = [
+    { label: "Active users", value: period.activeUsers.toString() },
+    { label: "Messages sent", value: period.messagesSent.toString() },
+    { label: "Unique message senders", value: period.uniqueMessageSenders.toString() },
+    { label: "Active conversations", value: period.activeConversations.toString() },
+    { label: "New conversations", value: period.newConversations.toString() },
+    { label: "Avg messages / active convo", value: period.averageMessagesPerActiveConversation.toFixed(2) },
+    { label: "Median messages / active convo", value: period.medianMessagesPerActiveConversation.toFixed(2) },
+    { label: "2+ messages", value: period.conversationsWith2PlusMessages.toString() },
+    { label: "5+ messages", value: period.conversationsWith5PlusMessages.toString() },
+    { label: "10+ messages", value: period.conversationsWith10PlusMessages.toString() },
+    { label: "One-sided convos", value: period.oneSidedConversations.toString() },
+    { label: "Two-way convos", value: period.twoWayConversations.toString() },
+    { label: "Reply rate", value: formatPercent(period.replyRate) },
+  ];
+
+  return (
+    <section className="panel">
+      <div className="section-copy compact-copy">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      <section className="card-grid">
+        {metrics.map((metric) => (
+          <article className="card profile-card" key={metric.label}>
+            <div className="meta-group">
+              <span className="meta-title">{metric.label}</span>
+              <h2>{metric.value}</h2>
+            </div>
+          </article>
+        ))}
+      </section>
+      <div className="meta-group">
+        <span className="meta-title">Top conversations by message count</span>
+        {period.topConversations.length === 0 ? (
+          <p className="status-message">No active conversations in this period yet.</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Conversation</th>
+                  <th>Messages</th>
+                  <th>Created</th>
+                  <th>Last message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {period.topConversations.map((conversation) => (
+                  <tr key={conversation.conversationId}>
+                    <td>
+                      {conversation.profileADisplayName} (@{conversation.profileAUsername}) {"↔"}{" "}
+                      {conversation.profileBDisplayName} (@{conversation.profileBUsername})
+                    </td>
+                    <td>{conversation.messageCount}</td>
+                    <td>{formatDate(conversation.createdAt)}</td>
+                    <td>{formatDate(conversation.lastMessageAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FunnelPanel({
+  title,
+  eyebrow,
+  funnel,
+}: {
+  title: string;
+  eyebrow: string;
+  funnel: SignupFunnelPeriod;
+}) {
+  const steps = getFunnelSteps(funnel);
+
+  return (
+    <section className="panel">
+      <div className="section-copy compact-copy">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Users</th>
+              <th>From previous</th>
+              <th>From signups</th>
+            </tr>
+          </thead>
+          <tbody>
+            {steps.map((step, index) => (
+              <tr key={step.label}>
+                <td>{step.label}</td>
+                <td>{step.value}</td>
+                <td>{index === 0 ? "—" : formatPercent(step.fromPrevious)}</td>
+                <td>{formatPercent(step.fromSignup)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function TrendPanel({
+  title,
+  eyebrow,
+  points,
+  metricKey,
+}: {
+  title: string;
+  eyebrow: string;
+  points: DailyTrendPoint[];
+  metricKey: keyof Omit<DailyTrendPoint, "day">;
+}) {
+  const series = getTrendSeries(points, metricKey);
+
+  return (
+    <section className="panel">
+      <div className="section-copy compact-copy">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      <div className="trend-chart">
+        {series.map((point) => (
+          <div className="trend-bar-group" key={`${metricKey}-${point.day}`}>
+            <div
+              className="trend-bar"
+              style={{ height: `${Math.max(point.heightPercent, point.value > 0 ? 8 : 0)}%` }}
+              title={`${point.day}: ${point.value}`}
+            />
+            <span className="trend-label">{point.day.slice(5)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function AdminPage() {
   const queryClient = useQueryClient();
   const [adminKeyInput, setAdminKeyInput] = useState("");
   const [activeAdminKey, setActiveAdminKey] = useState("");
+  const [openConversationId, setOpenConversationId] = useState<string | null>(null);
+  const [contentDrafts, setContentDrafts] = useState<
+    Record<
+      string,
+      {
+        bio: string;
+        promptEntries: Array<{ question: string; answer: string }>;
+      }
+    >
+  >({});
 
   useEffect(() => {
     const saved = window.localStorage.getItem(adminStorageKey) ?? "";
@@ -37,6 +316,11 @@ export function AdminPage() {
     queryKey: ["adminSupportTickets", activeAdminKey],
     queryFn: () => fetchSupportTickets(activeAdminKey),
     enabled: Boolean(activeAdminKey),
+  });
+  const conversationQuery = useQuery({
+    queryKey: ["adminConversation", activeAdminKey, openConversationId],
+    queryFn: () => fetchAdminConversation(activeAdminKey, openConversationId ?? ""),
+    enabled: Boolean(activeAdminKey && openConversationId),
   });
 
   const moderationMutation = useMutation({
@@ -71,101 +355,144 @@ export function AdminPage() {
     },
   });
 
+  const contentMutation = useMutation({
+    mutationFn: async ({
+      profileId,
+      bio,
+      promptEntries,
+    }: {
+      profileId: string;
+      bio: string;
+      promptEntries: Array<{ question: string; answer: string }>;
+    }) =>
+      updateProfileContent(activeAdminKey, profileId, {
+        bio,
+        promptEntries,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["adminReports", activeAdminKey],
+      });
+    },
+  });
+
   const reports = useMemo(() => reportsQuery.data?.reports ?? [], [reportsQuery.data]);
   const tickets = useMemo(() => ticketsQuery.data?.tickets ?? [], [ticketsQuery.data]);
   const analytics = analyticsQuery.data;
+
+  useEffect(() => {
+    if (!reports.length) {
+      return;
+    }
+
+    setContentDrafts((current) => {
+      const next = { ...current };
+
+      for (const report of reports) {
+        const target = report.targetProfile;
+        if (!target || next[target.id]) {
+          continue;
+        }
+
+        next[target.id] = {
+          bio: target.bio,
+          promptEntries: target.promptEntries,
+        };
+      }
+
+      return next;
+    });
+  }, [reports]);
 
   function saveAdminKey() {
     window.localStorage.setItem(adminStorageKey, adminKeyInput);
     setActiveAdminKey(adminKeyInput);
   }
 
-  function formatUsd(cents: number) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(cents / 100);
+  function toggleConversation(conversationId: string | null) {
+    setOpenConversationId((current) =>
+      current === conversationId || !conversationId ? null : conversationId,
+    );
   }
 
-  function formatEventLabel(eventType: string) {
-    return eventType.replaceAll("_", " ");
+  function getContentDraft(report: AdminReport) {
+    const target = report.targetProfile;
+    if (!target) {
+      return {
+        bio: "",
+        promptEntries: [] as Array<{ question: string; answer: string }>,
+      };
+    }
+
+    return (
+      contentDrafts[target.id] ?? {
+        bio: target.bio,
+        promptEntries: target.promptEntries,
+      }
+    );
   }
 
-  function formatRelativeTime(timestamp: number) {
-    const diffMs = Date.now() - timestamp;
-    const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+  function setBioDraft(profileId: string, bio: string) {
+    setContentDrafts((current) => ({
+      ...current,
+      [profileId]: {
+        bio,
+        promptEntries: current[profileId]?.promptEntries ?? [],
+      },
+    }));
+  }
 
-    if (diffMinutes < 60) {
-      return `${diffMinutes}m ago`;
-    }
+  function setPromptDraft(
+    profileId: string,
+    index: number,
+    field: "question" | "answer",
+    value: string,
+  ) {
+    setContentDrafts((current) => {
+      const existing = current[profileId] ?? {
+        bio: "",
+        promptEntries: [],
+      };
+      const promptEntries = [...existing.promptEntries];
+      const prompt = getPromptDraft(promptEntries, index);
 
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) {
-      return `${diffHours}h ago`;
-    }
+      promptEntries[index] = {
+        ...prompt,
+        [field]: value,
+      };
 
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
+      return {
+        ...current,
+        [profileId]: {
+          ...existing,
+          promptEntries,
+        },
+      };
+    });
   }
 
   const overviewCards = analytics
     ? [
         { label: "Total users", value: analytics.overview.totalUsers.toString() },
         { label: "Profiles", value: analytics.overview.totalProfiles.toString() },
-        {
-          label: "Verified humans",
-          value: analytics.overview.verifiedProfiles.toString(),
-        },
-        {
-          label: "Fulfilled purchases",
-          value: analytics.overview.fulfilledPurchases.toString(),
-        },
-        {
-          label: "Revenue",
-          value: formatUsd(analytics.overview.revenueUsdCents),
-        },
-        {
-          label: "Open support",
-          value: analytics.overview.openSupportTickets.toString(),
-        },
-        {
-          label: "Reports",
-          value: analytics.overview.totalReports.toString(),
-        },
-        {
-          label: "Active boosts",
-          value: analytics.overview.activeBoosts.toString(),
-        },
+        { label: "Verified humans", value: analytics.overview.verifiedProfiles.toString() },
+        { label: "Fulfilled purchases", value: analytics.overview.fulfilledPurchases.toString() },
+        { label: "Revenue", value: formatUsd(analytics.overview.revenueUsdCents) },
+        { label: "Open support", value: analytics.overview.openSupportTickets.toString() },
+        { label: "Reports", value: analytics.overview.totalReports.toString() },
+        { label: "Active boosts", value: analytics.overview.activeBoosts.toString() },
       ]
     : [];
 
   const funnelCards = analytics
     ? [
         { label: "Signups", value: analytics.funnelLast7d.signups.toString() },
-        {
-          label: "Profiles created",
-          value: analytics.funnelLast7d.profilesCreated.toString(),
-        },
-        {
-          label: "Conversations started",
-          value: analytics.funnelLast7d.conversationsStarted.toString(),
-        },
-        {
-          label: "Gifts bought",
-          value: analytics.funnelLast7d.giftsPurchased.toString(),
-        },
-        {
-          label: "Boosts bought",
-          value: analytics.funnelLast7d.boostsPurchased.toString(),
-        },
-        {
-          label: "Reset requests",
-          value: analytics.funnelLast7d.passwordResetRequests.toString(),
-        },
-        {
-          label: "7-day revenue",
-          value: formatUsd(analytics.funnelLast7d.revenueUsdCents),
-        },
+        { label: "Profiles created", value: analytics.funnelLast7d.profilesCreated.toString() },
+        { label: "Conversations started", value: analytics.funnelLast7d.conversationsStarted.toString() },
+        { label: "Gifts bought", value: analytics.funnelLast7d.giftsPurchased.toString() },
+        { label: "Boosts bought", value: analytics.funnelLast7d.boostsPurchased.toString() },
+        { label: "Reset requests", value: analytics.funnelLast7d.passwordResetRequests.toString() },
+        { label: "7-day revenue", value: formatUsd(analytics.funnelLast7d.revenueUsdCents) },
       ]
     : [];
 
@@ -198,9 +525,7 @@ export function AdminPage() {
         </section>
       ) : null}
 
-      {reportsQuery.isLoading ? (
-        <p className="status-message">Loading reports...</p>
-      ) : null}
+      {reportsQuery.isLoading ? <p className="status-message">Loading reports...</p> : null}
 
       {reportsQuery.error ? (
         <section className="panel">
@@ -236,12 +561,10 @@ export function AdminPage() {
         <section className="content-section">
           <section className="section-copy compact-copy">
             <p className="eyebrow">Founder view</p>
-            <h2>See launch health, revenue, and who is driving the product.</h2>
+            <h2>See launch health, revenue, engagement, retention, and conversation quality.</h2>
           </section>
 
-          {analyticsQuery.isLoading ? (
-            <p className="status-message">Loading founder analytics...</p>
-          ) : null}
+          {analyticsQuery.isLoading ? <p className="status-message">Loading founder analytics...</p> : null}
 
           {analytics ? (
             <>
@@ -256,21 +579,70 @@ export function AdminPage() {
                 ))}
               </section>
 
+              <MetricGrid
+                eyebrow="Legacy 7-day pulse"
+                title="Existing funnel and revenue pulse."
+                items={funnelCards}
+              />
+
+              <section className="card-grid">
+                <EngagementPanel
+                  eyebrow="Engagement"
+                  title="Last 7 days"
+                  period={analytics.engagement.last7d}
+                />
+                <EngagementPanel
+                  eyebrow="Engagement"
+                  title="Last 30 days"
+                  period={analytics.engagement.last30d}
+                />
+              </section>
+
+              <section className="card-grid">
+                <FunnelPanel
+                  eyebrow="Signup funnel"
+                  title="Last 7 days"
+                  funnel={analytics.signupFunnels.last7d}
+                />
+                <FunnelPanel
+                  eyebrow="Signup funnel"
+                  title="Last 30 days"
+                  funnel={analytics.signupFunnels.last30d}
+                />
+              </section>
+
               <section className="panel">
                 <div className="section-copy compact-copy">
-                  <p className="eyebrow">Last 7 days</p>
-                  <h2>Core funnel and revenue pulse.</h2>
+                  <p className="eyebrow">Retention</p>
+                  <h2>Meaningful activity after signup.</h2>
                 </div>
-
                 <section className="card-grid">
-                  {funnelCards.map((card) => (
-                    <article className="card profile-card" key={card.label}>
+                  {analytics.retention.map((item) => (
+                    <article className="card profile-card" key={item.day}>
                       <div className="meta-group">
-                        <span className="meta-title">{card.label}</span>
-                        <h2>{card.value}</h2>
+                        <span className="meta-title">Day {item.day}</span>
+                        <h2>{formatPercent(item.retentionRate)}</h2>
+                        <p>
+                          {item.retainedUsers} retained / {item.eligibleUsers} eligible
+                        </p>
                       </div>
                     </article>
                   ))}
+                </section>
+              </section>
+
+              <section className="panel">
+                <div className="section-copy compact-copy">
+                  <p className="eyebrow">Daily trends</p>
+                  <h2>30-day momentum by acquisition, activation, and conversation quality.</h2>
+                </div>
+                <section className="card-grid">
+                  <TrendPanel eyebrow="Trend" title="Signups" points={analytics.dailyTrends} metricKey="signups" />
+                  <TrendPanel eyebrow="Trend" title="Profiles created" points={analytics.dailyTrends} metricKey="profilesCreated" />
+                  <TrendPanel eyebrow="Trend" title="Active users" points={analytics.dailyTrends} metricKey="activeUsers" />
+                  <TrendPanel eyebrow="Trend" title="Messages sent" points={analytics.dailyTrends} metricKey="messagesSent" />
+                  <TrendPanel eyebrow="Trend" title="Conversations started" points={analytics.dailyTrends} metricKey="conversationsStarted" />
+                  <TrendPanel eyebrow="Trend" title="Two-way conversations" points={analytics.dailyTrends} metricKey="twoWayConversations" />
                 </section>
               </section>
 
@@ -296,12 +668,8 @@ export function AdminPage() {
 
                           <div className="chip-row">
                             <span className="chip">{profile.giftsReceived} gifts</span>
-                            <span className="chip chip-muted">
-                              {profile.favoritesReceived} favorites
-                            </span>
-                            <span className="chip chip-muted">
-                              {profile.activeBoostCount} boosts active
-                            </span>
+                            <span className="chip chip-muted">{profile.favoritesReceived} favorites</span>
+                            <span className="chip chip-muted">{profile.activeBoostCount} boosts active</span>
                           </div>
 
                           <div className="meta-group">
@@ -335,26 +703,20 @@ export function AdminPage() {
                         <article className="card profile-card" key={event.id}>
                           <div className="chip-row">
                             <span className="chip">{formatEventLabel(event.eventType)}</span>
-                            <span className="chip chip-muted">
-                              {formatRelativeTime(event.createdAt)}
-                            </span>
+                            <span className="chip chip-muted">{formatRelativeTime(event.createdAt)}</span>
                           </div>
 
                           {event.profile ? (
                             <div className="meta-group">
                               <span className="meta-title">Profile</span>
-                              <p>
-                                {event.profile.displayName} (@{event.profile.username})
-                              </p>
+                              <p>{event.profile.displayName} (@{event.profile.username})</p>
                             </div>
                           ) : null}
 
                           {event.targetProfile ? (
                             <div className="meta-group">
                               <span className="meta-title">Target</span>
-                              <p>
-                                {event.targetProfile.displayName} (@{event.targetProfile.username})
-                              </p>
+                              <p>{event.targetProfile.displayName} (@{event.targetProfile.username})</p>
                             </div>
                           ) : null}
 
@@ -387,6 +749,12 @@ export function AdminPage() {
           const target = report.targetProfile;
           const suspended = Boolean(target?.suspendedAt);
           const verifiedHuman = Boolean(target?.verifiedHumanAt);
+          const isConversationOpen = Boolean(
+            report.conversationId && openConversationId === report.conversationId,
+          );
+          const conversation = isConversationOpen
+            ? (conversationQuery.data?.conversation as AdminConversation | undefined)
+            : undefined;
 
           return (
             <article className="card profile-card" key={report.id}>
@@ -397,9 +765,7 @@ export function AdminPage() {
 
               <div className="meta-group">
                 <span className="meta-title">Target profile</span>
-                <p>
-                  {target ? `${target.displayName} (@${target.username})` : "Missing profile"}
-                </p>
+                <p>{target ? `${target.displayName} (@${target.username})` : "Missing profile"}</p>
               </div>
 
               <div className="chip-row">
@@ -412,9 +778,7 @@ export function AdminPage() {
                 </span>
                 {verifiedHuman ? <span className="chip">Verified human</span> : null}
                 <span className="chip chip-muted">{report.reportCount} reports</span>
-                <span className="chip chip-muted">
-                  {report.uniqueReporterCount} unique reporters
-                </span>
+                <span className="chip chip-muted">{report.uniqueReporterCount} unique reporters</span>
               </div>
 
               <div className="meta-group">
@@ -428,45 +792,211 @@ export function AdminPage() {
               </div>
 
               {target ? (
-                <div className="action-row">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={moderationMutation.isPending}
-                    onClick={() =>
-                      moderationMutation.mutate({
-                        action: verifiedHuman ? "unverify" : "verify",
-                        profileId: target.id,
-                      })
-                    }
-                  >
-                    {moderationMutation.isPending
-                      ? "Saving..."
-                      : verifiedHuman
-                        ? "Remove verification"
-                        : "Verify human"}
-                  </button>
-                  <button
-                    className={suspended ? "secondary-button" : "danger-button"}
-                    type="button"
-                    disabled={moderationMutation.isPending}
-                    onClick={() =>
-                      moderationMutation.mutate({
-                        action: suspended ? "unsuspend" : "suspend",
-                        profileId: target.id,
-                      })
-                    }
-                  >
-                    {moderationMutation.isPending
-                      ? "Saving..."
-                      : suspended
-                        ? "Unsuspend"
-                        : "Suspend"}
-                  </button>
-                  <span className={suspended ? "chip chip-muted" : "chip"}>
-                    {suspended ? "Suspended" : "Active"}
-                  </span>
-                </div>
+                <>
+                  <div className="meta-group">
+                    <span className="meta-title">Profile cleanup</span>
+                    <p>Remove off-app contact details from bio or prompts, then save the cleaned profile text.</p>
+                  </div>
+
+                  <label className="field">
+                    <span>Bio</span>
+                    <textarea
+                      rows={4}
+                      value={getContentDraft(report).bio}
+                      onChange={(event) => setBioDraft(target.id, event.target.value)}
+                    />
+                  </label>
+
+                  {[0, 1, 2].map((index) => {
+                    const prompt = getPromptDraft(getContentDraft(report).promptEntries, index);
+
+                    return (
+                      <div className="panel form-panel" key={`${target.id}-prompt-${index}`}>
+                        <label className="field">
+                          <span>Prompt {index + 1} question</span>
+                          <input
+                            type="text"
+                            value={prompt.question}
+                            onChange={(event) =>
+                              setPromptDraft(target.id, index, "question", event.target.value)
+                            }
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Prompt {index + 1} answer</span>
+                          <textarea
+                            rows={3}
+                            value={prompt.answer}
+                            onChange={(event) =>
+                              setPromptDraft(target.id, index, "answer", event.target.value)
+                            }
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+
+                  <div className="action-row">
+                    {report.conversationId ? (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => toggleConversation(report.conversationId)}
+                      >
+                        {isConversationOpen ? "Hide conversation" : "Review conversation"}
+                      </button>
+                    ) : null}
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={contentMutation.isPending}
+                      onClick={() =>
+                        contentMutation.mutate({
+                          profileId: target.id,
+                          bio: getContentDraft(report).bio,
+                          promptEntries: getContentDraft(report).promptEntries,
+                        })
+                      }
+                    >
+                      {contentMutation.isPending ? "Saving..." : "Save profile text"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={contentMutation.isPending}
+                      onClick={() => setBioDraft(target.id, "")}
+                    >
+                      Clear bio
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={contentMutation.isPending}
+                      onClick={() =>
+                        setContentDrafts((current) => ({
+                          ...current,
+                          [target.id]: {
+                            bio: current[target.id]?.bio ?? "",
+                            promptEntries: [],
+                          },
+                        }))
+                      }
+                    >
+                      Clear prompts
+                    </button>
+                    <button
+                      className="danger-button"
+                      type="button"
+                      disabled={contentMutation.isPending}
+                      onClick={() =>
+                        contentMutation.mutate({
+                          profileId: target.id,
+                          bio: "",
+                          promptEntries: [],
+                        })
+                      }
+                    >
+                      {contentMutation.isPending ? "Saving..." : "Clear all text"}
+                    </button>
+                  </div>
+
+                  <div className="action-row">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={moderationMutation.isPending}
+                      onClick={() =>
+                        moderationMutation.mutate({
+                          action: verifiedHuman ? "unverify" : "verify",
+                          profileId: target.id,
+                        })
+                      }
+                    >
+                      {moderationMutation.isPending
+                        ? "Saving..."
+                        : verifiedHuman
+                          ? "Remove verification"
+                          : "Verify human"}
+                    </button>
+                    <button
+                      className={suspended ? "secondary-button" : "danger-button"}
+                      type="button"
+                      disabled={moderationMutation.isPending}
+                      onClick={() =>
+                        moderationMutation.mutate({
+                          action: suspended ? "unsuspend" : "suspend",
+                          profileId: target.id,
+                        })
+                      }
+                    >
+                      {moderationMutation.isPending ? "Saving..." : suspended ? "Unsuspend" : "Suspend"}
+                    </button>
+                    <span className={suspended ? "chip chip-muted" : "chip"}>
+                      {suspended ? "Suspended" : "Active"}
+                    </span>
+                  </div>
+
+                  {isConversationOpen ? (
+                    <section className="panel">
+                      <div className="meta-group">
+                        <span className="meta-title">Reported conversation</span>
+                        {conversationQuery.isLoading ? (
+                          <p className="status-message">Loading conversation...</p>
+                        ) : null}
+                        {conversationQuery.error ? (
+                          <p className="error-message">
+                            {conversationQuery.error instanceof Error
+                              ? conversationQuery.error.message
+                              : "Unable to load conversation."}
+                          </p>
+                        ) : null}
+                        {conversation ? (
+                          <>
+                            <p>
+                              {conversation.participants
+                                .filter(Boolean)
+                                .map((participant) =>
+                                  `${participant?.displayName} (@${participant?.username})`,
+                                )
+                                .join(" and ")}
+                            </p>
+                            <div className="meta-group">
+                              {conversation.messages.length === 0 ? (
+                                <p>No messages in this conversation yet.</p>
+                              ) : (
+                                conversation.messages.map((message) => (
+                                  <article className="card profile-card" key={message.id}>
+                                    <div className="chip-row">
+                                      <span className="chip">
+                                        {message.sender?.displayName ?? "Unknown sender"}
+                                      </span>
+                                      <span className="chip chip-muted">
+                                        {formatDate(message.createdAt)}
+                                      </span>
+                                    </div>
+                                    <p>{message.body}</p>
+                                  </article>
+                                ))
+                              )}
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                    </section>
+                  ) : null}
+                </>
+              ) : null}
+
+              {contentMutation.error && contentMutation.variables?.profileId === target?.id ? (
+                <p className="error-message">
+                  {contentMutation.error instanceof Error
+                    ? contentMutation.error.message
+                    : "Unable to update profile content."}
+                </p>
+              ) : null}
+
+              {contentMutation.isSuccess && contentMutation.variables?.profileId === target?.id ? (
+                <p className="status-message">Profile text updated.</p>
               ) : null}
             </article>
           );
@@ -479,9 +1009,7 @@ export function AdminPage() {
           <h2>User support tickets land here too.</h2>
         </section>
 
-        {ticketsQuery.isLoading ? (
-          <p className="status-message">Loading support tickets...</p>
-        ) : null}
+        {ticketsQuery.isLoading ? <p className="status-message">Loading support tickets...</p> : null}
 
         {activeAdminKey && !ticketsQuery.isLoading && tickets.length === 0 ? (
           <section className="panel empty-state">

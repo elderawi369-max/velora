@@ -34,6 +34,18 @@ type GooglePlayBillingPlugin = {
 
 const GooglePlayBilling = registerPlugin<GooglePlayBillingPlugin>("GooglePlayBilling");
 
+const googlePlayProductIds = {
+  rose: "rose_aura",
+  starlight: "starlight_ring",
+  crown: "velora_crown",
+  spark: "spark_boost",
+  spotlight: "spotlight_boost",
+} as const;
+
+function resolveGooglePlayProductId(itemKey: string) {
+  return googlePlayProductIds[itemKey as keyof typeof googlePlayProductIds] ?? "";
+}
+
 export function isNativeAndroidApp() {
   return (
     Capacitor.getPlatform() === "android" &&
@@ -72,8 +84,13 @@ export async function completeGooglePlayPurchase(input: {
   itemKey: string;
   targetProfileId?: string;
 }) {
+  const productId = resolveGooglePlayProductId(input.itemKey);
+  if (!productId) {
+    throw new Error("This Android purchase item is not mapped to a Google Play product yet.");
+  }
+
   const purchase = await GooglePlayBilling.purchaseProduct({
-    productId: input.itemKey,
+    productId,
   });
 
   if (purchase.cancelled) {

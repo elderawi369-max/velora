@@ -97,13 +97,15 @@ export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
   }, [nativeAndroid, onTokenChange]);
 
   if (!turnstileSiteKey) {
+    if (nativeAndroid) {
+      return null;
+    }
+
     return (
       <div className="panel form-panel">
         <span className="meta-title">Human verification</span>
         <p className="status-message">
-          {nativeAndroid
-            ? "Human verification is handled differently in this Android build, so the in-app check is being bypassed."
-            : "Turnstile is not configured in this environment yet, so local development is bypassing it."}
+          Turnstile is not configured in this environment yet, so local development is bypassing it.
         </p>
       </div>
     );

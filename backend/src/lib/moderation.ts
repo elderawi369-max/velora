@@ -7,5 +7,17 @@ const blockedPatterns = [
 ];
 
 export function containsBlockedContactInfo(input: string) {
-  return blockedPatterns.some((pattern) => pattern.test(input));
+  const normalized = input
+    .toLowerCase()
+    .replace(/\s*\(\s*at\s*\)\s*/g, "@")
+    .replace(/\s*\[\s*at\s*\]\s*/g, "@")
+    .replace(/\s+at\s+/g, "@")
+    .replace(/\s*\(\s*dot\s*\)\s*/g, ".")
+    .replace(/\s*\[\s*dot\s*\]\s*/g, ".")
+    .replace(/\s+dot\s+/g, ".")
+    .replace(/\s+/g, "");
+
+  const obfuscatedEmailLike = /\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(normalized);
+
+  return obfuscatedEmailLike || blockedPatterns.some((pattern) => pattern.test(input));
 }

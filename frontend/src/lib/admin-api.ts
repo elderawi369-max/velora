@@ -3,7 +3,7 @@ import { apiBaseUrl } from "../config";
 async function adminRequest<T>(
   path: string,
   adminKey: string,
-  options: { method?: "GET" | "POST" } = {},
+  options: { method?: "GET" | "POST"; body?: unknown } = {},
 ) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: options.method ?? "GET",
@@ -11,15 +11,27 @@ async function adminRequest<T>(
       "Content-Type": "application/json",
       "x-admin-key": adminKey,
     },
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const data = (await response.json()) as T & { error?: string; message?: string };
+  const raw = await response.text();
+  let data: (T & { error?: string; message?: string }) | null = null;
 
-  if (!response.ok) {
-    throw new Error(data.error ?? data.message ?? "Admin request failed.");
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as T & { error?: string; message?: string };
+    } catch {
+      if (!response.ok) {
+        throw new Error(raw || "Admin request failed.");
+      }
+    }
   }
 
-  return data;
+  if (!response.ok) {
+    throw new Error((data?.error ?? data?.message ?? raw) || "Admin request failed.");
+  }
+
+  return (data ?? {}) as T;
 }
 
 export type AdminReport = {
@@ -34,6 +46,8 @@ export type AdminReport = {
     id: string;
     username: string;
     displayName: string;
+    bio: string;
+    promptEntries: Array<{ question: string; answer: string }>;
     verifiedHumanAt: number | null;
     suspendedAt: number | null;
   } | null;
@@ -50,6 +64,83 @@ export type SupportTicket = {
   message: string;
   status: string;
   createdAt: number;
+};
+
+export type AdminConversation = {
+  id: string;
+  createdAt: number;
+  participants: Array<
+    | {
+        id: string;
+        username: string;
+        displayName: string;
+      }
+    | null
+  >;
+  messages: Array<{
+    id: string;
+    senderProfileId: string;
+    body: string;
+    createdAt: number;
+    sender:
+      | {
+          id: string;
+          username: string;
+          displayName: string;
+        }
+      | null;
+  }>;
+};
+
+export type EngagementPeriod = {
+  activeUsers: number;
+  messagesSent: number;
+  uniqueMessageSenders: number;
+  activeConversations: number;
+  newConversations: number;
+  averageMessagesPerActiveConversation: number;
+  medianMessagesPerActiveConversation: number;
+  conversationsWith2PlusMessages: number;
+  conversationsWith5PlusMessages: number;
+  conversationsWith10PlusMessages: number;
+  oneSidedConversations: number;
+  twoWayConversations: number;
+  replyRate: number;
+  topConversations: Array<{
+    conversationId: string;
+    messageCount: number;
+    createdAt: number;
+    lastMessageAt: number;
+    profileADisplayName: string;
+    profileAUsername: string;
+    profileBDisplayName: string;
+    profileBUsername: string;
+  }>;
+};
+
+export type SignupFunnelPeriod = {
+  signups: number;
+  profilesCreated: number;
+  usersStartedConversation: number;
+  usersSentMessage: number;
+  usersReceivedReply: number;
+};
+
+export type RetentionPeriod = {
+  day: number;
+  eligibleUsers: number;
+  retainedUsers: number;
+  retentionRate: number;
+};
+
+export type DailyTrendPoint = {
+  day: string;
+  signups: number;
+  profilesCreated: number;
+  activeUsers: number;
+  messagesSent: number;
+  conversationsStarted: number;
+  twoWayConversations: number;
 };
 
 export type AdminAnalytics = {
@@ -72,6 +163,16 @@ export type AdminAnalytics = {
     passwordResetRequests: number;
     revenueUsdCents: number;
   };
+  engagement: {
+    last7d: EngagementPeriod;
+    last30d: EngagementPeriod;
+  };
+  signupFunnels: {
+    last7d: SignupFunnelPeriod;
+    last30d: SignupFunnelPeriod;
+  };
+  retention: RetentionPeriod[];
+  dailyTrends: DailyTrendPoint[];
   topProfiles: Array<{
     id: string;
     username: string;
@@ -128,6 +229,13 @@ export function fetchSupportTickets(adminKey: string) {
   return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
 }
 
+export function fetchAdminConversation(adminKey: string, conversationId: string) {
+  return adminRequest<{ conversation: AdminConversation }>(
+    `/api/admin/conversations/${conversationId}`,
+    adminKey,
+  );
+}
+
 export function verifyProfile(adminKey: string, profileId: string) {
   return adminRequest<{ ok: true }>(
     `/api/admin/profiles/${profileId}/verify`,
@@ -142,4 +250,29 @@ export function unverifyProfile(adminKey: string, profileId: string) {
     adminKey,
     { method: "POST" },
   );
+}
+
+export function updateProfileContent(
+  adminKey: string,
+  profileId: string,
+  payload: {
+    bio: string;
+    promptEntries: Array<{ question: string; answer: string }>;
+  },
+) {
+  return adminRequest<{
+    ok: true;
+    profile: {
+      id: string;
+      username: string;
+      displayName: string;
+      bio: string;
+      promptEntries: Array<{ question: string; answer: string }>;
+      verifiedHumanAt: number | null;
+      suspendedAt: number | null;
+    };
+  }>(`/api/admin/profiles/${profileId}/content`, adminKey, {
+    method: "POST",
+    body: payload,
+  });
 }

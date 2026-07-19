@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import { desc, eq, inArray, isNull } from "drizzle-orm";
+import { desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
-import { boosts, gifts, profiles, reports, users } from "../db/schema";
+import { boosts, conversations, gifts, profiles, reports, users } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
+import { containsBlockedContactInfo } from "../lib/moderation";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { profileSchema } from "../lib/validation";
 import { logEvent } from "../lib/analytics";
@@ -31,6 +32,38 @@ const boostLabels: Record<BoostType, string> = {
   spark: "Spark Boost",
   spotlight: "Spotlight Boost",
 };
+
+const browseAggregationChunkSize = 40;
+
+function chunkItems<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function profileContainsBlockedContactInfo(input: {
+  displayName: string;
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+}) {
+  if (containsBlockedContactInfo(input.displayName)) {
+    return true;
+  }
+
+  if (containsBlockedContactInfo(input.bio)) {
+    return true;
+  }
+
+  return input.promptEntries.some(
+    (entry) =>
+      containsBlockedContactInfo(entry.question) ||
+      containsBlockedContactInfo(entry.answer),
+  );
+}
 
 function getStrongerGiftType(current: GiftType | null, next: GiftType | null) {
   const priority: Record<GiftType, number> = {
@@ -92,13 +125,19 @@ async function getModerationStats(env: EnvBindings, profileIds: string[]) {
   }
 
   const db = getDb(env);
-  const rows = await db
-    .select({
-      targetProfileId: reports.targetProfileId,
-      reporterProfileId: reports.reporterProfileId,
-    })
-    .from(reports)
-    .where(inArray(reports.targetProfileId, profileIds));
+  const rows = (
+    await Promise.all(
+      chunkItems(profileIds, browseAggregationChunkSize).map((batch) =>
+        db
+          .select({
+            targetProfileId: reports.targetProfileId,
+            reporterProfileId: reports.reporterProfileId,
+          })
+          .from(reports)
+          .where(inArray(reports.targetProfileId, batch)),
+      ),
+    )
+  ).flat();
 
   for (const profileId of profileIds) {
     stats.set(profileId, { reportCount: 0, uniqueReporterCount: 0 });
@@ -174,14 +213,20 @@ async function getGiftEffects(env: EnvBindings, profileIds: string[]) {
   }
 
   const db = getDb(env);
-  const rows = await db
-    .select({
-      targetProfileId: gifts.targetProfileId,
-      giftType: gifts.giftType,
-      createdAt: gifts.createdAt,
-    })
-    .from(gifts)
-    .where(inArray(gifts.targetProfileId, profileIds));
+  const rows = (
+    await Promise.all(
+      chunkItems(profileIds, browseAggregationChunkSize).map((batch) =>
+        db
+          .select({
+            targetProfileId: gifts.targetProfileId,
+            giftType: gifts.giftType,
+            createdAt: gifts.createdAt,
+          })
+          .from(gifts)
+          .where(inArray(gifts.targetProfileId, batch)),
+      ),
+    )
+  ).flat();
 
   const effects = new Map<string, {
     dominantGiftType: GiftType | null;
@@ -274,15 +319,21 @@ async function getBoostEffects(env: EnvBindings, profileIds: string[]) {
   }
 
   const db = getDb(env);
-  const rows = await db
-    .select({
-      profileId: boosts.profileId,
-      boostType: boosts.boostType,
-      createdAt: boosts.createdAt,
-      expiresAt: boosts.expiresAt,
-    })
-    .from(boosts)
-    .where(inArray(boosts.profileId, profileIds));
+  const rows = (
+    await Promise.all(
+      chunkItems(profileIds, browseAggregationChunkSize).map((batch) =>
+        db
+          .select({
+            profileId: boosts.profileId,
+            boostType: boosts.boostType,
+            createdAt: boosts.createdAt,
+            expiresAt: boosts.expiresAt,
+          })
+          .from(boosts)
+          .where(inArray(boosts.profileId, batch)),
+      ),
+    )
+  ).flat();
 
   const effects = new Map<string, {
     activeBoostType: BoostType | null;
@@ -356,6 +407,67 @@ async function getBoostEffects(env: EnvBindings, profileIds: string[]) {
   }
 
   return effects;
+}
+
+async function getProfileActivityStats(env: EnvBindings, profileIds: string[]) {
+  const stats = new Map<string, {
+    latestConversationAt: number;
+    recentConversationCount: number;
+  }>();
+
+  if (profileIds.length === 0) {
+    return stats;
+  }
+
+  const db = getDb(env);
+  const profileIdSet = new Set(profileIds);
+  const rows = await db
+    .select({
+      profileAId: conversations.profileAId,
+      profileBId: conversations.profileBId,
+      lastMessageAt: conversations.lastMessageAt,
+      createdAt: conversations.createdAt,
+    })
+    .from(conversations);
+
+  const recentThreshold = Date.now() - 1000 * 60 * 60 * 24 * 7;
+
+  for (const profileId of profileIds) {
+    stats.set(profileId, {
+      latestConversationAt: 0,
+      recentConversationCount: 0,
+    });
+  }
+
+  for (const row of rows) {
+    if (!profileIdSet.has(row.profileAId) && !profileIdSet.has(row.profileBId)) {
+      continue;
+    }
+
+    for (const profileId of [row.profileAId, row.profileBId]) {
+      const current = stats.get(profileId);
+      if (!current) {
+        continue;
+      }
+
+      const latestConversationAt = Math.max(
+        current.latestConversationAt,
+        row.lastMessageAt,
+        row.createdAt,
+      );
+      const recentConversationCount =
+        row.lastMessageAt >= recentThreshold
+          ? current.recentConversationCount + 1
+          : current.recentConversationCount;
+
+      stats.set(profileId, {
+        latestConversationAt,
+        recentConversationCount,
+      });
+    }
+  }
+
+  return stats;
 }
 
 async function getProfileById(env: EnvBindings, profileId: string) {
@@ -537,6 +649,82 @@ function countOverlap(left: string[], right: string[]) {
   return left.filter((item) => rightSet.has(item)).length;
 }
 
+function getProfileCompletionStage(input: {
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+  vibeTags: string[];
+  boundaries: string[];
+}) {
+  const full =
+    input.bio.trim().length >= 40 &&
+    input.promptEntries.length >= 2 &&
+    input.vibeTags.length >= 3 &&
+    input.boundaries.length >= 2;
+
+  return full ? "full" : "minimum";
+}
+
+function getBrowseCompletionScore(profile: {
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+  vibeTags: string[];
+  boundaries: string[];
+  verifiedHuman: boolean;
+  emailVerified: boolean;
+}) {
+  let score = 0;
+  if (profile.bio.trim().length >= 40) {
+    score += 1;
+  }
+  if (profile.promptEntries.length >= 2) {
+    score += 2;
+  }
+  if (profile.vibeTags.length >= 3) {
+    score += 1;
+  }
+  if (profile.boundaries.length >= 2) {
+    score += 1;
+  }
+  if (profile.verifiedHuman) {
+    score += 1;
+  }
+  if (profile.emailVerified) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function getBrowseActivity(input: {
+  createdAt: number;
+  latestConversationAt: number;
+  recentConversationCount: number;
+}) {
+  const now = Date.now();
+  const latestActivityAt = Math.max(input.createdAt, input.latestConversationAt);
+  const oneDayMs = 1000 * 60 * 60 * 24;
+  const sevenDaysMs = oneDayMs * 7;
+
+  let score = Math.min(input.recentConversationCount, 3);
+  let badge: string | null = null;
+
+  if (now - latestActivityAt <= oneDayMs) {
+    score += 3;
+    badge = "Active today";
+  } else if (now - latestActivityAt <= sevenDaysMs) {
+    score += 2;
+    badge = "Active this week";
+  } else if (now - input.createdAt <= sevenDaysMs) {
+    score += 1;
+    badge = "New here";
+  }
+
+  return {
+    score,
+    badge,
+  };
+}
+
 function getCompatibilityScore(
   ownProfile:
     | {
@@ -631,8 +819,7 @@ profileRoutes.get("/", async (c) => {
     .from(profiles)
     .innerJoin(users, eq(users.id, profiles.userId))
     .where(isNull(profiles.suspendedAt))
-    .orderBy(desc(profiles.createdAt))
-    .limit(50);
+    .orderBy(desc(profiles.createdAt));
 
   const visibleProfiles = results.filter((profile) => profile.id !== own?.profileId);
   const moderationStats = await getModerationStats(
@@ -644,6 +831,10 @@ profileRoutes.get("/", async (c) => {
     visibleProfiles.map((profile) => profile.id),
   );
   const boostEffects = await getBoostEffects(
+    c.env,
+    visibleProfiles.map((profile) => profile.id),
+  );
+  const activityStats = await getProfileActivityStats(
     c.env,
     visibleProfiles.map((profile) => profile.id),
   );
@@ -688,12 +879,14 @@ profileRoutes.get("/", async (c) => {
         question: string;
         answer: string;
       }>;
+      const vibeTags = JSON.parse(profile.vibeTags) as string[];
+      const boundaries = JSON.parse(profile.boundaries) as string[];
       const compatibility = getCompatibilityScore(currentProfile, {
         personalityType,
         identity: normalizeIdentity(profile.identity),
         lookingFor: normalizeLookingFor(profile.lookingFor),
-        vibeTags: JSON.parse(profile.vibeTags) as string[],
-        boundaries: JSON.parse(profile.boundaries) as string[],
+        vibeTags,
+        boundaries,
       });
       const trustProfile = buildTrustProfile({
         bio: profile.bio,
@@ -704,6 +897,11 @@ profileRoutes.get("/", async (c) => {
         reportCount: moderationStats.get(profile.id)?.reportCount ?? 0,
         uniqueReporterCount: moderationStats.get(profile.id)?.uniqueReporterCount ?? 0,
       });
+      const activity = getBrowseActivity({
+        createdAt: profile.createdAt,
+        latestConversationAt: activityStats.get(profile.id)?.latestConversationAt ?? 0,
+        recentConversationCount: activityStats.get(profile.id)?.recentConversationCount ?? 0,
+      });
 
       return {
         ...profile,
@@ -712,8 +910,8 @@ profileRoutes.get("/", async (c) => {
         identity: normalizeIdentity(profile.identity),
         lookingFor: normalizeLookingFor(profile.lookingFor),
         promptEntries,
-        vibeTags: JSON.parse(profile.vibeTags) as string[],
-        boundaries: JSON.parse(profile.boundaries) as string[],
+        vibeTags,
+        boundaries,
         isFavorited: own ? await isFavorited(c.env, own.profileId, profile.id) : false,
         recommended: compatibility.total >= 5,
         compatibilityScore: compatibility.total,
@@ -722,6 +920,8 @@ profileRoutes.get("/", async (c) => {
         verifiedHuman: trustProfile.verifiedHuman,
         emailVerified: trustProfile.emailVerified,
         trustSignals: trustProfile.trustSignals,
+        activityBadge: activity.badge,
+        activityScore: activity.score,
         giftEffect: giftEffects.get(profile.id) ?? {
           dominantGiftType: null,
           totalReceived: 0,
@@ -762,6 +962,16 @@ profileRoutes.get("/", async (c) => {
       return right.boostEffect.activeExpiresAt - left.boostEffect.activeExpiresAt;
     }
 
+    const leftCompletionScore = getBrowseCompletionScore(left);
+    const rightCompletionScore = getBrowseCompletionScore(right);
+    if (rightCompletionScore !== leftCompletionScore) {
+      return rightCompletionScore - leftCompletionScore;
+    }
+
+    if (right.activityScore !== left.activityScore) {
+      return right.activityScore - left.activityScore;
+    }
+
     if (right.compatibilityScore !== left.compatibilityScore) {
       return right.compatibilityScore - left.compatibilityScore;
     }
@@ -770,7 +980,7 @@ profileRoutes.get("/", async (c) => {
   });
 
   return c.json({
-    profiles: rankedProfiles,
+    profiles: rankedProfiles.map(({ activityScore: _activityScore, ...profile }) => profile),
   });
 });
 
@@ -793,6 +1003,13 @@ profileRoutes.post("/", async (c) => {
   const payload = profileSchema.safeParse(await c.req.json());
   if (!payload.success) {
     return c.json({ error: "Invalid profile payload." }, 400);
+  }
+
+  if (profileContainsBlockedContactInfo(payload.data)) {
+    return c.json(
+      { error: "Profiles cannot include off-platform contact information." },
+      400,
+    );
   }
 
   const db = getDb(c.env);
@@ -850,6 +1067,24 @@ profileRoutes.post("/", async (c) => {
       promptCount: payload.data.promptEntries.length,
     },
   });
+  await logEvent(c.env, {
+    eventType:
+      getProfileCompletionStage({
+        bio: payload.data.bio,
+        promptEntries: payload.data.promptEntries,
+        vibeTags: payload.data.vibeTags,
+        boundaries: payload.data.boundaries,
+      }) === "full"
+        ? "profile_completed_full"
+        : "profile_completed_minimum",
+    userId,
+    profileId,
+    eventData: {
+      vibeCount: payload.data.vibeTags.length,
+      promptCount: payload.data.promptEntries.length,
+      boundaryCount: payload.data.boundaries.length,
+    },
+  });
 
   return c.json({
     profile: {
@@ -898,6 +1133,13 @@ profileRoutes.put("/me", async (c) => {
   const payload = profileSchema.safeParse(await c.req.json());
   if (!payload.success) {
     return c.json({ error: "Invalid profile payload." }, 400);
+  }
+
+  if (profileContainsBlockedContactInfo(payload.data)) {
+    return c.json(
+      { error: "Profiles cannot include off-platform contact information." },
+      400,
+    );
   }
 
   const db = getDb(c.env);
@@ -953,6 +1195,24 @@ profileRoutes.put("/me", async (c) => {
       lookingFor: payload.data.lookingFor,
       vibeCount: payload.data.vibeTags.length,
       promptCount: payload.data.promptEntries.length,
+    },
+  });
+  await logEvent(c.env, {
+    eventType:
+      getProfileCompletionStage({
+        bio: payload.data.bio,
+        promptEntries: payload.data.promptEntries,
+        vibeTags: payload.data.vibeTags,
+        boundaries: payload.data.boundaries,
+      }) === "full"
+        ? "profile_completed_full"
+        : "profile_completed_minimum",
+    userId,
+    profileId: existingProfile.id,
+    eventData: {
+      vibeCount: payload.data.vibeTags.length,
+      promptCount: payload.data.promptEntries.length,
+      boundaryCount: payload.data.boundaries.length,
     },
   });
 

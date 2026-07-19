@@ -1,19 +1,34 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { changePassword, clearAuthToken, deleteAccount, logout } from "../../lib/api";
+import {
+  changePassword,
+  clearAuthToken,
+  deleteAccount,
+  fetchSession,
+  logout,
+} from "../../lib/api";
 import {
   canUsePushNotifications,
   disablePushNotifications,
   enablePushNotifications,
+  getPushPermissionState,
   getPushAvailabilityMessage,
+  isNativeAndroidApp,
 } from "../../lib/push";
 
 const adminStorageKey = "velora-admin-key";
+const founderEmail = "elderawi369@gmail.com";
 
 export function AccountSettingsPanel() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const nativeAndroid = isNativeAndroidApp();
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+  });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changeMessage, setChangeMessage] = useState("");
@@ -23,11 +38,50 @@ export function AccountSettingsPanel() {
   const [deleteError, setDeleteError] = useState("");
   const [pushMessage, setPushMessage] = useState("");
   const [pushError, setPushError] = useState("");
+  const [pushPermissionState, setPushPermissionState] = useState("");
   const [adminKey, setAdminKey] = useState(
     typeof window !== "undefined"
       ? window.localStorage.getItem(adminStorageKey) ?? ""
       : "",
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPermissionState() {
+      try {
+        const permissionState = await getPushPermissionState();
+        if (!cancelled) {
+          setPushPermissionState(permissionState);
+        }
+      } catch {
+        if (!cancelled) {
+          setPushPermissionState("");
+        }
+      }
+    }
+
+    void loadPermissionState();
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void loadPermissionState();
+      }
+    }
+
+    function handleWindowFocus() {
+      void loadPermissionState();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, []);
 
   const changePasswordMutation = useMutation({
     mutationFn: changePassword,
@@ -62,7 +116,9 @@ export function AccountSettingsPanel() {
       if (!supported) {
         throw new Error(
           (await getPushAvailabilityMessage()) ??
-            "Push notifications are not available on this browser yet.",
+            (nativeAndroid
+              ? "Native Android notifications are not available on this device yet."
+              : "Push notifications are not available on this browser yet."),
         );
       }
 
@@ -70,11 +126,17 @@ export function AccountSettingsPanel() {
     },
     onSuccess: () => {
       setPushError("");
-      setPushMessage("Push notifications enabled for this browser.");
+      setPushMessage(
+        nativeAndroid
+          ? "Native Android notifications enabled for this device."
+          : "Push notifications enabled for this browser.",
+      );
+      setPushPermissionState("granted");
     },
     onError: (error) => {
       setPushMessage("");
       setPushError(error instanceof Error ? error.message : "Unable to enable push notifications.");
+      void getPushPermissionState().then(setPushPermissionState).catch(() => undefined);
     },
   });
 
@@ -82,13 +144,21 @@ export function AccountSettingsPanel() {
     mutationFn: disablePushNotifications,
     onSuccess: () => {
       setPushError("");
-      setPushMessage("Push notifications disabled for this browser.");
+      setPushMessage(
+        nativeAndroid
+          ? "Native Android notifications disabled for this device."
+          : "Push notifications disabled for this browser.",
+      );
     },
     onError: (error) => {
       setPushMessage("");
       setPushError(error instanceof Error ? error.message : "Unable to disable push notifications.");
     },
   });
+
+  const canAccessAdmin =
+    sessionQuery.data?.user?.email?.toLowerCase() === founderEmail;
+  const showAndroidSettingsWarning = nativeAndroid && pushPermissionState === "denied";
 
   return (
     <section className="panel form-panel">
@@ -184,9 +254,16 @@ export function AccountSettingsPanel() {
         <section className="panel form-panel settings-subpanel">
           <span className="meta-title">Push notifications</span>
           <p className="status-message">
-            Enable real browser notifications for new messages, gifts, and activity when Firebase
-            web push is configured.
+            {nativeAndroid
+              ? "Enable native Android notifications for new messages, gifts, and activity on this device."
+              : "Enable browser notifications for new messages, gifts, and activity when Firebase web push is configured."}
           </p>
+          {showAndroidSettingsWarning ? (
+            <div className="notification-warning">
+              Notifications are currently blocked on this Android device. Turn them back on in
+              device settings, then return to Velora and tap `Enable notifications` again.
+            </div>
+          ) : null}
           {pushError ? <p className="form-error">{pushError}</p> : null}
           {pushMessage ? <p className="success-message">{pushMessage}</p> : null}
           <div className="action-row">
@@ -217,47 +294,49 @@ export function AccountSettingsPanel() {
           </div>
         </section>
 
-        <section className="panel form-panel settings-subpanel">
-          <span className="meta-title">Admin access</span>
-          <p className="status-message">
-            Keep the moderation console hidden from regular navigation, but still reachable when
-            you have the admin key.
-          </p>
-          <label className="field">
-            <span>Admin key</span>
-            <input
-              type="password"
-              value={adminKey}
-              onChange={(event) => setAdminKey(event.target.value)}
-              placeholder="Paste the admin key"
-            />
-          </label>
-          <div className="action-row">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => {
-                window.localStorage.setItem(adminStorageKey, adminKey);
-                navigate("/admin");
-                window.dispatchEvent(new Event("velora-admin-key-updated"));
-              }}
-              disabled={!adminKey.trim()}
-            >
-              Open admin console
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => {
-                window.localStorage.removeItem(adminStorageKey);
-                setAdminKey("");
-                window.dispatchEvent(new Event("velora-admin-key-updated"));
-              }}
-            >
-              Clear admin key
-            </button>
-          </div>
-        </section>
+        {canAccessAdmin ? (
+          <section className="panel form-panel settings-subpanel">
+            <span className="meta-title">Admin access</span>
+            <p className="status-message">
+              Keep the moderation console hidden from regular navigation, but still reachable when
+              you have the admin key.
+            </p>
+            <label className="field">
+              <span>Admin key</span>
+              <input
+                type="password"
+                value={adminKey}
+                onChange={(event) => setAdminKey(event.target.value)}
+                placeholder="Paste the admin key"
+              />
+            </label>
+            <div className="action-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  window.localStorage.setItem(adminStorageKey, adminKey);
+                  navigate("/founder-console");
+                  window.dispatchEvent(new Event("velora-admin-key-updated"));
+                }}
+                disabled={!adminKey.trim()}
+              >
+                Open admin console
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  window.localStorage.removeItem(adminStorageKey);
+                  setAdminKey("");
+                  window.dispatchEvent(new Event("velora-admin-key-updated"));
+                }}
+              >
+                Clear admin key
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </section>
   );

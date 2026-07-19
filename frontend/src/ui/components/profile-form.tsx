@@ -22,6 +22,30 @@ function toggleItem(items: string[], item: string) {
     : [...items, item];
 }
 
+function countProfileCompletion(input: {
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+  vibeTags: string[];
+  boundaries: string[];
+}) {
+  let completed = 0;
+
+  if (input.bio.trim().length >= 10) {
+    completed += 1;
+  }
+  if (input.promptEntries.filter((entry) => entry.answer.trim().length > 0).length >= 2) {
+    completed += 1;
+  }
+  if (input.vibeTags.length >= 3) {
+    completed += 1;
+  }
+  if (input.boundaries.length >= 2) {
+    completed += 1;
+  }
+
+  return completed;
+}
+
 type ProfileFormProps = {
   mode?: "create" | "edit";
   initialProfile?: PublicProfile | null;
@@ -54,10 +78,19 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
   );
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(mode === "edit");
   const avatarPreset =
     personalityTypeAvatarMap[
       personalityType as keyof typeof personalityTypeAvatarMap
     ] ?? "rose";
+  const answeredPrompts = promptEntries.filter((entry) => entry.answer.trim().length > 0);
+  const completionCount = countProfileCompletion({
+    bio,
+    promptEntries,
+    vibeTags,
+    boundaries,
+  });
+  const completionPercent = Math.round((completionCount / 4) * 100);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,7 +105,7 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         identity,
         lookingFor,
         bio,
-        promptEntries: promptEntries.filter((entry) => entry.answer.trim().length > 0),
+        promptEntries: answeredPrompts,
         avatarPreset,
         vibeTags,
         boundaries,
@@ -109,9 +142,35 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
             ? "Refine the profile people return to."
             : "Create a profile people will want to return to."}
         </h1>
+        <p className="status-message">
+          {mode === "edit"
+            ? `Profile strength ${completionPercent}% complete. Add prompts, vibes, and preferences to improve visibility.`
+            : "Start with the essentials, then add extra detail for better matches and better placement in Browse."}
+        </p>
       </div>
 
       <form className="panel form-panel" onSubmit={handleSubmit}>
+        <div className="panel form-panel">
+          <div className="section-copy compact-copy">
+            <p className="eyebrow">{showAdvanced ? "Advanced" : "Quick start"}</p>
+            <h2>{showAdvanced ? "Polish the profile people reply to." : "Get live fast with the essentials."}</h2>
+          </div>
+          <div className="chip-row">
+            <span className="chip">Completion {completionPercent}%</span>
+            <span className={completionCount >= 2 ? "chip" : "chip chip-muted"}>
+              Minimum profile ready
+            </span>
+            <span className={completionCount === 4 ? "chip" : "chip chip-muted"}>
+              Full profile boost
+            </span>
+          </div>
+          {mode === "create" ? (
+            <p className="status-message">
+              Prompts, vibe tags, and profile preferences are optional at first. You can skip them now, enter Browse immediately, and add them later from My Profile.
+            </p>
+          ) : null}
+        </div>
+
         <div className="field-grid">
           <label className="field">
             <span>Username</span>
@@ -198,60 +257,10 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
             rows={4}
             required
           />
+          <small className="status-message">
+            Keep it inside Velora. Do not include emails, usernames, links, or off-app contact details.
+          </small>
         </label>
-
-        <div className="picker-group">
-          <span className="picker-label">Profile prompts</span>
-          <p className="status-message">
-            Short answers make profiles easier to remember and easier to start chatting with.
-          </p>
-          <div className="content-section">
-            {promptEntries.map((entry, index) => (
-              <div className="panel form-panel" key={`${entry.question}-${index}`}>
-                <label className="field">
-                  <span>Prompt {index + 1}</span>
-                  <select
-                    value={entry.question}
-                    onChange={(event) =>
-                      setPromptEntries((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, question: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                  >
-                    {profilePromptOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="field">
-                  <span>Answer</span>
-                  <textarea
-                    value={entry.answer}
-                    onChange={(event) =>
-                      setPromptEntries((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, answer: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                    placeholder="Give people a concrete feel for how you like to chat."
-                    rows={3}
-                    maxLength={180}
-                  />
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <div className="picker-group">
           <span className="picker-label">Profile picture</span>
@@ -272,67 +281,157 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
           </p>
         </div>
 
-        <div className="picker-group">
-          <span className="picker-label">Vibe tags</span>
-          <div className="tag-grid">
-            {vibeOptions.map((option) => {
-              const active = vibeTags.includes(option);
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  className={active ? "tag-button tag-active" : "tag-button"}
-                  onClick={() => setVibeTags(toggleItem(vibeTags, option))}
-                >
-                  {option}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {showAdvanced ? (
+          <>
+            <div className="picker-group">
+              <span className="picker-label">Profile prompts (optional)</span>
+              <p className="status-message">
+                Short answers make profiles easier to remember and easier to start chatting with.
+              </p>
+              <div className="content-section">
+                {promptEntries.map((entry, index) => (
+                  <div className="panel form-panel" key={`${entry.question}-${index}`}>
+                    <label className="field">
+                      <span>Prompt {index + 1}</span>
+                      <select
+                        value={entry.question}
+                        onChange={(event) =>
+                          setPromptEntries((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, question: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        {profilePromptOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-        <div className="picker-group">
-          <span className="picker-label">Platform rules</span>
-          <p className="status-message">
-            These are fixed for everyone and do not need to be selected per profile.
-          </p>
-          <div className="tag-grid">
-            {platformRules.map((rule) => (
-              <span className="chip chip-muted" key={rule}>
-                {rule}
-              </span>
-            ))}
-          </div>
-        </div>
+                    <label className="field">
+                      <span>Answer</span>
+                      <textarea
+                        value={entry.answer}
+                        onChange={(event) =>
+                          setPromptEntries((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, answer: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                        placeholder="Give people a concrete feel for how you like to chat."
+                        rows={3}
+                        maxLength={180}
+                      />
+                      <small className="status-message">
+                        No emails, social handles, links, or other off-app contact details.
+                      </small>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        <div className="picker-group">
-          <span className="picker-label">Profile preferences</span>
-          <div className="tag-grid">
-            {preferenceOptions.map((option) => {
-              const active = boundaries.includes(option);
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  className={active ? "tag-button tag-active" : "tag-button"}
-                  onClick={() => setBoundaries(toggleItem(boundaries, option))}
-                >
-                  {option}
-                </button>
-              );
-            })}
+            <div className="picker-group">
+              <span className="picker-label">Vibe tags (optional)</span>
+              <div className="tag-grid">
+                {vibeOptions.map((option) => {
+                  const active = vibeTags.includes(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      className={active ? "tag-button tag-active" : "tag-button"}
+                      onClick={() => setVibeTags(toggleItem(vibeTags, option))}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="picker-group">
+              <span className="picker-label">Platform rules</span>
+              <p className="status-message">
+                These are fixed for everyone and do not need to be selected per profile.
+              </p>
+              <div className="tag-grid">
+                {platformRules.map((rule) => (
+                  <span className="chip chip-muted" key={rule}>
+                    {rule}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="picker-group">
+              <span className="picker-label">Profile preferences (optional)</span>
+              <div className="tag-grid">
+                {preferenceOptions.map((option) => {
+                  const active = boundaries.includes(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      className={active ? "tag-button tag-active" : "tag-button"}
+                      onClick={() => setBoundaries(toggleItem(boundaries, option))}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="panel form-panel">
+            <div className="section-copy compact-copy">
+              <p className="eyebrow">Optional boost</p>
+              <h2>Add prompts and preferences after you go live.</h2>
+            </div>
+            <p className="status-message">
+              You can create the profile now, or add more detail first for stronger Browse placement and easier chat openers.
+            </p>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+            >
+              Add more detail first
+            </button>
           </div>
-        </div>
+        )}
 
         {error ? <p className="form-error">{error}</p> : null}
 
-        <button className="primary-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting
-            ? "Saving profile..."
-            : mode === "edit"
-              ? "Save profile"
-              : "Create profile"}
-        </button>
+        <div className="action-row">
+          <button className="primary-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting
+              ? "Saving profile..."
+              : mode === "edit"
+                ? "Save profile"
+                : showAdvanced
+                  ? "Create full profile"
+                  : "Create profile now"}
+          </button>
+          {mode === "create" && showAdvanced ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setShowAdvanced(false)}
+            >
+              Back to quick start
+            </button>
+          ) : null}
+        </div>
       </form>
     </section>
   );

@@ -142,6 +142,7 @@ export type PublicProfile = {
   verifiedHuman: boolean;
   emailVerified: boolean;
   trustSignals: string[];
+  activityBadge?: string | null;
   giftEffect: {
     dominantGiftType: "rose" | "starlight" | "crown" | null;
     totalReceived: number;
@@ -176,12 +177,17 @@ export type Conversation = {
     personalityType: string;
     identity: string;
     avatarPreset: string;
+    bio?: string;
+    vibeTags?: string[];
+    promptEntries?: Array<{ question: string; answer: string }>;
   } | null;
   isFavorited: boolean;
   lastMessageAt: number;
   lastMessagePreview: string;
   unread: boolean;
   unreadCount: number;
+  awaitingReply?: boolean;
+  needsTheirReply?: boolean;
   createdAt: number;
 };
 
@@ -291,6 +297,10 @@ export function fetchProfiles() {
 
 export function fetchOwnProfile() {
   return request<{ profile: PublicProfile | null }>("/api/profiles/me");
+}
+
+export function fetchProfileByUsername(username: string) {
+  return request<{ profile: PublicProfile }>(`/api/profiles/${username}`);
 }
 
 export function createConversation(targetProfileId: string) {

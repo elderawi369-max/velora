@@ -1,14 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMessages, sendMessage } from "../../lib/api";
 
 type ChatPanelProps = {
   conversationId: string;
+  otherProfile?: {
+    displayName: string;
+    personalityType: string;
+    promptEntries?: Array<{ question: string; answer: string }>;
+    vibeTags?: string[];
+  } | null;
+  initialDraft?: string;
 };
 
-export function ChatPanel({ conversationId }: ChatPanelProps) {
+function getOpenerSuggestions(otherProfile?: ChatPanelProps["otherProfile"]) {
+  if (!otherProfile) {
+    return [
+      "What kind of conversation are you hoping for tonight?",
+      "What usually makes a chat feel easy for you?",
+      "What mood are you in right now?",
+    ];
+  }
+
+  const promptAnswer = otherProfile.promptEntries?.find((entry) => entry.answer.trim().length > 0);
+  const firstVibe = otherProfile.vibeTags?.[0];
+
+  return [
+    promptAnswer
+      ? `${otherProfile.displayName}, your profile mentioned "${promptAnswer.answer}". What makes that especially fun for you?`
+      : `What kind of ${otherProfile.personalityType} energy feels best for you tonight?`,
+    firstVibe
+      ? `I noticed your ${firstVibe} vibe. What does that usually look like in chat?`
+      : `What kind of opener usually gets your attention here?`,
+    `What kind of conversation are you hoping to build on Velora?`,
+  ];
+}
+
+export function ChatPanel({
+  conversationId,
+  otherProfile = null,
+  initialDraft = "",
+}: ChatPanelProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
 
   const messageQuery = useQuery({
     queryKey: ["messages", conversationId],
@@ -31,6 +66,15 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
 
   const ownProfileId = messageQuery.data?.ownProfileId ?? "";
   const messages = useMemo(() => messageQuery.data?.messages ?? [], [messageQuery.data]);
+  const openerSuggestions = useMemo(() => getOpenerSuggestions(otherProfile), [otherProfile]);
+
+  useEffect(() => {
+    if (!initialDraft || draft.trim().length > 0) {
+      return;
+    }
+
+    setDraft(initialDraft);
+  }, [draft, initialDraft]);
 
   useEffect(() => {
     if (!messageQuery.data) {
@@ -45,6 +89,10 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
       queryKey: ["conversation", conversationId],
     });
   }, [conversationId, messageQuery.data, queryClient]);
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,9 +124,21 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
     <section className="chat-layout">
       <div className="panel message-list">
         {messages.length === 0 ? (
-          <div className="empty-state">
-            <h2>No messages yet.</h2>
-            <p>Send the first message and start shaping the tone of the connection.</p>
+          <div className="empty-state chat-empty-state">
+            <h2>Start the conversation.</h2>
+            <p>Open with something warm, specific, or playful so the reply feels easy.</p>
+            <div className="chip-row">
+              {openerSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  className="tag-button"
+                  type="button"
+                  onClick={() => setDraft(suggestion)}
+                >
+                  Use opener
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           messages.map((message) => {
@@ -93,16 +153,34 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
             );
           })
         )}
+        <div ref={messageEndRef} />
       </div>
 
       <form className="panel composer" onSubmit={handleSubmit}>
+        {messages.length === 0 ? (
+          <div className="meta-group">
+            <span className="meta-title">Suggested openers</span>
+            <div className="chip-row">
+              {openerSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  className="tag-button"
+                  type="button"
+                  onClick={() => setDraft(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="field">
-          <span>Message</span>
+          <span>{messages.length === 0 ? "First message" : "Reply"}</span>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Keep the conversation inside Velora."
-            rows={4}
+            rows={messages.length === 0 ? 4 : 3}
             maxLength={1200}
           />
         </label>

@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   formatIdentityLabel,
   formatLookingForLabel,
@@ -13,30 +13,30 @@ import {
   preferenceOptions,
   vibeOptions,
 } from "../../config";
-import {
-  addFavorite,
-  createGiftCheckout,
-  savePendingCheckoutId,
-  createConversation,
-  fetchGiftCatalog,
-  fetchProfiles,
-  removeFavorite,
-} from "../../lib/api";
-import {
-  completeGooglePlayPurchase,
-  isNativeAndroidApp,
-  shouldUseGooglePlayBilling,
-} from "../../lib/google-play-billing";
+import { fetchProfiles } from "../../lib/api";
 import { ProfileAvatar } from "./profile-avatar";
+
+function readSavedBrowseFilters(storageKey: string) {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const raw = window.localStorage.getItem(storageKey);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 export function ProfileList() {
   const filterStorageKey = "velora-browse-filters";
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const savedFilters =
-    typeof window !== "undefined"
-      ? JSON.parse(window.localStorage.getItem(filterStorageKey) ?? "{}")
-      : {};
+  const savedFilters = readSavedBrowseFilters(filterStorageKey);
   const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? "");
   const [selectedVibe, setSelectedVibe] = useState<string>(savedFilters.selectedVibe ?? "all");
   const [selectedPreference, setSelectedPreference] = useState<string>(
@@ -61,10 +61,6 @@ export function ProfileList() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["profiles"],
     queryFn: fetchProfiles,
-  });
-  const giftCatalogQuery = useQuery({
-    queryKey: ["giftCatalog"],
-    queryFn: fetchGiftCatalog,
   });
 
   useEffect(() => {
@@ -93,52 +89,6 @@ export function ProfileList() {
     selectedVibe,
     sortMode,
   ]);
-
-  const createConversationMutation = useMutation({
-    mutationFn: (targetProfileId: string) => createConversation(targetProfileId),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      navigate(`/chat/${result.conversation.id}`);
-    },
-  });
-  const favoriteMutation = useMutation({
-    mutationFn: ({ profileId, nextState }: { profileId: string; nextState: boolean }) =>
-      nextState ? addFavorite(profileId) : removeFavorite(profileId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await queryClient.invalidateQueries({ queryKey: ["favorites"] });
-    },
-  });
-  const giftMutation = useMutation({
-    mutationFn: async ({ profileId, giftType }: { profileId: string; giftType: string }) => {
-      if (await shouldUseGooglePlayBilling()) {
-        return completeGooglePlayPurchase({
-          productKind: "gift",
-          itemKey: giftType,
-          targetProfileId: profileId,
-        });
-      }
-
-      if (isNativeAndroidApp()) {
-        throw new Error("This Android build should use Google Play Billing, not web checkout.");
-      }
-
-      const checkout = await createGiftCheckout(profileId, giftType);
-      return { mode: "checkout" as const, ...checkout };
-    },
-    onSuccess: async (result) => {
-      if ("mode" in result) {
-      savePendingCheckoutId(result.checkoutId);
-      window.location.href = result.checkoutUrl;
-        return;
-      }
-
-      if (!result.cancelled) {
-        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      }
-    },
-  });
 
   if (isLoading) {
     return <p className="status-message">Loading profiles...</p>;
@@ -172,11 +122,9 @@ export function ProfileList() {
         profile.displayName.toLowerCase().includes(normalizedSearch) ||
         profile.username.toLowerCase().includes(normalizedSearch) ||
         profile.bio.toLowerCase().includes(normalizedSearch);
-      const matchesVibe =
-        selectedVibe === "all" || profile.vibeTags.includes(selectedVibe);
+      const matchesVibe = selectedVibe === "all" || profile.vibeTags.includes(selectedVibe);
       const matchesPreference =
-        selectedPreference === "all" ||
-        visiblePreferences.includes(selectedPreference);
+        selectedPreference === "all" || visiblePreferences.includes(selectedPreference);
       const matchesIdentity =
         selectedIdentity === "all" || profile.identity === selectedIdentity;
       const matchesPersonalityType =
@@ -225,7 +173,7 @@ export function ProfileList() {
           <div>
             <h2>Find the right tone faster.</h2>
             <p className="status-message">
-              Filter by vibe, communication style, or the profiles you already like.
+              Scan quickly here, then open a full profile when someone catches your attention.
             </p>
           </div>
           <span className="chip">
@@ -377,151 +325,78 @@ export function ProfileList() {
       ) : null}
 
       <section className="card-grid">
-      {filteredProfiles.map((profile) => {
-        const visiblePreferences = profile.boundaries.filter(
-          (item) => !platformRules.includes(item as (typeof platformRules)[number]),
-        );
+        {filteredProfiles.map((profile) => {
+          const visiblePreferences = profile.boundaries
+            .filter((item) => !platformRules.includes(item as (typeof platformRules)[number]))
+            .slice(0, 2);
+          const bioPreview =
+            profile.bio.length > 140 ? `${profile.bio.slice(0, 137)}...` : profile.bio;
 
-        return (
-        <article className="card profile-card" key={profile.id}>
-          <ProfileAvatar
-            personalityType={profile.personalityType}
-            identity={profile.identity}
-            dominantGiftType={profile.giftEffect.dominantGiftType}
-            size="large"
-          />
-          <div className="profile-head">
-            <h2>{profile.displayName}</h2>
-            <p>@{profile.username}</p>
-          </div>
-          <div className="chip-row">
-            {profile.recommended ? <span className="chip">Recommended match</span> : null}
-            {profile.compatibilityScore > 0 ? (
-              <span className="chip chip-muted">Match score {profile.compatibilityScore}</span>
-            ) : null}
-            <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
-            <span className="chip">{profile.personalityType}</span>
-            <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
-            <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
-            {profile.trustSignals.map((signal) => (
-              <span className="chip" key={signal}>
-                {signal}
-              </span>
-            ))}
-          </div>
-          <p className="status-message">
-            {
-              personalityTypeDescriptions[
-                profile.personalityType as keyof typeof personalityTypeDescriptions
-              ]
-            }
-          </p>
-          {profile.matchReasons.length > 0 ? (
-            <div className="meta-group">
-              <span className="meta-title">Why this matches</span>
+          return (
+            <article className="card profile-card profile-preview-card" key={profile.id}>
+              <div className="profile-preview-head">
+                <ProfileAvatar
+                  personalityType={profile.personalityType}
+                  identity={profile.identity}
+                  dominantGiftType={profile.giftEffect.dominantGiftType}
+                  size="medium"
+                />
+                <div className="profile-head">
+                  <h2>{profile.displayName}</h2>
+                  <p>@{profile.username}</p>
+                </div>
+              </div>
+
               <div className="chip-row">
-                {profile.matchReasons.map((reason) => (
-                  <span className="chip chip-muted" key={`${profile.id}-${reason}`}>
-                    {reason}
+                {profile.recommended ? <span className="chip">Recommended</span> : null}
+                {profile.activityBadge ? <span className="chip">{profile.activityBadge}</span> : null}
+                <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
+                <span className="chip">{profile.personalityType}</span>
+                <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
+                <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
+              </div>
+
+              <p className="status-message">
+                {
+                  personalityTypeDescriptions[
+                    profile.personalityType as keyof typeof personalityTypeDescriptions
+                  ]
+                }
+              </p>
+
+              <p className="profile-bio">{bioPreview}</p>
+
+              <div className="chip-row">
+                {profile.vibeTags.slice(0, 3).map((tag) => (
+                  <span className="chip" key={tag}>
+                    {tag}
                   </span>
                 ))}
-              </div>
-            </div>
-          ) : null}
-          <p className="profile-bio">{profile.bio}</p>
-
-          {profile.promptEntries.length > 0 ? (
-            <div className="meta-group">
-              <span className="meta-title">Prompts</span>
-              <div className="content-section">
-                {profile.promptEntries.map((entry) => (
-                  <div className="panel form-panel" key={`${profile.id}-${entry.question}`}>
-                    <span className="meta-title">{entry.question}</span>
-                    <p>{entry.answer}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="meta-group">
-            <span className="meta-title">Vibe</span>
-            <div className="chip-row">
-              {profile.vibeTags.map((tag) => (
-                <span className="chip" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="meta-group">
-            <span className="meta-title">Preferences</span>
-            {visiblePreferences.length > 0 ? (
-              <div className="chip-row">
                 {visiblePreferences.map((tag) => (
                   <span className="chip chip-muted" key={tag}>
                     {tag}
                   </span>
                 ))}
               </div>
-            ) : (
-              <p className="status-message">No extra preferences listed.</p>
-            )}
-          </div>
 
-          <div className="action-row">
-            <button
-              className="primary-button"
-              type="button"
-              disabled={createConversationMutation.isPending}
-              onClick={() => createConversationMutation.mutate(profile.id)}
-            >
-              {createConversationMutation.isPending ? "Opening..." : "Start chat"}
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={favoriteMutation.isPending}
-              onClick={() =>
-                favoriteMutation.mutate({
-                  profileId: profile.id,
-                  nextState: !profile.isFavorited,
-                })
-              }
-            >
-              {profile.isFavorited ? "Unfavorite" : "Favorite"}
-            </button>
-          </div>
+              {profile.matchReasons.length > 0 ? (
+                <div className="chip-row">
+                  {profile.matchReasons.slice(0, 2).map((reason) => (
+                    <span className="chip chip-muted" key={`${profile.id}-${reason}`}>
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
-          <div className="gift-row">
-            {(giftCatalogQuery.data?.gifts ?? []).map((gift) => (
-              <button
-                key={gift.key}
-                className="gift-button"
-                type="button"
-                disabled={giftMutation.isPending}
-                onClick={() => {
-                  giftMutation.mutate({ profileId: profile.id, giftType: gift.key });
-                }}
-              >
-                {giftMutation.isPending
-                  ? "Opening checkout..."
-                  : `Buy ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
-              </button>
-            ))}
-          </div>
-
-          {giftMutation.error ? (
-            <p className="form-error">
-              {giftMutation.error instanceof Error
-                ? giftMutation.error.message
-                : "Unable to open gift checkout."}
-            </p>
-          ) : null}
-
-        </article>
-      )})}
+              <div className="action-row">
+                <Link className="primary-button" to={`/browse/${profile.username}`}>
+                  View profile
+                </Link>
+              </div>
+            </article>
+          );
+        })}
       </section>
     </section>
   );

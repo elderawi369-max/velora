@@ -8,6 +8,25 @@ const pillars = [
   "Safety-first boundaries and lightweight anti-spam rules",
 ];
 
+function getProfileCompletionPercent(profile: NonNullable<Awaited<ReturnType<typeof fetchOwnProfile>>["profile"]>) {
+  let completed = 0;
+
+  if (profile.bio.trim().length >= 10) {
+    completed += 1;
+  }
+  if (profile.promptEntries.length >= 2) {
+    completed += 1;
+  }
+  if (profile.vibeTags.length >= 3) {
+    completed += 1;
+  }
+  if (profile.boundaries.length >= 2) {
+    completed += 1;
+  }
+
+  return Math.round((completed / 4) * 100);
+}
+
 export function HomePage() {
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
@@ -28,9 +47,15 @@ export function HomePage() {
     refetchInterval: 8000,
   });
   const hasProfile = Boolean(ownProfileQuery.data?.profile);
+  const ownProfile = ownProfileQuery.data?.profile ?? null;
   const isLoggedIn = ownProfileQuery.data?.profile !== null || typeof window !== "undefined" && Boolean(window.localStorage.getItem("velora-auth-token"));
   const conversationCount = conversationsQuery.data?.conversations.length ?? 0;
+  const awaitingReplyCount =
+    conversationsQuery.data?.conversations.filter((conversation) => conversation.awaitingReply).length ?? 0;
+  const needsTheirReplyCount =
+    conversationsQuery.data?.conversations.filter((conversation) => conversation.needsTheirReply).length ?? 0;
   const notificationCount = notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
+  const profileCompletionPercent = ownProfile ? getProfileCompletionPercent(ownProfile) : 0;
 
   return (
     <main className="content-section">
@@ -58,15 +83,31 @@ export function HomePage() {
           </div>
           <div className="card-grid onboarding-grid">
             <article className="card">
-              <h2>{hasProfile ? "Profile ready" : "Create your profile"}</h2>
-              <p>{hasProfile ? "Your identity is live and discoverable." : "Pick your personality, prompts, and preferences."}</p>
+              <h2>{hasProfile ? "Profile strength" : "Create your profile"}</h2>
+              <p>
+                {hasProfile
+                  ? `Your profile is ${profileCompletionPercent}% complete. Richer profiles get better visibility and easier conversation starts.`
+                  : "Pick your personality and go live fast, then fill in the extra details later."}
+              </p>
               <Link className="secondary-button" to={hasProfile ? "/my-profile" : "/create-profile"}>
-                {hasProfile ? "View profile" : "Create profile"}
+                {hasProfile ? "Improve profile" : "Create profile"}
               </Link>
             </article>
             <article className="card">
-              <h2>{conversationCount > 0 ? "Conversations active" : "Start your first chat"}</h2>
-              <p>{conversationCount > 0 ? `${conversationCount} recurring conversation${conversationCount === 1 ? "" : "s"} waiting for you.` : "Browse and open a conversation with someone who fits your vibe."}</p>
+              <h2>
+                {awaitingReplyCount > 0
+                  ? "People are waiting on you"
+                  : conversationCount > 0
+                    ? "Conversations active"
+                    : "Start your first chat"}
+              </h2>
+              <p>
+                {awaitingReplyCount > 0
+                  ? `${awaitingReplyCount} conversation${awaitingReplyCount === 1 ? "" : "s"} have unread messages. Fast replies are the biggest lever for better retention right now.`
+                  : conversationCount > 0
+                    ? `${conversationCount} recurring conversation${conversationCount === 1 ? "" : "s"} waiting for you. ${needsTheirReplyCount > 0 ? `${needsTheirReplyCount} are now waiting on the other person.` : ""}`
+                    : "Browse and open a conversation with someone who fits your vibe."}
+              </p>
               <Link className="secondary-button" to={conversationCount > 0 ? "/conversations" : "/browse"}>
                 {conversationCount > 0 ? "Open conversations" : "Browse profiles"}
               </Link>
