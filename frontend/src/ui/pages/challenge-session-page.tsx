@@ -77,6 +77,42 @@ function getWaitingCopy(challenge: ChallengeDetail) {
     : `You finished your side. We'll reveal the result once ${challenge.otherProfile?.displayName ?? "they"} finish too.`;
 }
 
+function getTriviaScores(challenge: ChallengeDetail) {
+  if (!challenge.result || !isTriviaResult(challenge.result)) {
+    return { ownScore: 0, otherScore: 0 };
+  }
+
+  return challenge.isSender
+    ? {
+        ownScore: challenge.result.senderScore,
+        otherScore: challenge.result.recipientScore,
+      }
+    : {
+        ownScore: challenge.result.recipientScore,
+        otherScore: challenge.result.senderScore,
+      };
+}
+
+function getTriviaWinnerCopy(challenge: ChallengeDetail) {
+  if (!challenge.result || !isTriviaResult(challenge.result)) {
+    return "";
+  }
+
+  if (challenge.result.winner === "tie") {
+    return "Tie game";
+  }
+
+  if (challenge.isSender) {
+    return challenge.result.winner === "sender"
+      ? "You won this round"
+      : `${challenge.otherProfile?.displayName ?? "They"} won this round`;
+  }
+
+  return challenge.result.winner === "recipient"
+    ? "You won this round"
+    : `${challenge.otherProfile?.displayName ?? "They"} won this round`;
+}
+
 export function ChallengeSessionPage() {
   const params = useParams();
   const navigate = useNavigate();
@@ -182,11 +218,15 @@ export function ChallengeSessionPage() {
     );
   }
 
+  const triviaScores = getTriviaScores(challenge);
+
   return (
     <main className="content-section">
       <section className="section-copy">
         <p className="eyebrow">Break The Ice</p>
-        <h1>{challenge.typeLabel} with {challenge.otherProfile?.displayName ?? "this profile"}.</h1>
+        <h1>
+          {challenge.typeLabel} with {challenge.otherProfile?.displayName ?? "this profile"}.
+        </h1>
       </section>
 
       <section className="panel">
@@ -243,7 +283,7 @@ export function ChallengeSessionPage() {
                 <div className="meta-group">
                   <span className="meta-title">
                     {challenge.type === "trivia" && question.category
-                      ? `Question ${index + 1} · ${question.category}`
+                      ? `Question ${index + 1} - ${question.category}`
                       : `Question ${index + 1}`}
                   </span>
                   <h2>{question.prompt}</h2>
@@ -344,22 +384,20 @@ export function ChallengeSessionPage() {
             <section className="panel">
               <div className="meta-group">
                 <span className="meta-title">Scoreboard</span>
-                <h2>
-                  {challenge.ownResponse?.score ?? 0} / {challenge.result.maxScore}
-                </h2>
+                <div className="chip-row">
+                  <span className="chip">
+                    You: {triviaScores.ownScore} / {challenge.result.maxScore}
+                  </span>
+                  <span className="chip chip-muted">
+                    {challenge.otherProfile?.displayName ?? "They"}: {triviaScores.otherScore} /{" "}
+                    {challenge.result.maxScore}
+                  </span>
+                </div>
+                <h2>{getTriviaWinnerCopy(challenge)}</h2>
                 <p>
                   {challenge.result.winner === "tie"
-                    ? "You tied this round."
-                    : challenge.isSender
-                      ? challenge.result.winner === "sender"
-                        ? "You won this round."
-                        : `${challenge.otherProfile?.displayName ?? "They"} won this round.`
-                      : challenge.result.winner === "recipient"
-                        ? "You won this round."
-                        : `${challenge.otherProfile?.displayName ?? "They"} won this round.`}
-                </p>
-                <p>
-                  Final score: you {challenge.ownResponse?.score ?? 0}, {challenge.otherProfile?.displayName ?? "they"} {challenge.isSender ? challenge.result.recipientScore : challenge.result.senderScore}.
+                    ? "Both of you landed the same number of correct answers."
+                    : "The scores are locked now, so you can compare the round without changing anything."}
                 </p>
               </div>
             </section>
@@ -367,9 +405,13 @@ export function ChallengeSessionPage() {
             <section className="panel">
               <div className="meta-group">
                 <span className="meta-title">Answer key</span>
+                <p className="status-message">
+                  Showing the correct answers after both sides finish is okay here. It keeps the
+                  round fair and gives you both easy follow-up conversation starters.
+                </p>
                 {challenge.result.correctAnswers.map((item) => (
                   <p key={item.questionId}>
-                    [{item.category}] {item.prompt} · {item.answer}
+                    [{item.category}] {item.prompt} - {item.answer}
                   </p>
                 ))}
               </div>
