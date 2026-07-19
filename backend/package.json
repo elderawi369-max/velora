@@ -8,7 +8,8 @@
     "build": "wrangler deploy --dry-run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "trivia:import": "node scripts/import-trivia-bank.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.43.1",

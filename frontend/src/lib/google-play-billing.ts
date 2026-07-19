@@ -40,8 +40,8 @@ const googlePlayProductIds = {
   crown: "velora_crown",
   spark: "spark_boost",
   spotlight: "spotlight_boost",
-  challenge_pack_3: "challenge-credits-3",
-  challenge_pack_10: "challenge-credits-10",
+  challenge_pack_3: "challenge_credits_3",
+  challenge_pack_10: "challenge_credits_10",
 } as const;
 
 function resolveGooglePlayProductId(itemKey: string) {

@@ -309,10 +309,10 @@ challengeRoutes.post("/", async (c) => {
     payload.data.targetProfileId,
     payload.data.type,
   );
-  const questions =
-    payload.data.type === "compatibility"
-      ? selectCompatibilityQuestions(recentQuestionIds)
-      : selectTriviaQuestions(recentQuestionIds);
+    const questions =
+      payload.data.type === "compatibility"
+        ? selectCompatibilityQuestions(recentQuestionIds)
+        : await selectTriviaQuestions(c.env, recentQuestionIds);
   const now = Date.now();
 
   const session = {

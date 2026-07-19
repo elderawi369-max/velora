@@ -208,6 +208,58 @@ export const challengeResponses = sqliteTable("challenge_responses", {
   completedAt: integer("completed_at").notNull(),
 });
 
+export const liveTriviaQueue = sqliteTable("live_trivia_queue", {
+  profileId: text("profile_id")
+    .primaryKey()
+    .references(() => profiles.id),
+  joinedAt: integer("joined_at").notNull(),
+  heartbeatAt: integer("heartbeat_at").notNull(),
+});
+
+export const liveTriviaMatches = sqliteTable("live_trivia_matches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  playerAId: text("player_a_id")
+    .notNull()
+    .references(() => profiles.id),
+  playerBId: text("player_b_id")
+    .notNull()
+    .references(() => profiles.id),
+  questionSet: text("question_set").notNull(),
+  createdAt: integer("created_at").notNull(),
+  startedAt: integer("started_at").notNull(),
+  currentQuestionStartedAt: integer("current_question_started_at").notNull(),
+  completedAt: integer("completed_at"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const liveTriviaAnswers = sqliteTable("live_trivia_answers", {
+  id: text("id").primaryKey(),
+  matchId: text("match_id")
+    .notNull()
+    .references(() => liveTriviaMatches.id),
+  profileId: text("profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  questionIndex: integer("question_index").notNull(),
+  answerIndex: integer("answer_index").notNull(),
+  isCorrect: integer("is_correct").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const triviaQuestions = sqliteTable("trivia_questions", {
+  id: text("id").primaryKey(),
+  prompt: text("prompt").notNull(),
+  options: text("options").notNull(),
+  correctAnswerIndex: integer("correct_answer_index").notNull(),
+  difficulty: text("difficulty").notNull(),
+  category: text("category").notNull(),
+  source: text("source").notNull(),
+  sourceNumericId: integer("source_numeric_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const supportTickets = sqliteTable("support_tickets", {
   id: text("id").primaryKey(),
   profileId: text("profile_id").references(() => profiles.id),

@@ -14,6 +14,7 @@ import { ConversationsPage } from "./ui/pages/conversations-page";
 import { FavoritesPage } from "./ui/pages/favorites-page";
 import { HomePage } from "./ui/pages/home-page";
 import { LoginPage } from "./ui/pages/login-page";
+import { LiveTriviaPage } from "./ui/pages/live-trivia-page";
 import { MyProfilePage } from "./ui/pages/my-profile-page";
 import { NotificationsPage } from "./ui/pages/notifications-page";
 import { PaymentCancelPage } from "./ui/pages/payment-cancel-page";
@@ -107,6 +108,10 @@ const router = createBrowserRouter([
       {
         path: "challenges",
         element: <ChallengesPage />,
+      },
+      {
+        path: "challenges/live",
+        element: <LiveTriviaPage />,
       },
       {
         path: "challenges/:challengeId",

@@ -300,6 +300,61 @@ export type ChallengeDetail = {
   } | null;
 };
 
+export type LiveTriviaStatus = {
+  activePlayerCount: number;
+  creditBalance: number;
+  onlineProfiles: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    personalityType: string;
+    identity: string;
+    avatarPreset: string;
+  }>;
+  queued: boolean;
+  queueJoinedAt: number | null;
+  match: {
+    id: string;
+    status: "pending" | "active" | "completed" | "abandoned" | "dismissed";
+    isInviter: boolean;
+    isInviteRecipient: boolean;
+    createdAt: number;
+    startedAt: number;
+    completedAt: number | null;
+    updatedAt: number;
+    otherProfile: {
+      id: string;
+      username: string;
+      displayName: string;
+      personalityType: string;
+      identity: string;
+      avatarPreset: string;
+    } | null;
+      questionCount: number;
+      currentQuestionIndex: number;
+      currentQuestion: {
+        id: string;
+        prompt: string;
+        options: string[];
+        category: string;
+      } | null;
+      roundDurationMs: number | null;
+      roundDeadlineAt: number | null;
+      ownAnsweredCount: number;
+      otherAnsweredCount: number;
+      ownScore: number;
+      otherScore: number;
+      finished: boolean;
+    winner: "you" | "other" | "tie" | null;
+    correctAnswers: Array<{
+      questionId: string;
+      prompt: string;
+      answer: string;
+      category: string;
+    }>;
+  } | null;
+};
+
 export function signup(payload: SignupPayload) {
   return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
     method: "POST",
@@ -595,6 +650,60 @@ export function submitChallengeAnswers(challengeId: string, answers: number[]) {
   return request<{ challenge: ChallengeDetail }>(`/api/challenges/${challengeId}/submit`, {
     method: "POST",
     body: { answers },
+  });
+}
+
+export function fetchLiveTriviaStatus() {
+  return request<LiveTriviaStatus>("/api/live-trivia/status");
+}
+
+export function joinLiveTriviaQueue() {
+  return request<LiveTriviaStatus>("/api/live-trivia/queue", {
+    method: "POST",
+  });
+}
+
+export function createDirectLiveTriviaMatch(targetProfileId: string) {
+  return request<LiveTriviaStatus>("/api/live-trivia/match", {
+    method: "POST",
+    body: { targetProfileId },
+  });
+}
+
+export function leaveLiveTriviaQueue() {
+  return request<LiveTriviaStatus>("/api/live-trivia/leave", {
+    method: "POST",
+  });
+}
+
+export function submitLiveTriviaAnswer(
+  matchId: string,
+  payload: { questionIndex: number; answerIndex: number },
+) {
+  return request<{ match: LiveTriviaStatus["match"] }>(
+    `/api/live-trivia/matches/${matchId}/answer`,
+    {
+      method: "POST",
+      body: payload,
+    },
+  );
+}
+
+export function leaveLiveTriviaMatch(matchId: string) {
+  return request<LiveTriviaStatus>(`/api/live-trivia/matches/${matchId}/leave`, {
+    method: "POST",
+  });
+}
+
+export function acceptLiveTriviaMatch(matchId: string) {
+  return request<LiveTriviaStatus>(`/api/live-trivia/matches/${matchId}/accept`, {
+    method: "POST",
+  });
+}
+
+export function declineLiveTriviaMatch(matchId: string) {
+  return request<LiveTriviaStatus>(`/api/live-trivia/matches/${matchId}/decline`, {
+    method: "POST",
   });
 }
 
