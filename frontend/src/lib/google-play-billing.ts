@@ -40,6 +40,8 @@ const googlePlayProductIds = {
   crown: "velora_crown",
   spark: "spark_boost",
   spotlight: "spotlight_boost",
+  challenge_pack_3: "challenge-credits-3",
+  challenge_pack_10: "challenge-credits-10",
 } as const;
 
 function resolveGooglePlayProductId(itemKey: string) {
@@ -80,7 +82,7 @@ export async function shouldUseGooglePlayBilling() {
 }
 
 export async function completeGooglePlayPurchase(input: {
-  productKind: "gift" | "boost";
+  productKind: "gift" | "boost" | "challenge_credit_pack";
   itemKey: string;
   targetProfileId?: string;
 }) {
