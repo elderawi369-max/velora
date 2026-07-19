@@ -4,14 +4,18 @@ import { z } from "zod";
 import {
   conversations,
   eventLogs,
+  gifts,
   messages,
   profiles,
   reports,
   supportTickets,
 } from "../db/schema";
-import { requireAdmin } from "../lib/admin";
+import { requireFounderAdmin } from "../lib/admin";
+import { logEvent } from "../lib/analytics";
+import { giftCatalog, createNotification, type GiftType } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { containsBlockedContactInfo } from "../lib/moderation";
+import { getOwnProfileContext } from "../lib/profile-context";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -82,8 +86,16 @@ const adminProfileContentSchema = z.object({
     .max(6),
 });
 
+const adminGrantCreditsSchema = z.object({
+  credits: z.number().int().min(1).max(10000),
+});
+
+const adminFreeGiftSchema = z.object({
+  giftType: z.enum(["rose", "starlight", "crown"]),
+});
+
 adminRoutes.use("*", async (c, next) => {
-  requireAdmin(c);
+  await requireFounderAdmin(c);
   await next();
 });
 
@@ -856,6 +868,7 @@ adminRoutes.get("/reports", async (c) => {
           displayName: profiles.displayName,
           bio: profiles.bio,
           promptEntries: profiles.promptEntries,
+          challengeCredits: profiles.challengeCredits,
           verifiedHumanAt: profiles.verifiedHumanAt,
           suspendedAt: profiles.suspendedAt,
         })
@@ -917,6 +930,7 @@ adminRoutes.get("/profiles/by-username/:username", async (c) => {
       displayName: profiles.displayName,
       bio: profiles.bio,
       promptEntries: profiles.promptEntries,
+      challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
     })
@@ -1094,6 +1108,7 @@ adminRoutes.post("/profiles/:profileId/content", async (c) => {
       displayName: profiles.displayName,
       bio: profiles.bio,
       promptEntries: profiles.promptEntries,
+      challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
     })
@@ -1114,5 +1129,126 @@ adminRoutes.post("/profiles/:profileId/content", async (c) => {
         answer: string;
       }>,
     },
+  });
+});
+
+adminRoutes.post("/profiles/:profileId/grant-credits", async (c) => {
+  const payload = adminGrantCreditsSchema.safeParse(await c.req.json());
+  if (!payload.success) {
+    return c.json({ error: "Invalid credit grant payload." }, 400);
+  }
+
+  const db = getDb(c.env);
+  const profileId = c.req.param("profileId");
+  const now = Date.now();
+  const [profile] = await db
+    .select({
+      id: profiles.id,
+      challengeCredits: profiles.challengeCredits,
+      username: profiles.username,
+      displayName: profiles.displayName,
+    })
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .limit(1);
+
+  if (!profile) {
+    return c.json({ error: "Profile not found." }, 404);
+  }
+
+  const nextBalance = profile.challengeCredits + payload.data.credits;
+  await db
+    .update(profiles)
+    .set({
+      challengeCredits: nextBalance,
+      updatedAt: now,
+    })
+    .where(eq(profiles.id, profileId));
+
+  await logEvent(c.env, {
+    eventType: "founder_granted_challenge_credits",
+    profileId,
+    eventData: {
+      credits: payload.data.credits,
+      nextBalance,
+    },
+  });
+
+  return c.json({
+    ok: true,
+    profile: {
+      ...profile,
+      challengeCredits: nextBalance,
+    },
+  });
+});
+
+adminRoutes.post("/profiles/:profileId/send-free-gift", async (c) => {
+  const payload = adminFreeGiftSchema.safeParse(await c.req.json());
+  if (!payload.success) {
+    return c.json({ error: "Invalid free gift payload." }, 400);
+  }
+
+  const own = await getOwnProfileContext(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
+  if (!own) {
+    return c.json({ error: "Founder profile required." }, 401);
+  }
+
+  const db = getDb(c.env);
+  const profileId = c.req.param("profileId");
+  if (profileId === own.profileId) {
+    return c.json({ error: "You cannot send a free gift to yourself." }, 400);
+  }
+
+  const [profile] = await db
+    .select({
+      id: profiles.id,
+      username: profiles.username,
+      displayName: profiles.displayName,
+      challengeCredits: profiles.challengeCredits,
+    })
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .limit(1);
+
+  if (!profile) {
+    return c.json({ error: "Profile not found." }, 404);
+  }
+
+  const giftType = payload.data.giftType as GiftType;
+  const now = Date.now();
+  await db.insert(gifts).values({
+    id: crypto.randomUUID(),
+    senderProfileId: own.profileId,
+    targetProfileId: profileId,
+    giftType,
+    createdAt: now,
+  });
+
+  await createNotification(c.env, {
+    profileId,
+    actorProfileId: own.profileId,
+    type: "gift",
+    giftType,
+  });
+
+  const gift = giftCatalog.find((item) => item.key === giftType);
+  await logEvent(c.env, {
+    eventType: "founder_sent_free_gift",
+    profileId: own.profileId,
+    eventData: {
+      targetProfileId: profileId,
+      giftType,
+      giftLabel: gift?.label ?? giftType,
+    },
+  });
+
+  return c.json({
+    ok: true,
+    profile,
   });
 });

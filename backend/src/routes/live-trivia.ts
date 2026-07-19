@@ -178,7 +178,7 @@ async function findOwnVisibleMatch(env: EnvBindings, ownProfileId: string) {
     .from(liveTriviaMatches)
     .where(
       and(
-        inArray(liveTriviaMatches.status, ["pending", "active", "completed", "abandoned"]),
+        inArray(liveTriviaMatches.status, ["pending", "active", "completed"]),
         or(
           eq(liveTriviaMatches.playerAId, ownProfileId),
           eq(liveTriviaMatches.playerBId, ownProfileId),
@@ -411,91 +411,6 @@ async function buildStatus(env: EnvBindings, ownProfileId: string) {
   };
 }
 
-async function tryMatchmake(env: EnvBindings, ownProfileId: string) {
-  const db = getDb(env);
-  const now = Date.now();
-  const queueCutoff = now - liveTriviaPresenceTtlMs;
-
-  const candidates = await db
-    .select()
-    .from(liveTriviaQueue)
-    .where(
-      and(
-        ne(liveTriviaQueue.profileId, ownProfileId),
-        sql`${liveTriviaQueue.heartbeatAt} >= ${queueCutoff}`,
-      ),
-    )
-    .orderBy(asc(liveTriviaQueue.joinedAt))
-    .limit(20);
-
-  for (const candidate of candidates) {
-    if (await areProfilesBlocked(env, ownProfileId, candidate.profileId)) {
-      continue;
-    }
-
-    const [ownQueue] = await db
-      .select()
-      .from(liveTriviaQueue)
-      .where(eq(liveTriviaQueue.profileId, ownProfileId))
-      .limit(1);
-    const [otherQueue] = await db
-      .select()
-      .from(liveTriviaQueue)
-      .where(eq(liveTriviaQueue.profileId, candidate.profileId))
-      .limit(1);
-
-    if (!ownQueue || !otherQueue) {
-      continue;
-    }
-
-    const [ownProfile] = await db
-      .select({
-        challengeCredits: profiles.challengeCredits,
-      })
-      .from(profiles)
-      .where(eq(profiles.id, ownProfileId))
-      .limit(1);
-
-    const ownCredits = ownProfile?.challengeCredits ?? 0;
-
-    if (ownCredits < 1) {
-      continue;
-    }
-
-    const recentQuestionIds = await getRecentTriviaQuestionIds(
-      env,
-      ownProfileId,
-      candidate.profileId,
-    );
-    const matchId = crypto.randomUUID();
-    await db.insert(liveTriviaMatches).values({
-      id: matchId,
-      status: "active",
-      playerAId: ownProfileId,
-      playerBId: candidate.profileId,
-      questionSet: JSON.stringify(await selectTriviaQuestions(env, recentQuestionIds)),
-      createdAt: now,
-      startedAt: now,
-      currentQuestionStartedAt: now,
-      completedAt: null,
-      updatedAt: now,
-    });
-
-    await db
-      .update(profiles)
-      .set({
-        challengeCredits: ownCredits - 1,
-        updatedAt: now,
-      })
-      .where(eq(profiles.id, ownProfileId));
-
-    await db.delete(liveTriviaQueue).where(inArray(liveTriviaQueue.profileId, [ownProfileId, candidate.profileId]));
-    return matchId;
-  }
-
-  return null;
-}
-
 liveTriviaRoutes.get("/status", async (c) => {
   const own = await getOwnProfileContext(
     c.env,
@@ -545,7 +460,6 @@ liveTriviaRoutes.post("/queue", async (c) => {
     });
   }
 
-  await tryMatchmake(c.env, own.profileId);
   return c.json(await buildStatus(c.env, own.profileId));
 });
 
@@ -751,7 +665,7 @@ liveTriviaRoutes.post("/matches/:matchId/decline", async (c) => {
   await db
     .update(liveTriviaMatches)
     .set({
-      status: "abandoned",
+      status: "dismissed",
       completedAt: Date.now(),
       updatedAt: Date.now(),
     })
@@ -903,7 +817,9 @@ liveTriviaRoutes.post("/matches/:matchId/leave", async (c) => {
     .update(liveTriviaMatches)
     .set({
       status:
-        match.status === "completed" || match.status === "abandoned"
+        match.status === "pending" ||
+        match.status === "completed" ||
+        match.status === "abandoned"
           ? "dismissed"
           : "abandoned",
       completedAt: now,

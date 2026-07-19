@@ -6,6 +6,8 @@ import {
   fetchAdminAnalytics,
   fetchAdminReports,
   fetchSupportTickets,
+  grantFounderCredits,
+  sendFounderGift,
   suspendProfile,
   unverifyProfile,
   unsuspendProfile,
@@ -290,6 +292,8 @@ export function AdminPage() {
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   const [lookupUsername, setLookupUsername] = useState("");
   const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
+  const [creditGrantDrafts, setCreditGrantDrafts] = useState<Record<string, string>>({});
+  const [giftDrafts, setGiftDrafts] = useState<Record<string, "rose" | "starlight" | "crown">>({});
   const [contentDrafts, setContentDrafts] = useState<
     Record<
       string,
@@ -386,6 +390,31 @@ export function AdminPage() {
     },
   });
 
+  const founderRewardMutation = useMutation({
+    mutationFn: async (
+      input:
+        | { kind: "credits"; profileId: string; credits: number }
+        | { kind: "gift"; profileId: string; giftType: "rose" | "starlight" | "crown" },
+    ) => {
+      if (input.kind === "credits") {
+        return grantFounderCredits(activeAdminKey, input.profileId, input.credits);
+      }
+
+      return sendFounderGift(activeAdminKey, input.profileId, input.giftType);
+    },
+    onSuccess: async (result) => {
+      if (selectedProfile && result.profile.id === selectedProfile.id) {
+        setSelectedProfile(result.profile);
+      }
+      await queryClient.invalidateQueries({
+        queryKey: ["adminReports", activeAdminKey],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["adminAnalytics", activeAdminKey],
+      });
+    },
+  });
+
   const profileLookupMutation = useMutation({
     mutationFn: async (username: string) =>
       fetchAdminProfileByUsername(activeAdminKey, username),
@@ -462,9 +491,85 @@ export function AdminPage() {
 
         <div className="chip-row">
           {verifiedHuman ? <span className="chip">Verified human</span> : null}
+          <span className="chip chip-muted">{profile.challengeCredits} challenge credits</span>
           <span className={suspended ? "chip chip-muted" : "chip"}>
             {suspended ? "Suspended" : "Active"}
           </span>
+        </div>
+
+        <div className="meta-group">
+          <span className="meta-title">Founder rewards</span>
+          <p>Grant free challenge credits or send a free gift for marketing, support, or recovery.</p>
+        </div>
+
+        <div className="panel form-panel">
+          <label className="field">
+            <span>Free challenge credits</span>
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={creditGrantDrafts[profile.id] ?? "3"}
+              onChange={(event) =>
+                setCreditGrantDrafts((current) => ({
+                  ...current,
+                  [profile.id]: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={founderRewardMutation.isPending}
+            onClick={() => {
+              const credits = Number(creditGrantDrafts[profile.id] ?? "3");
+              if (!Number.isFinite(credits) || credits < 1) {
+                return;
+              }
+
+              founderRewardMutation.mutate({
+                kind: "credits",
+                profileId: profile.id,
+                credits: Math.floor(credits),
+              });
+            }}
+          >
+            {founderRewardMutation.isPending ? "Sending..." : "Grant free credits"}
+          </button>
+        </div>
+
+        <div className="panel form-panel">
+          <label className="field">
+            <span>Free gift</span>
+            <select
+              value={giftDrafts[profile.id] ?? "rose"}
+              onChange={(event) =>
+                setGiftDrafts((current) => ({
+                  ...current,
+                  [profile.id]: event.target.value as "rose" | "starlight" | "crown",
+                }))
+              }
+            >
+              <option value="rose">Rose Aura</option>
+              <option value="starlight">Starlight Ring</option>
+              <option value="crown">Velora Crown</option>
+            </select>
+          </label>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={founderRewardMutation.isPending}
+            onClick={() =>
+              founderRewardMutation.mutate({
+                kind: "gift",
+                profileId: profile.id,
+                giftType: giftDrafts[profile.id] ?? "rose",
+              })
+            }
+          >
+            {founderRewardMutation.isPending ? "Sending..." : "Send free gift"}
+          </button>
         </div>
 
         <div className="meta-group">
@@ -608,6 +713,18 @@ export function AdminPage() {
 
         {contentMutation.isSuccess && contentMutation.variables?.profileId === profile.id ? (
           <p className="status-message">Profile text updated.</p>
+        ) : null}
+
+        {founderRewardMutation.error ? (
+          <p className="error-message">
+            {founderRewardMutation.error instanceof Error
+              ? founderRewardMutation.error.message
+              : "Unable to send founder reward."}
+          </p>
+        ) : null}
+
+        {founderRewardMutation.isSuccess ? (
+          <p className="status-message">Founder reward sent.</p>
         ) : null}
       </article>
     );

@@ -1,16 +1,29 @@
 import { apiBaseUrl } from "../config";
 
+const authTokenStorageKey = "velora-auth-token";
+
 async function adminRequest<T>(
   path: string,
   adminKey: string,
   options: { method?: "GET" | "POST"; body?: unknown } = {},
 ) {
+  const authToken =
+    typeof window === "undefined"
+      ? ""
+      : window.localStorage.getItem(authTokenStorageKey) ?? "";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-admin-key": adminKey,
+  };
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "x-admin-key": adminKey,
-    },
+    credentials: "include",
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -48,6 +61,7 @@ export type AdminReport = {
     displayName: string;
     bio: string;
     promptEntries: Array<{ question: string; answer: string }>;
+    challengeCredits: number;
     verifiedHumanAt: number | null;
     suspendedAt: number | null;
   } | null;
@@ -72,6 +86,7 @@ export type AdminProfile = {
   displayName: string;
   bio: string;
   promptEntries: Array<{ question: string; answer: string }>;
+  challengeCredits: number;
   verifiedHumanAt: number | null;
   suspendedAt: number | null;
 };
@@ -285,11 +300,40 @@ export function updateProfileContent(
       displayName: string;
       bio: string;
       promptEntries: Array<{ question: string; answer: string }>;
+      challengeCredits: number;
       verifiedHumanAt: number | null;
       suspendedAt: number | null;
     };
   }>(`/api/admin/profiles/${profileId}/content`, adminKey, {
     method: "POST",
     body: payload,
+  });
+}
+
+export function grantFounderCredits(
+  adminKey: string,
+  profileId: string,
+  credits: number,
+) {
+  return adminRequest<{
+    ok: true;
+    profile: AdminProfile;
+  }>(`/api/admin/profiles/${profileId}/grant-credits`, adminKey, {
+    method: "POST",
+    body: { credits },
+  });
+}
+
+export function sendFounderGift(
+  adminKey: string,
+  profileId: string,
+  giftType: "rose" | "starlight" | "crown",
+) {
+  return adminRequest<{
+    ok: true;
+    profile: AdminProfile;
+  }>(`/api/admin/profiles/${profileId}/send-free-gift`, adminKey, {
+    method: "POST",
+    body: { giftType },
   });
 }

@@ -20,7 +20,7 @@ function getWaitingCopy(status: LiveTriviaStatus) {
   }
 
   if (status.queued) {
-    return "You are in the queue now. Leave this page open and we will auto-match you as soon as someone compatible is active.";
+    return "You are visible in the live queue now. Leave this page open so other people can invite you.";
   }
 
   return "Jump into a live trivia round when someone else is active right now.";
@@ -41,6 +41,7 @@ export function LiveTriviaPage() {
   const navigate = useNavigate();
   const [selectedAnswerIndex, setSelectedAnswerIndex] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [visibleOnlineCount, setVisibleOnlineCount] = useState(12);
 
   const statusQuery = useQuery({
     queryKey: ["liveTrivia"],
@@ -186,6 +187,8 @@ export function LiveTriviaPage() {
     match?.status === "active" &&
     !match.finished &&
     !match.currentQuestion;
+  const visibleOnlineProfiles = status.onlineProfiles.slice(0, visibleOnlineCount);
+  const hiddenOnlineCount = Math.max(0, status.onlineProfiles.length - visibleOnlineProfiles.length);
 
   return (
     <main className="content-section">
@@ -209,8 +212,9 @@ export function LiveTriviaPage() {
             <span className="meta-title">How it works</span>
             <p className="status-message">
               Live trivia uses the same challenge credit system. Only the person who starts the
-              match spends 1 credit when the round begins. If you are already waiting in the queue
-              and someone joins you, they spend the credit.
+              match spends 1 credit when the round begins. Joining the queue only makes you visible
+              to other people. A live round starts only after someone sends an invite and the other
+              person accepts.
             </p>
           </div>
         ) : null}
@@ -218,34 +222,50 @@ export function LiveTriviaPage() {
         {status.onlineProfiles.length > 0 && !match ? (
           <div className="meta-group">
             <span className="meta-title">Online now</span>
-            <div className="content-section">
-              {status.onlineProfiles.map((profile) => (
-                <div className="panel form-panel" key={profile.id}>
-                  <div className="meta-group">
-                    <h2>{profile.displayName}</h2>
-                    <p>@{profile.username}</p>
+            <p className="status-message">
+              Everyone shown here can be invited directly. If the list gets long, Velora reveals it
+              in smaller batches so the page stays fast.
+            </p>
+            <div className="live-online-list">
+              {visibleOnlineProfiles.map((profile) => (
+                <div className="live-online-item" key={profile.id}>
+                  <div className="live-online-copy">
+                    <strong>{profile.displayName}</strong>
+                    <span>@{profile.username}</span>
                   </div>
                   <div className="chip-row">
                     <span className="chip">{profile.personalityType}</span>
                     <span className="chip chip-muted">{profile.identity}</span>
                   </div>
-                  <div className="action-row">
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={
-                        directMatchMutation.isPending || status.creditBalance < 1
-                      }
-                      onClick={() => directMatchMutation.mutate(profile.id)}
-                    >
-                      {directMatchMutation.isPending
-                        ? "Starting..."
-                        : "Invite to live round"}
-                    </button>
-                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      directMatchMutation.isPending || status.creditBalance < 1
+                    }
+                    onClick={() => directMatchMutation.mutate(profile.id)}
+                  >
+                    {directMatchMutation.isPending
+                      ? "Starting..."
+                      : "Invite"}
+                  </button>
                 </div>
               ))}
             </div>
+            {hiddenOnlineCount > 0 ? (
+              <div className="action-row">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setVisibleOnlineCount((current) => current + 12)}
+                >
+                  Show {Math.min(12, hiddenOnlineCount)} more
+                </button>
+                <span className="status-message">
+                  {hiddenOnlineCount} more still online
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

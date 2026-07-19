@@ -61,17 +61,7 @@ export function readAuthorizationToken(authorizationHeader: string | undefined) 
   return match ? match[1].trim() : null;
 }
 
-export async function getUserIdFromSession(
-  env: EnvBindings,
-  cookieHeader: string | undefined,
-  authorizationHeader?: string | undefined,
-) {
-  const token =
-    readAuthorizationToken(authorizationHeader) ?? readSessionToken(cookieHeader);
-  if (!token) {
-    return null;
-  }
-
+async function getUserIdFromToken(env: EnvBindings, token: string) {
   const db = getDb(env);
   const tokenHash = await hashToken(token);
   const [session] = await db
@@ -85,6 +75,27 @@ export async function getUserIdFromSession(
   }
 
   return session.userId;
+}
+
+export async function getUserIdFromSession(
+  env: EnvBindings,
+  cookieHeader: string | undefined,
+  authorizationHeader?: string | undefined,
+) {
+  const authorizationToken = readAuthorizationToken(authorizationHeader);
+  if (authorizationToken) {
+    const authorizationUserId = await getUserIdFromToken(env, authorizationToken);
+    if (authorizationUserId) {
+      return authorizationUserId;
+    }
+  }
+
+  const sessionToken = readSessionToken(cookieHeader);
+  if (!sessionToken) {
+    return null;
+  }
+
+  return getUserIdFromToken(env, sessionToken);
 }
 
 export async function revokeSession(
