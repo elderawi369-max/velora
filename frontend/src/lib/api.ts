@@ -193,8 +193,9 @@ export type Conversation = {
 
 export type NotificationItem = {
   id: string;
-  type: "favorite" | "gift";
+  type: "favorite" | "gift" | "challenge" | "challenge_result";
   giftType: string | null;
+  challengeSessionId?: string | null;
   readAt: number | null;
   createdAt: number;
   actorProfile: {
@@ -213,6 +214,66 @@ export type Message = {
   senderProfileId: string;
   body: string;
   createdAt: number;
+};
+
+export type ChallengeListItem = {
+  id: string;
+  type: "compatibility";
+  status: "pending" | "accepted" | "canceled" | "declined" | "completed" | "expired";
+  isSender: boolean;
+  otherProfile: {
+    id: string;
+    username: string;
+    displayName: string;
+    personalityType: string;
+    identity: string;
+    avatarPreset: string;
+  } | null;
+  expiresAt: number;
+  createdAt: number;
+  completedAt: number | null;
+};
+
+export type ChallengeDetail = {
+  id: string;
+  type: "compatibility";
+  status: "pending" | "accepted" | "canceled" | "declined" | "completed" | "expired";
+  isSender: boolean;
+  isRecipient: boolean;
+  otherProfile: {
+    id: string;
+    username: string;
+    displayName: string;
+    personalityType: string;
+    identity: string;
+    avatarPreset: string;
+  } | null;
+  questions: Array<{
+    id: string;
+    prompt: string;
+    options: string[];
+  }>;
+  expiresAt: number;
+  createdAt: number;
+  acceptedAt: number | null;
+  completedAt: number | null;
+  ownResponse: {
+    answers: number[];
+    score: number;
+    completedAt: number;
+  } | null;
+  otherParticipantCompleted: boolean;
+  result: {
+    compatibilityPercent: number;
+    matchedCount: number;
+    matchedPrompts: Array<{ questionId: string; prompt: string; answer: string }>;
+    mismatchedPrompts: Array<{
+      questionId: string;
+      prompt: string;
+      senderAnswer: string;
+      recipientAnswer: string;
+    }>;
+  } | null;
 };
 
 export function signup(payload: SignupPayload) {
@@ -453,6 +514,52 @@ export function verifyGoogleMobilePurchase(payload: {
   }>("/api/payments/mobile/verify/google", {
     method: "POST",
     body: payload,
+  });
+}
+
+export function fetchChallenges() {
+  return request<{ challenges: ChallengeListItem[] }>("/api/challenges");
+}
+
+export function createChallenge(payload: {
+  targetProfileId: string;
+  type: "compatibility";
+}) {
+  return request<{ challenge: ChallengeDetail }>("/api/challenges", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function fetchChallenge(challengeId: string) {
+  return request<{ challenge: ChallengeDetail }>(`/api/challenges/${challengeId}`);
+}
+
+export function acceptChallenge(challengeId: string) {
+  return request<{ ok: true; challenge: ChallengeDetail }>(
+    `/api/challenges/${challengeId}/accept`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function declineChallenge(challengeId: string) {
+  return request<{ ok: true }>(`/api/challenges/${challengeId}/decline`, {
+    method: "POST",
+  });
+}
+
+export function cancelChallenge(challengeId: string) {
+  return request<{ ok: true }>(`/api/challenges/${challengeId}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function submitChallengeAnswers(challengeId: string, answers: number[]) {
+  return request<{ challenge: ChallengeDetail }>(`/api/challenges/${challengeId}/submit`, {
+    method: "POST",
+    body: { answers },
   });
 }
 

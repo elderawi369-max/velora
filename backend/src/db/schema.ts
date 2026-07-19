@@ -169,8 +169,42 @@ export const notifications = sqliteTable("notifications", {
     .references(() => profiles.id),
   type: text("type").notNull(),
   giftType: text("gift_type"),
+  challengeSessionId: text("challenge_session_id").references(() => challengeSessions.id),
   readAt: integer("read_at"),
   createdAt: integer("created_at").notNull(),
+});
+
+export const challengeSessions = sqliteTable("challenge_sessions", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  senderProfileId: text("sender_profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  recipientProfileId: text("recipient_profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  questionSet: text("question_set").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  acceptedAt: integer("accepted_at"),
+  declinedAt: integer("declined_at"),
+  completedAt: integer("completed_at"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const challengeResponses = sqliteTable("challenge_responses", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => challengeSessions.id),
+  profileId: text("profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  answers: text("answers").notNull(),
+  score: integer("score").notNull(),
+  createdAt: integer("created_at").notNull(),
+  completedAt: integer("completed_at").notNull(),
 });
 
 export const supportTickets = sqliteTable("support_tickets", {

@@ -23,8 +23,9 @@ export async function createNotification(
   input: {
     profileId: string;
     actorProfileId: string;
-    type: "favorite" | "gift";
+    type: "favorite" | "gift" | "challenge" | "challenge_result";
     giftType?: string;
+    challengeSessionId?: string;
   },
 ) {
   const db = getDb(env);
@@ -34,6 +35,7 @@ export async function createNotification(
     actorProfileId: input.actorProfileId,
     type: input.type,
     giftType: input.giftType ?? null,
+    challengeSessionId: input.challengeSessionId ?? null,
     readAt: null,
     createdAt: Date.now(),
   });
@@ -59,12 +61,23 @@ export async function createNotification(
                 ? "Starlight Ring"
                 : "Velora Crown"
           }.`
-        : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
+        : input.type === "challenge"
+          ? `${actorProfile?.displayName ?? "Someone"} sent you a Vibe Check.`
+          : input.type === "challenge_result"
+            ? `${actorProfile?.displayName ?? "Someone"} finished your Vibe Check.`
+            : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
+
+    const link =
+      input.type === "challenge" || input.type === "challenge_result"
+        ? input.challengeSessionId
+          ? `/challenges/${input.challengeSessionId}`
+          : "/challenges"
+        : "/activity";
 
     await sendPushToUser(env, targetProfile.userId, {
       title: "Velora activity",
       body,
-      link: "/activity",
+      link,
     }).catch(() => undefined);
   }
 }

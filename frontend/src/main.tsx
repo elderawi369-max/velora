@@ -8,6 +8,8 @@ import { fetchSession } from "./lib/api";
 import { AppLayout } from "./ui/app-layout";
 import { BrowsePage } from "./ui/pages/browse-page";
 import { ChatPage } from "./ui/pages/chat-page";
+import { ChallengesPage } from "./ui/pages/challenges-page";
+import { ChallengeSessionPage } from "./ui/pages/challenge-session-page";
 import { ConversationsPage } from "./ui/pages/conversations-page";
 import { FavoritesPage } from "./ui/pages/favorites-page";
 import { HomePage } from "./ui/pages/home-page";
@@ -101,6 +103,14 @@ const router = createBrowserRouter([
       {
         path: "conversations",
         element: <ConversationsPage />,
+      },
+      {
+        path: "challenges",
+        element: <ChallengesPage />,
+      },
+      {
+        path: "challenges/:challengeId",
+        element: <ChallengeSessionPage />,
       },
       {
         path: "favorites",

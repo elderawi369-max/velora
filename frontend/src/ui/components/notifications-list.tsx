@@ -23,7 +23,47 @@ function describeNotification(item: NotificationItem) {
     return `sent you ${label}.`;
   }
 
+  if (item.type === "challenge") {
+    return "sent you a Vibe Check.";
+  }
+
+  if (item.type === "challenge_result") {
+    return "finished your Vibe Check. Your result is ready.";
+  }
+
   return "favorited your profile.";
+}
+
+function getNotificationLabel(item: NotificationItem) {
+  if (item.type === "gift") {
+    return "Gift";
+  }
+
+  if (item.type === "challenge" || item.type === "challenge_result") {
+    return "Challenge";
+  }
+
+  return "Favorite";
+}
+
+function getNotificationLink(item: NotificationItem) {
+  if ((item.type === "challenge" || item.type === "challenge_result") && item.challengeSessionId) {
+    return `/challenges/${item.challengeSessionId}`;
+  }
+
+  return `/browse/${item.actorProfile.username}`;
+}
+
+function getNotificationActionLabel(item: NotificationItem) {
+  if (item.type === "challenge") {
+    return "Open Vibe Check";
+  }
+
+  if (item.type === "challenge_result") {
+    return "See result";
+  }
+
+  return "View profile";
 }
 
 export function NotificationsList() {
@@ -67,7 +107,7 @@ export function NotificationsList() {
     return (
       <div className="panel empty-state">
         <h2>No activity yet.</h2>
-        <p>Favorites and gifts you receive will show up here.</p>
+        <p>Favorites, gifts, and challenge activity you receive will show up here.</p>
         <div className="action-row">
           <Link className="primary-button" to="/browse">
             Explore profiles
@@ -133,11 +173,12 @@ export function NotificationsList() {
                 <span className={item.readAt ? "chip chip-muted" : "chip"}>
                   {item.readAt ? "Read" : "New"}
                 </span>
-                <span className="chip chip-muted">
-                  {item.type === "gift" ? "Gift" : "Favorite"}
-                </span>
+                <span className="chip chip-muted">{getNotificationLabel(item)}</span>
               </div>
             </div>
+            <Link className="secondary-button" to={getNotificationLink(item)}>
+              {getNotificationActionLabel(item)}
+            </Link>
             {!item.readAt ? (
               <button
                 className="secondary-button"

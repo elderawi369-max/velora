@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   addFavorite,
+  createChallenge,
   createConversation,
   fetchProfileByUsername,
   removeFavorite,
@@ -69,6 +70,18 @@ export function ProfileDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["profile", username] });
       await queryClient.invalidateQueries({ queryKey: ["profiles"] });
       await queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    },
+  });
+
+  const challengeMutation = useMutation({
+    mutationFn: () =>
+      createChallenge({
+        targetProfileId: profileQuery.data?.profile.id ?? "",
+        type: "compatibility",
+      }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["challenges"] });
+      navigate(`/challenges/${result.challenge.id}`);
     },
   });
 
@@ -163,6 +176,31 @@ export function ProfileDetailPage() {
         <div className="meta-group">
           <span className="meta-title">Suggested opener</span>
           <p className="status-message">{suggestedOpener}</p>
+        </div>
+
+        <div className="meta-group">
+          <span className="meta-title">Break the ice</span>
+          <p className="status-message">
+            Try a quick Vibe Check before chatting. You will answer the same five prompts
+            and unlock a shared result when both sides finish.
+          </p>
+          <div className="action-row">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={challengeMutation.isPending}
+              onClick={() => challengeMutation.mutate()}
+            >
+              {challengeMutation.isPending ? "Starting..." : "Start Vibe Check"}
+            </button>
+          </div>
+          {challengeMutation.error instanceof Error ? (
+            <p className="error-message">{challengeMutation.error.message}</p>
+          ) : null}
+          <p className="status-message">
+            Trivia challenges can come next. For now, this first version focuses on
+            compatibility and starting stronger conversations.
+          </p>
         </div>
 
         <div className="action-row">

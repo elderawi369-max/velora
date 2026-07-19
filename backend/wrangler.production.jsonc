@@ -1,0 +1,36 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "velora-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-05-02",
+	"workers_dev": false,
+	"preview_urls": false,
+	"vars": {
+		"APP_NAME": "Velora API",
+		"APP_ENV": "production",
+		"ENABLE_DEV_ENDPOINTS": "false",
+		"GOOGLE_PLAY_PACKAGE_NAME": "com.velorachat.app",
+		"PAYPAL_ENV": "live",
+		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
+		"RESEND_FROM_NAME": "Velora"
+	},
+	"routes": [
+		{
+			"pattern": "api.velorachat.com",
+			"zone_name": "velorachat.com",
+			"custom_domain": true
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "velora-prod",
+			"database_id": "19155ba3-b108-40cc-93b3-f71d45279e8c",
+			"preview_database_id": "velora-dev-local",
+			"migrations_dir": "src/db/migrations"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

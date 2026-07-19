@@ -75,6 +75,7 @@ export function AppLayout() {
   const navItems = [
     { to: "/", label: "Home" },
     { to: "/browse", label: "Browse" },
+    { to: "/challenges", label: "Challenges" },
     { to: "/conversations", label: "Conversations" },
     { to: "/activity", label: "Activity" },
     { to: "/favorites", label: "Favorites" },

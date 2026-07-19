@@ -18,6 +18,7 @@ notificationRoutes.get("/", async (c) => {
       id: notifications.id,
       type: notifications.type,
       giftType: notifications.giftType,
+      challengeSessionId: notifications.challengeSessionId,
       readAt: notifications.readAt,
       createdAt: notifications.createdAt,
       actorProfileId: notifications.actorProfileId,
@@ -38,6 +39,7 @@ notificationRoutes.get("/", async (c) => {
       id: row.id,
       type: row.type,
       giftType: row.giftType,
+      challengeSessionId: row.challengeSessionId,
       readAt: row.readAt,
       createdAt: row.createdAt,
       actorProfile: {
