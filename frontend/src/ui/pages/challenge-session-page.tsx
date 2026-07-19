@@ -8,23 +8,73 @@ import {
   declineChallenge,
   fetchChallenge,
   submitChallengeAnswers,
+  type ChallengeDetail,
 } from "../../lib/api";
 
-function getSuggestedFollowUp(result: {
-  matchedPrompts: Array<{ prompt: string; answer: string }>;
-  mismatchedPrompts: Array<{ prompt: string; senderAnswer: string; recipientAnswer: string }>;
-}) {
-  const firstMismatch = result.mismatchedPrompts[0];
-  if (firstMismatch) {
-    return `We answered "${firstMismatch.prompt}" differently. I picked "${firstMismatch.senderAnswer}" and now I need your defense.`;
+function isCompatibilityResult(
+  result: ChallengeDetail["result"],
+): result is Exclude<ChallengeDetail["result"], null> & {
+  compatibilityPercent: number;
+} {
+  return Boolean(result && "compatibilityPercent" in result);
+}
+
+function isTriviaResult(
+  result: ChallengeDetail["result"],
+): result is Exclude<ChallengeDetail["result"], null> & {
+  senderScore: number;
+} {
+  return Boolean(result && "senderScore" in result);
+}
+
+function getSuggestedFollowUp(challenge: ChallengeDetail) {
+  const result = challenge.result;
+  if (!result) {
+    return "That was a fun start. What surprised you most?";
   }
 
-  const firstMatch = result.matchedPrompts[0];
-  if (firstMatch) {
-    return `We matched on "${firstMatch.answer}" for "${firstMatch.prompt}". That feels like a good place to start.`;
+  if (isCompatibilityResult(result)) {
+    const firstMismatch = result.mismatchedPrompts[0];
+    if (firstMismatch) {
+      return `We answered "${firstMismatch.prompt}" differently. I picked "${firstMismatch.senderAnswer}" and now I need your defense.`;
+    }
+
+    const firstMatch = result.matchedPrompts[0];
+    if (firstMatch) {
+      return `We matched on "${firstMatch.answer}" for "${firstMatch.prompt}". That feels like a good place to start.`;
+    }
+
+    return "That was a fun start. What answer surprised you most?";
   }
 
-  return "That was a fun start. What answer surprised you most?";
+  const firstCorrect = result.correctAnswers[0];
+  if (firstCorrect) {
+    return `That trivia round was fun. Did you know "${firstCorrect.answer}" was the answer for "${firstCorrect.prompt}"?`;
+  }
+
+  return "That trivia round was fun. Want a rematch later?";
+}
+
+function getPendingCopy(challenge: ChallengeDetail) {
+  return challenge.type === "trivia"
+    ? `This trivia challenge is waiting for ${challenge.otherProfile?.displayName ?? "them"} to accept.`
+    : `This Vibe Check is waiting for ${challenge.otherProfile?.displayName ?? "them"} to accept.`;
+}
+
+function getCanceledCopy(challenge: ChallengeDetail) {
+  return challenge.type === "trivia"
+    ? "This trivia challenge was canceled before it was accepted."
+    : "This Vibe Check was canceled before it was accepted.";
+}
+
+function getFinishedLabel(challenge: ChallengeDetail) {
+  return challenge.type === "trivia" ? "Finish Trivia Challenge" : "Finish Vibe Check";
+}
+
+function getWaitingCopy(challenge: ChallengeDetail) {
+  return challenge.type === "trivia"
+    ? `You finished your side. We'll reveal the scoreboard once ${challenge.otherProfile?.displayName ?? "they"} finish too.`
+    : `You finished your side. We'll reveal the result once ${challenge.otherProfile?.displayName ?? "they"} finish too.`;
 }
 
 export function ChallengeSessionPage() {
@@ -80,7 +130,7 @@ export function ChallengeSessionPage() {
       createConversation(challengeQuery.data?.challenge.otherProfile?.id ?? ""),
     onSuccess: async (result) => {
       const challenge = challengeQuery.data?.challenge;
-      const draft = challenge?.result ? getSuggestedFollowUp(challenge.result) : "";
+      const draft = challenge ? getSuggestedFollowUp(challenge) : "";
       const encodedDraft = draft ? `?draft=${encodeURIComponent(draft)}` : "";
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
       navigate(`/chat/${result.conversation.id}${encodedDraft}`);
@@ -136,12 +186,12 @@ export function ChallengeSessionPage() {
     <main className="content-section">
       <section className="section-copy">
         <p className="eyebrow">Break The Ice</p>
-        <h1>Vibe Check with {challenge.otherProfile?.displayName ?? "this profile"}.</h1>
+        <h1>{challenge.typeLabel} with {challenge.otherProfile?.displayName ?? "this profile"}.</h1>
       </section>
 
       <section className="panel">
         <div className="chip-row">
-          <span className="chip">Compatibility</span>
+          <span className="chip">{challenge.typeLabel}</span>
           <span className="chip chip-muted">{challenge.status}</span>
         </div>
 
@@ -168,9 +218,7 @@ export function ChallengeSessionPage() {
 
         {challenge.status === "pending" && challenge.isSender ? (
           <div className="meta-group">
-            <p className="status-message">
-              This Vibe Check is waiting for {challenge.otherProfile?.displayName ?? "them"} to accept.
-            </p>
+            <p className="status-message">{getPendingCopy(challenge)}</p>
             <div className="action-row">
               <button
                 className="secondary-button"
@@ -185,9 +233,7 @@ export function ChallengeSessionPage() {
         ) : null}
 
         {challenge.status === "canceled" ? (
-          <p className="status-message">
-            This Vibe Check was canceled before it was accepted.
-          </p>
+          <p className="status-message">{getCanceledCopy(challenge)}</p>
         ) : null}
 
         {canAnswer ? (
@@ -195,7 +241,11 @@ export function ChallengeSessionPage() {
             {challenge.questions.map((question, index) => (
               <section className="panel form-panel" key={question.id}>
                 <div className="meta-group">
-                  <span className="meta-title">Question {index + 1}</span>
+                  <span className="meta-title">
+                    {challenge.type === "trivia" && question.category
+                      ? `Question ${index + 1} · ${question.category}`
+                      : `Question ${index + 1}`}
+                  </span>
                   <h2>{question.prompt}</h2>
                 </div>
                 <div className="chip-row">
@@ -227,18 +277,16 @@ export function ChallengeSessionPage() {
               }
               onClick={() => submitMutation.mutate(answers)}
             >
-              {submitMutation.isPending ? "Submitting..." : "Finish Vibe Check"}
+              {submitMutation.isPending ? "Submitting..." : getFinishedLabel(challenge)}
             </button>
           </div>
         ) : null}
 
         {challenge.ownResponse && challenge.status !== "completed" ? (
-          <p className="status-message">
-            You finished your side. We'll reveal the result once {challenge.otherProfile?.displayName ?? "they"} finish too.
-          </p>
+          <p className="status-message">{getWaitingCopy(challenge)}</p>
         ) : null}
 
-        {challenge.result ? (
+        {challenge.result && isCompatibilityResult(challenge.result) ? (
           <div className="content-section">
             <section className="panel">
               <div className="meta-group">
@@ -280,6 +328,61 @@ export function ChallengeSessionPage() {
                 onClick={() => chatMutation.mutate()}
               >
                 {chatMutation.isPending ? "Opening..." : "Start chatting"}
+              </button>
+              <Link
+                className="secondary-button"
+                to={`/browse/${challenge.otherProfile?.username ?? ""}`}
+              >
+                Back to profile
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
+        {challenge.result && isTriviaResult(challenge.result) ? (
+          <div className="content-section">
+            <section className="panel">
+              <div className="meta-group">
+                <span className="meta-title">Scoreboard</span>
+                <h2>
+                  {challenge.ownResponse?.score ?? 0} / {challenge.result.maxScore}
+                </h2>
+                <p>
+                  {challenge.result.winner === "tie"
+                    ? "You tied this round."
+                    : challenge.isSender
+                      ? challenge.result.winner === "sender"
+                        ? "You won this round."
+                        : `${challenge.otherProfile?.displayName ?? "They"} won this round.`
+                      : challenge.result.winner === "recipient"
+                        ? "You won this round."
+                        : `${challenge.otherProfile?.displayName ?? "They"} won this round.`}
+                </p>
+                <p>
+                  Final score: you {challenge.ownResponse?.score ?? 0}, {challenge.otherProfile?.displayName ?? "they"} {challenge.isSender ? challenge.result.recipientScore : challenge.result.senderScore}.
+                </p>
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="meta-group">
+                <span className="meta-title">Answer key</span>
+                {challenge.result.correctAnswers.map((item) => (
+                  <p key={item.questionId}>
+                    [{item.category}] {item.prompt} · {item.answer}
+                  </p>
+                ))}
+              </div>
+            </section>
+
+            <div className="action-row">
+              <button
+                className="primary-button"
+                type="button"
+                disabled={chatMutation.isPending}
+                onClick={() => chatMutation.mutate()}
+              >
+                {chatMutation.isPending ? "Opening..." : "Talk about the round"}
               </button>
               <Link
                 className="secondary-button"

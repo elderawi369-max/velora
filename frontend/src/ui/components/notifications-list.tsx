@@ -24,11 +24,11 @@ function describeNotification(item: NotificationItem) {
   }
 
   if (item.type === "challenge") {
-    return "sent you a Vibe Check.";
+    return "sent you a challenge.";
   }
 
   if (item.type === "challenge_result") {
-    return "finished your Vibe Check. Your result is ready.";
+    return "finished your challenge. Your result is ready.";
   }
 
   return "favorited your profile.";
@@ -56,7 +56,7 @@ function getNotificationLink(item: NotificationItem) {
 
 function getNotificationActionLabel(item: NotificationItem) {
   if (item.type === "challenge") {
-    return "Open Vibe Check";
+    return "Open challenge";
   }
 
   if (item.type === "challenge_result") {

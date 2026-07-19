@@ -218,7 +218,8 @@ export type Message = {
 
 export type ChallengeListItem = {
   id: string;
-  type: "compatibility";
+  type: "compatibility" | "trivia";
+  typeLabel: string;
   status: "pending" | "accepted" | "canceled" | "declined" | "completed" | "expired";
   isSender: boolean;
   otherProfile: {
@@ -236,7 +237,8 @@ export type ChallengeListItem = {
 
 export type ChallengeDetail = {
   id: string;
-  type: "compatibility";
+  type: "compatibility" | "trivia";
+  typeLabel: string;
   status: "pending" | "accepted" | "canceled" | "declined" | "completed" | "expired";
   isSender: boolean;
   isRecipient: boolean;
@@ -252,6 +254,7 @@ export type ChallengeDetail = {
     id: string;
     prompt: string;
     options: string[];
+    category?: string | null;
   }>;
   expiresAt: number;
   createdAt: number;
@@ -273,6 +276,19 @@ export type ChallengeDetail = {
       senderAnswer: string;
       recipientAnswer: string;
     }>;
+    senderScore?: never;
+  } | {
+    senderScore: number;
+    recipientScore: number;
+    maxScore: number;
+    winner: "sender" | "recipient" | "tie";
+    correctAnswers: Array<{
+      questionId: string;
+      prompt: string;
+      answer: string;
+      category: string;
+    }>;
+    compatibilityPercent?: never;
   } | null;
 };
 
@@ -523,7 +539,7 @@ export function fetchChallenges() {
 
 export function createChallenge(payload: {
   targetProfileId: string;
-  type: "compatibility";
+  type: "compatibility" | "trivia";
 }) {
   return request<{ challenge: ChallengeDetail }>("/api/challenges", {
     method: "POST",

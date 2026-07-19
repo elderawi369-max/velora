@@ -6,8 +6,14 @@ import {
   challengeQuestionCount,
   challengeSessionTtlMs,
   computeCompatibilityResult,
+  computeTriviaResult,
+  computeTriviaScore,
+  type ChallengeQuestion,
   type CompatibilityQuestion,
+  type ChallengeType,
+  type TriviaQuestion,
   selectCompatibilityQuestions,
+  selectTriviaQuestions,
 } from "../lib/challenges";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -16,7 +22,7 @@ import { createNotification } from "../lib/commerce";
 
 const sendChallengeSchema = z.object({
   targetProfileId: z.string().trim().min(1),
-  type: z.literal("compatibility"),
+  type: z.enum(["compatibility", "trivia"]),
 });
 
 const submitChallengeSchema = z.object({
@@ -28,13 +34,23 @@ type ChallengeSessionRow = typeof challengeSessions.$inferSelect;
 export const challengeRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 function parseQuestionSet(questionSet: string) {
-  return JSON.parse(questionSet) as CompatibilityQuestion[];
+  return JSON.parse(questionSet) as ChallengeQuestion[];
 }
 
-async function getParticipantMap(
-  env: EnvBindings,
-  profileIds: string[],
-) {
+function getChallengeDisplayType(type: ChallengeType) {
+  return type === "compatibility" ? "Vibe Check" : "Trivia";
+}
+
+function sanitizeQuestionsForClient(questions: ChallengeQuestion[]) {
+  return questions.map((question) => ({
+    id: question.id,
+    prompt: question.prompt,
+    options: question.options,
+    category: "category" in question ? question.category : null,
+  }));
+}
+
+async function getParticipantMap(env: EnvBindings, profileIds: string[]) {
   const db = getDb(env);
   const items = await db
     .select({
@@ -55,6 +71,7 @@ async function getRecentQuestionIds(
   env: EnvBindings,
   ownProfileId: string,
   targetProfileId: string,
+  type: ChallengeType,
 ) {
   const db = getDb(env);
   const recentSessions = await db
@@ -62,12 +79,16 @@ async function getRecentQuestionIds(
     .from(challengeSessions)
     .where(
       and(
-        eq(challengeSessions.type, "compatibility"),
+        eq(challengeSessions.type, type),
         or(
-          eq(challengeSessions.senderProfileId, ownProfileId),
-          eq(challengeSessions.recipientProfileId, ownProfileId),
-          eq(challengeSessions.senderProfileId, targetProfileId),
-          eq(challengeSessions.recipientProfileId, targetProfileId),
+          and(
+            eq(challengeSessions.senderProfileId, ownProfileId),
+            eq(challengeSessions.recipientProfileId, targetProfileId),
+          ),
+          and(
+            eq(challengeSessions.senderProfileId, targetProfileId),
+            eq(challengeSessions.recipientProfileId, ownProfileId),
+          ),
         ),
       ),
     )
@@ -109,7 +130,7 @@ async function buildChallengeView(
   const ownResponse = responses.find((item) => item.profileId === ownProfileId) ?? null;
   const otherResponse = responses.find((item) => item.profileId === otherProfileId) ?? null;
 
-  let result = null;
+  let result: Record<string, unknown> | null = null;
   if (responses.length === 2) {
     const senderResponse = responses.find(
       (item) => item.profileId === session.senderProfileId,
@@ -119,22 +140,31 @@ async function buildChallengeView(
     );
 
     if (senderResponse && recipientResponse) {
-      result = computeCompatibilityResult(
-        questions,
-        JSON.parse(senderResponse.answers) as number[],
-        JSON.parse(recipientResponse.answers) as number[],
-      );
+      if (session.type === "compatibility") {
+        result = computeCompatibilityResult(
+          questions as CompatibilityQuestion[],
+          JSON.parse(senderResponse.answers) as number[],
+          JSON.parse(recipientResponse.answers) as number[],
+        );
+      } else {
+        result = computeTriviaResult(
+          questions as TriviaQuestion[],
+          senderResponse.score,
+          recipientResponse.score,
+        );
+      }
     }
   }
 
   return {
     id: session.id,
     type: session.type,
+    typeLabel: getChallengeDisplayType(session.type as ChallengeType),
     status: session.status,
     isSender: session.senderProfileId === ownProfileId,
     isRecipient: session.recipientProfileId === ownProfileId,
     otherProfile: participantMap.get(otherProfileId) ?? null,
-    questions,
+    questions: sanitizeQuestionsForClient(questions),
     expiresAt: session.expiresAt,
     createdAt: session.createdAt,
     acceptedAt: session.acceptedAt,
@@ -175,9 +205,7 @@ challengeRoutes.get("/", async (c) => {
     .limit(100);
 
   const participantIds = Array.from(
-    new Set(
-      rows.flatMap((row) => [row.senderProfileId, row.recipientProfileId]),
-    ),
+    new Set(rows.flatMap((row) => [row.senderProfileId, row.recipientProfileId])),
   );
   const participantMap = await getParticipantMap(c.env, participantIds);
 
@@ -189,6 +217,7 @@ challengeRoutes.get("/", async (c) => {
       return {
         id: row.id,
         type: row.type,
+        typeLabel: getChallengeDisplayType(row.type as ChallengeType),
         status: row.status,
         isSender: row.senderProfileId === own.profileId,
         otherProfile: participantMap.get(otherProfileId) ?? null,
@@ -263,8 +292,12 @@ challengeRoutes.post("/", async (c) => {
     c.env,
     own.profileId,
     payload.data.targetProfileId,
+    payload.data.type,
   );
-  const questions = selectCompatibilityQuestions(recentQuestionIds);
+  const questions =
+    payload.data.type === "compatibility"
+      ? selectCompatibilityQuestions(recentQuestionIds)
+      : selectTriviaQuestions(recentQuestionIds);
   const now = Date.now();
 
   const session = {
@@ -291,9 +324,12 @@ challengeRoutes.post("/", async (c) => {
     challengeSessionId: session.id,
   });
 
-  return c.json({
-    challenge: await buildChallengeView(c.env, session, own.profileId),
-  }, 201);
+  return c.json(
+    {
+      challenge: await buildChallengeView(c.env, session, own.profileId),
+    },
+    201,
+  );
 });
 
 challengeRoutes.get("/:challengeId", async (c) => {
@@ -500,10 +536,7 @@ challengeRoutes.post("/:challengeId/submit", async (c) => {
     return c.json({ error: "Forbidden." }, 403);
   }
 
-  if (
-    session.status !== "accepted" &&
-    !(session.status === "pending" && isSender)
-  ) {
+  if (session.status !== "accepted" && !(session.status === "pending" && isSender)) {
     return c.json({ error: "This challenge is not open for answers." }, 400);
   }
 
@@ -525,13 +558,17 @@ challengeRoutes.post("/:challengeId/submit", async (c) => {
 
   const questions = parseQuestionSet(session.questionSet);
   const now = Date.now();
+  const score =
+    session.type === "trivia"
+      ? computeTriviaScore(questions as TriviaQuestion[], payload.data.answers)
+      : 0;
 
   await db.insert(challengeResponses).values({
     id: crypto.randomUUID(),
     sessionId: session.id,
     profileId: own.profileId,
     answers: JSON.stringify(payload.data.answers),
-    score: 0,
+    score,
     createdAt: now,
     completedAt: now,
   });
@@ -543,7 +580,7 @@ challengeRoutes.post("/:challengeId/submit", async (c) => {
       sessionId: session.id,
       profileId: own.profileId,
       answers: JSON.stringify(payload.data.answers),
-      score: 0,
+      score,
       createdAt: now,
       completedAt: now,
     },
@@ -554,8 +591,6 @@ challengeRoutes.post("/:challengeId/submit", async (c) => {
   if (responsesAfterInsert.length >= 2) {
     nextStatus = "completed";
     completedAt = now;
-  } else if (session.status === "pending" && isSender) {
-    nextStatus = "pending";
   }
 
   await db

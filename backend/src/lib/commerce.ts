@@ -62,9 +62,9 @@ export async function createNotification(
                 : "Velora Crown"
           }.`
         : input.type === "challenge"
-          ? `${actorProfile?.displayName ?? "Someone"} sent you a Vibe Check.`
+          ? `${actorProfile?.displayName ?? "Someone"} sent you a challenge.`
           : input.type === "challenge_result"
-            ? `${actorProfile?.displayName ?? "Someone"} finished your Vibe Check.`
+            ? `${actorProfile?.displayName ?? "Someone"} finished your challenge.`
             : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
 
     const link =

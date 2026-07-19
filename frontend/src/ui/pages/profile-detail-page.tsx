@@ -73,11 +73,23 @@ export function ProfileDetailPage() {
     },
   });
 
-  const challengeMutation = useMutation({
+  const vibeCheckMutation = useMutation({
     mutationFn: () =>
       createChallenge({
         targetProfileId: profileQuery.data?.profile.id ?? "",
         type: "compatibility",
+      }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["challenges"] });
+      navigate(`/challenges/${result.challenge.id}`);
+    },
+  });
+
+  const triviaMutation = useMutation({
+    mutationFn: () =>
+      createChallenge({
+        targetProfileId: profileQuery.data?.profile.id ?? "",
+        type: "trivia",
       }),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["challenges"] });
@@ -181,25 +193,36 @@ export function ProfileDetailPage() {
         <div className="meta-group">
           <span className="meta-title">Break the ice</span>
           <p className="status-message">
-            Try a quick Vibe Check before chatting. You will answer the same five prompts
-            and unlock a shared result when both sides finish.
+            Pick a challenge that fits the mood. Vibe Check compares chemistry, while
+            Trivia turns the first interaction into a light competition.
           </p>
           <div className="action-row">
             <button
               className="secondary-button"
               type="button"
-              disabled={challengeMutation.isPending}
-              onClick={() => challengeMutation.mutate()}
+              disabled={vibeCheckMutation.isPending || triviaMutation.isPending}
+              onClick={() => vibeCheckMutation.mutate()}
             >
-              {challengeMutation.isPending ? "Starting..." : "Start Vibe Check"}
+              {vibeCheckMutation.isPending ? "Starting..." : "Start Vibe Check"}
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={vibeCheckMutation.isPending || triviaMutation.isPending}
+              onClick={() => triviaMutation.mutate()}
+            >
+              {triviaMutation.isPending ? "Starting..." : "Send Trivia Challenge"}
             </button>
           </div>
-          {challengeMutation.error instanceof Error ? (
-            <p className="error-message">{challengeMutation.error.message}</p>
+          {vibeCheckMutation.error instanceof Error ? (
+            <p className="error-message">{vibeCheckMutation.error.message}</p>
+          ) : null}
+          {triviaMutation.error instanceof Error ? (
+            <p className="error-message">{triviaMutation.error.message}</p>
           ) : null}
           <p className="status-message">
-            Trivia challenges can come next. For now, this first version focuses on
-            compatibility and starting stronger conversations.
+            Both challenge types stay inside Velora and can lead straight into chat
+            after the result is revealed.
           </p>
         </div>
 

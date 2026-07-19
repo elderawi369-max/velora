@@ -107,7 +107,7 @@ export function ChallengesPage() {
         {(challengeQuery.data?.challenges ?? []).map((challenge) => (
           <article className="card profile-card" key={challenge.id}>
             <div className="chip-row">
-              <span className="chip">Vibe Check</span>
+              <span className="chip">{challenge.typeLabel}</span>
               <span className={challenge.status === "completed" ? "chip" : "chip chip-muted"}>
                 {getChallengeLabel(challenge.status, challenge.isSender)}
               </span>
@@ -120,8 +120,8 @@ export function ChallengesPage() {
 
             <p>
               {challenge.isSender
-                ? "You sent this challenge."
-                : "This challenge was sent to you."}
+                ? `You sent this ${challenge.type === "trivia" ? "trivia challenge" : "challenge"}.`
+                : `This ${challenge.type === "trivia" ? "trivia challenge" : "challenge"} was sent to you.`}
             </p>
 
             <div className="chip-row">
