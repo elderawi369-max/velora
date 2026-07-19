@@ -158,6 +158,7 @@ export type PublicProfile = {
     remainingMs: number;
     totalPurchased: number;
   };
+  challengeCredits: number;
   createdAt: number;
 };
 
@@ -233,6 +234,13 @@ export type ChallengeListItem = {
   expiresAt: number;
   createdAt: number;
   completedAt: number | null;
+};
+
+export type ChallengeCreditPack = {
+  key: string;
+  label: string;
+  credits: number;
+  priceCents: number;
 };
 
 export type ChallengeDetail = {
@@ -474,6 +482,10 @@ export function fetchBoostCatalog() {
   }>("/api/social/boosts/catalog");
 }
 
+export function fetchChallengeCreditCatalog() {
+  return request<{ packs: ChallengeCreditPack[] }>("/api/social/challenge-credits/catalog");
+}
+
 const pendingCheckoutStorageKey = "velora-pending-checkout";
 
 export function savePendingCheckoutId(checkoutId: string) {
@@ -514,9 +526,16 @@ export function createBoostCheckout(boostType: string) {
   });
 }
 
+export function createChallengeCreditCheckout(packKey: string) {
+  return request<{ checkoutUrl: string; checkoutId: string }>("/api/payments/checkout", {
+    method: "POST",
+    body: { productKind: "challenge_credit_pack", itemKey: packKey },
+  });
+}
+
 export function verifyGoogleMobilePurchase(payload: {
   provider: "google";
-  productKind: "gift" | "boost";
+  productKind: "gift" | "boost" | "challenge_credit_pack";
   itemKey: string;
   targetProfileId?: string;
   purchaseToken: string;
@@ -534,7 +553,7 @@ export function verifyGoogleMobilePurchase(payload: {
 }
 
 export function fetchChallenges() {
-  return request<{ challenges: ChallengeListItem[] }>("/api/challenges");
+  return request<{ challenges: ChallengeListItem[]; creditBalance: number }>("/api/challenges");
 }
 
 export function createChallenge(payload: {

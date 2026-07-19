@@ -6,6 +6,7 @@ import { sendPushToUser } from "./push";
 
 export type GiftType = "rose" | "starlight" | "crown";
 export type BoostType = "spark" | "spotlight";
+export type ChallengeCreditPackType = "challenge_pack_3" | "challenge_pack_10";
 
 export const giftCatalog = [
   { key: "rose", label: "Rose Aura", priceCents: 99 },
@@ -16,6 +17,11 @@ export const giftCatalog = [
 export const boostCatalog = [
   { key: "spark", label: "Spark Boost", durationHours: 6, priceCents: 149 },
   { key: "spotlight", label: "Spotlight Boost", durationHours: 24, priceCents: 299 },
+] as const;
+
+export const challengeCreditCatalog = [
+  { key: "challenge_pack_3", label: "3 Challenge Credits", credits: 3, priceCents: 99 },
+  { key: "challenge_pack_10", label: "10 Challenge Credits", credits: 10, priceCents: 249 },
 ] as const;
 
 export async function createNotification(
@@ -136,6 +142,31 @@ export async function fulfillPurchase(env: EnvBindings, purchaseId: string) {
     });
   }
 
+  if (purchase.productKind === "challenge_credit_pack") {
+    const pack = challengeCreditCatalog.find((item) => item.key === purchase.itemKey);
+    if (!pack) {
+      throw new Error("Challenge credit purchase is invalid.");
+    }
+
+    const [buyerProfile] = await db
+      .select({ challengeCredits: profiles.challengeCredits })
+      .from(profiles)
+      .where(eq(profiles.id, purchase.buyerProfileId))
+      .limit(1);
+
+    if (!buyerProfile) {
+      throw new Error("Buyer profile not found.");
+    }
+
+    await db
+      .update(profiles)
+      .set({
+        challengeCredits: buyerProfile.challengeCredits + pack.credits,
+        updatedAt: now,
+      })
+      .where(eq(profiles.id, purchase.buyerProfileId));
+  }
+
   await db
     .update(purchases)
     .set({
@@ -146,7 +177,11 @@ export async function fulfillPurchase(env: EnvBindings, purchaseId: string) {
 
   await logEvent(env, {
     eventType:
-      purchase.productKind === "gift" ? "gift_purchase_completed" : "boost_purchase_completed",
+      purchase.productKind === "gift"
+        ? "gift_purchase_completed"
+        : purchase.productKind === "boost"
+          ? "boost_purchase_completed"
+          : "challenge_credit_purchase_completed",
     profileId: purchase.buyerProfileId,
     eventData: {
       purchaseId: purchase.id,

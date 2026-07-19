@@ -5,6 +5,7 @@ import {
   createChallenge,
   createConversation,
   fetchProfileByUsername,
+  fetchOwnProfile,
   removeFavorite,
 } from "../../lib/api";
 import {
@@ -47,6 +48,10 @@ export function ProfileDetailPage() {
     queryFn: () => fetchProfileByUsername(username),
     enabled: Boolean(username),
   });
+  const ownProfileQuery = useQuery({
+    queryKey: ["ownProfile"],
+    queryFn: fetchOwnProfile,
+  });
 
   const createConversationMutation = useMutation({
     mutationFn: ({ initialDraft }: { initialDraft?: string }) =>
@@ -80,6 +85,7 @@ export function ProfileDetailPage() {
         type: "compatibility",
       }),
     onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
       await queryClient.invalidateQueries({ queryKey: ["challenges"] });
       navigate(`/challenges/${result.challenge.id}`);
     },
@@ -92,6 +98,7 @@ export function ProfileDetailPage() {
         type: "trivia",
       }),
     onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
       await queryClient.invalidateQueries({ queryKey: ["challenges"] });
       navigate(`/challenges/${result.challenge.id}`);
     },
@@ -124,6 +131,7 @@ export function ProfileDetailPage() {
     (item) => !platformRules.includes(item as (typeof platformRules)[number]),
   );
   const suggestedOpener = getSuggestedOpener(profile);
+  const creditBalance = ownProfileQuery.data?.profile?.challengeCredits ?? 0;
 
   return (
     <main className="content-section">
@@ -196,11 +204,17 @@ export function ProfileDetailPage() {
             Pick a challenge that fits the mood. Vibe Check compares chemistry, while
             Trivia turns the first interaction into a light competition.
           </p>
+          <div className="chip-row">
+            <span className="chip">{creditBalance} credit{creditBalance === 1 ? "" : "s"} available</span>
+            <span className="chip chip-muted">Each challenge costs 1 credit</span>
+          </div>
           <div className="action-row">
             <button
               className="secondary-button"
               type="button"
-              disabled={vibeCheckMutation.isPending || triviaMutation.isPending}
+              disabled={
+                vibeCheckMutation.isPending || triviaMutation.isPending || creditBalance < 1
+              }
               onClick={() => vibeCheckMutation.mutate()}
             >
               {vibeCheckMutation.isPending ? "Starting..." : "Start Vibe Check"}
@@ -208,12 +222,19 @@ export function ProfileDetailPage() {
             <button
               className="secondary-button"
               type="button"
-              disabled={vibeCheckMutation.isPending || triviaMutation.isPending}
+              disabled={
+                vibeCheckMutation.isPending || triviaMutation.isPending || creditBalance < 1
+              }
               onClick={() => triviaMutation.mutate()}
             >
               {triviaMutation.isPending ? "Starting..." : "Send Trivia Challenge"}
             </button>
           </div>
+          {creditBalance < 1 ? (
+            <p className="status-message">
+              You need a challenge credit before sending one. You can add packs from your profile.
+            </p>
+          ) : null}
           {vibeCheckMutation.error instanceof Error ? (
             <p className="error-message">{vibeCheckMutation.error.message}</p>
           ) : null}

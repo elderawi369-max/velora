@@ -26,6 +26,7 @@ export const profiles = sqliteTable("profiles", {
   avatarPreset: text("avatar_preset").notNull(),
   boundaries: text("boundaries").notNull(),
   vibeTags: text("vibe_tags").notNull(),
+  challengeCredits: integer("challenge_credits").notNull().default(0),
   verifiedHumanAt: integer("verified_human_at"),
   suspendedAt: integer("suspended_at"),
   createdAt: integer("created_at").notNull(),

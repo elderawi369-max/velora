@@ -1,0 +1,2 @@
+ALTER TABLE profiles
+ADD COLUMN challenge_credits INTEGER NOT NULL DEFAULT 0;

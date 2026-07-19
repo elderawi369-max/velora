@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { fetchChallenges } from "../../lib/api";
+import { fetchChallenges, fetchOwnProfile } from "../../lib/api";
 
 function formatChallengeTiming(status: string, expiresAt: number, completedAt: number | null) {
   if (status === "completed") {
@@ -63,6 +63,11 @@ export function ChallengesPage() {
     queryFn: fetchChallenges,
     refetchInterval: 8000,
   });
+  const ownProfileQuery = useQuery({
+    queryKey: ["ownProfile"],
+    queryFn: fetchOwnProfile,
+  });
+  const creditBalance = ownProfileQuery.data?.profile?.challengeCredits ?? 0;
 
   return (
     <main className="content-section">
@@ -74,6 +79,9 @@ export function ChallengesPage() {
       <div className="action-row">
         <Link className="primary-button" to="/browse">
           Start another challenge
+        </Link>
+        <Link className="secondary-button" to="/my-profile">
+          {creditBalance} credit{creditBalance === 1 ? "" : "s"} available
         </Link>
       </div>
 

@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
 import { favorites, profiles } from "../db/schema";
-import { boostCatalog, createNotification, giftCatalog } from "../lib/commerce";
+import {
+  boostCatalog,
+  challengeCreditCatalog,
+  createNotification,
+  giftCatalog,
+} from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { logEvent } from "../lib/analytics";
@@ -117,6 +122,10 @@ socialRoutes.delete("/favorites/:targetProfileId", async (c) => {
 socialRoutes.get("/gifts/catalog", (c) => c.json({ gifts: giftCatalog }));
 
 socialRoutes.get("/boosts/catalog", (c) => c.json({ boosts: boostCatalog }));
+
+socialRoutes.get("/challenge-credits/catalog", (c) =>
+  c.json({ packs: challengeCreditCatalog }),
+);
 
 socialRoutes.post("/gifts/send", async (c) => {
   const own = await getOwnProfileContext(

@@ -485,6 +485,7 @@ async function getProfileById(env: EnvBindings, profileId: string) {
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
+      challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
       createdAt: profiles.createdAt,
@@ -552,6 +553,7 @@ async function getProfileById(env: EnvBindings, profileId: string) {
     matchReasons: [] as string[],
     giftEffect: giftEffects,
     boostEffect,
+    challengeCredits: profile.challengeCredits,
   };
 }
 
@@ -811,6 +813,7 @@ profileRoutes.get("/", async (c) => {
       avatarPreset: profiles.avatarPreset,
       vibeTags: profiles.vibeTags,
       boundaries: profiles.boundaries,
+      challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
       createdAt: profiles.createdAt,
@@ -1049,6 +1052,7 @@ profileRoutes.post("/", async (c) => {
     avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
     vibeTags: JSON.stringify(payload.data.vibeTags),
     boundaries: JSON.stringify(payload.data.boundaries),
+    challengeCredits: 0,
     verifiedHumanAt: null,
     suspendedAt: null,
     createdAt: now,
@@ -1120,6 +1124,7 @@ profileRoutes.post("/", async (c) => {
         remainingMs: 0,
         totalPurchased: 0,
       },
+      challengeCredits: 0,
     },
   }, 201);
 });
@@ -1149,6 +1154,7 @@ profileRoutes.put("/me", async (c) => {
       username: profiles.username,
       createdAt: profiles.createdAt,
       verifiedHumanAt: profiles.verifiedHumanAt,
+      challengeCredits: profiles.challengeCredits,
     })
     .from(profiles)
     .where(eq(profiles.userId, userId))
@@ -1258,6 +1264,7 @@ profileRoutes.put("/me", async (c) => {
         remainingMs: 0,
         totalPurchased: 0,
       },
+      challengeCredits: existingProfile.challengeCredits,
     },
   });
 });

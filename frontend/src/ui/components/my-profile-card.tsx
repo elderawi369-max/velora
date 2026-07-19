@@ -7,7 +7,14 @@ import {
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
-import { createBoostCheckout, fetchBoostCatalog, fetchOwnProfile, savePendingCheckoutId } from "../../lib/api";
+import {
+  createBoostCheckout,
+  createChallengeCreditCheckout,
+  fetchBoostCatalog,
+  fetchChallengeCreditCatalog,
+  fetchOwnProfile,
+  savePendingCheckoutId,
+} from "../../lib/api";
 import {
   completeGooglePlayPurchase,
   isNativeAndroidApp,
@@ -27,6 +34,10 @@ export function MyProfileCard() {
     queryKey: ["boostCatalog"],
     queryFn: fetchBoostCatalog,
   });
+  const challengeCreditCatalogQuery = useQuery({
+    queryKey: ["challengeCreditCatalog"],
+    queryFn: fetchChallengeCreditCatalog,
+  });
   const boostMutation = useMutation({
     mutationFn: async (boostType: string) => {
       if (await shouldUseGooglePlayBilling()) {
@@ -45,8 +56,8 @@ export function MyProfileCard() {
     },
     onSuccess: async (result) => {
       if ("mode" in result) {
-      savePendingCheckoutId(result.checkoutId);
-      window.location.href = result.checkoutUrl;
+        savePendingCheckoutId(result.checkoutId);
+        window.location.href = result.checkoutUrl;
         return;
       }
 
@@ -54,6 +65,20 @@ export function MyProfileCard() {
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["profiles"] });
       }
+    },
+  });
+  const challengeCreditMutation = useMutation({
+    mutationFn: async (packKey: string) => {
+      if (isNativeAndroidApp()) {
+        throw new Error("Challenge credit packs are currently available on the web checkout only.");
+      }
+
+      const checkout = await createChallengeCreditCheckout(packKey);
+      return checkout;
+    },
+    onSuccess: (result) => {
+      savePendingCheckoutId(result.checkoutId);
+      window.location.href = result.checkoutUrl;
     },
   });
 
@@ -120,6 +145,47 @@ export function MyProfileCard() {
           ]
         }
       </p>
+
+      <div className="meta-group">
+        <span className="meta-title">Challenge credits</span>
+        <div className="chip-row">
+          <span className="chip">{profile.challengeCredits} credit{profile.challengeCredits === 1 ? "" : "s"} ready</span>
+          <span className="chip chip-muted">1 credit per challenge sent</span>
+        </div>
+        <p className="status-message">
+          Credits are only used when you send a challenge. If you cancel while it is still pending,
+          the credit returns to your balance automatically.
+        </p>
+        {isNativeAndroidApp() ? (
+          <p className="status-message">
+            Challenge credit packs are on web checkout first. Android billing can be added after we
+            validate it.
+          </p>
+        ) : (
+          <div className="gift-row">
+            {(challengeCreditCatalogQuery.data?.packs ?? []).map((pack) => (
+              <button
+                key={pack.key}
+                className="secondary-button"
+                type="button"
+                disabled={challengeCreditMutation.isPending}
+                onClick={() => challengeCreditMutation.mutate(pack.key)}
+              >
+                {challengeCreditMutation.isPending
+                  ? "Opening checkout..."
+                  : `Buy ${pack.label} · $${(pack.priceCents / 100).toFixed(2)}`}
+              </button>
+            ))}
+          </div>
+        )}
+        {challengeCreditMutation.error ? (
+          <p className="form-error">
+            {challengeCreditMutation.error instanceof Error
+              ? challengeCreditMutation.error.message
+              : "Unable to open challenge credit checkout."}
+          </p>
+        ) : null}
+      </div>
 
       <div className="meta-group">
         <span className="meta-title">Profile boost</span>

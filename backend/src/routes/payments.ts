@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { boostCatalog, fulfillPurchase, giftCatalog } from "../lib/commerce";
+import {
+  boostCatalog,
+  challengeCreditCatalog,
+  fulfillPurchase,
+  giftCatalog,
+} from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 import {
@@ -471,7 +476,10 @@ async function fulfillPurchaseByExternalId(env: EnvBindings, externalId: string)
   return fulfillPurchase(env, purchase.id);
 }
 
-function assertCatalogItem(input: { productKind: "gift" | "boost"; itemKey: string }) {
+function assertCatalogItem(input: {
+  productKind: "gift" | "boost" | "challenge_credit_pack";
+  itemKey: string;
+}) {
   if (input.productKind === "gift") {
     const gift = giftCatalog.find((item) => item.key === input.itemKey);
     if (!gift) {
@@ -479,6 +487,15 @@ function assertCatalogItem(input: { productKind: "gift" | "boost"; itemKey: stri
     }
 
     return gift;
+  }
+
+  if (input.productKind === "challenge_credit_pack") {
+    const pack = challengeCreditCatalog.find((item) => item.key === input.itemKey);
+    if (!pack) {
+      throw new PaymentRouteError("Invalid challenge credit pack.", 400);
+    }
+
+    return pack;
   }
 
   const boost = boostCatalog.find((item) => item.key === input.itemKey);
@@ -606,7 +623,7 @@ async function upsertAndFulfillMobilePurchase(
     externalPaymentId: string;
     buyerProfileId: string;
     targetProfileId: string | null;
-    productKind: "gift" | "boost";
+    productKind: "gift" | "boost" | "challenge_credit_pack";
     itemKey: string;
     amountCents: number;
     rawPayload: Record<string, string | null | undefined>;
@@ -728,6 +745,54 @@ paymentRoutes.post("/checkout", async (c) => {
           targetProfileId,
           itemKey: gift.key,
           amountCents: gift.priceCents,
+        },
+      });
+
+      return c.json({ checkoutUrl: session.url, checkoutId: session.id });
+    }
+
+    if (payload.data.productKind === "challenge_credit_pack") {
+      const pack = challengeCreditCatalog.find((item) => item.key === payload.data.itemKey);
+      if (!pack) {
+        throw new PaymentRouteError("Invalid challenge credit pack.", 400);
+      }
+
+      const purchaseId = crypto.randomUUID();
+      const session = await createHostedCheckoutSession(c.env, {
+        origin,
+        productName: pack.label,
+        amountCents: pack.priceCents,
+        metadata: {
+          purchaseId,
+          buyerProfileId: own.profileId,
+          productKind: "challenge_credit_pack",
+          itemKey: pack.key,
+        },
+      });
+
+      await db.insert(purchases).values({
+        id: purchaseId,
+        stripeSessionId: session.id,
+        buyerProfileId: own.profileId,
+        targetProfileId: null,
+        productKind: "challenge_credit_pack",
+        itemKey: pack.key,
+        amountCents: pack.priceCents,
+        currency: "usd",
+        status: "pending",
+        fulfilledAt: null,
+        createdAt: Date.now(),
+      });
+
+      await logEvent(c.env, {
+        eventType: "challenge_credit_checkout_started",
+        profileId: own.profileId,
+        eventData: {
+          purchaseId,
+          checkoutId: session.id,
+          itemKey: pack.key,
+          credits: pack.credits,
+          amountCents: pack.priceCents,
         },
       });
 

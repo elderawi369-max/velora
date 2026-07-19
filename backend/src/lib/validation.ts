@@ -74,7 +74,7 @@ export const supportTicketSchema = z.object({
 });
 
 export const checkoutSessionSchema = z.object({
-  productKind: z.enum(["gift", "boost"]),
+  productKind: z.enum(["gift", "boost", "challenge_credit_pack"]),
   itemKey: z.string().trim().min(1).max(40),
   targetProfileId: z.string().trim().optional(),
 });
@@ -82,7 +82,7 @@ export const checkoutSessionSchema = z.object({
 export const mobilePurchaseVerificationSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal("apple"),
-    productKind: z.enum(["gift", "boost"]),
+    productKind: z.enum(["gift", "boost", "challenge_credit_pack"]),
     itemKey: z.string().trim().min(1).max(40),
     targetProfileId: z.string().trim().optional(),
     transactionId: z.string().trim().min(1).max(120),
@@ -90,7 +90,7 @@ export const mobilePurchaseVerificationSchema = z.discriminatedUnion("provider",
   }),
   z.object({
     provider: z.literal("google"),
-    productKind: z.enum(["gift", "boost"]),
+    productKind: z.enum(["gift", "boost", "challenge_credit_pack"]),
     itemKey: z.string().trim().min(1).max(40),
     targetProfileId: z.string().trim().optional(),
     purchaseToken: z.string().trim().min(1).max(240),

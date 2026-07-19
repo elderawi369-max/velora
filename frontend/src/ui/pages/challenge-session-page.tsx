@@ -148,6 +148,7 @@ export function ChallengeSessionPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["challenge", challengeId] });
       await queryClient.invalidateQueries({ queryKey: ["challenges"] });
+      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
       navigate("/challenges");
     },
   });
@@ -259,6 +260,10 @@ export function ChallengeSessionPage() {
         {challenge.status === "pending" && challenge.isSender ? (
           <div className="meta-group">
             <p className="status-message">{getPendingCopy(challenge)}</p>
+            <div className="chip-row">
+              <span className="chip chip-muted">1 credit locked for this challenge</span>
+              <span className="chip">Canceling returns that credit</span>
+            </div>
             <div className="action-row">
               <button
                 className="secondary-button"

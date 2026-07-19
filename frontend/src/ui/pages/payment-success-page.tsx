@@ -28,11 +28,14 @@ export function PaymentSuccessPage() {
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["profiles"] });
         await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        await queryClient.invalidateQueries({ queryKey: ["challenges"] });
         setStatus("success");
         setMessage(
           result.purchase.productKind === "gift"
             ? "Gift purchase confirmed and delivered."
-            : "Boost purchase confirmed and activated.",
+            : result.purchase.productKind === "boost"
+              ? "Boost purchase confirmed and activated."
+              : "Challenge credits added to your balance.",
         );
       } catch (error) {
         setStatus("error");

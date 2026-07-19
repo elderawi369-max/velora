@@ -60,6 +60,7 @@ async function getParticipantMap(env: EnvBindings, profileIds: string[]) {
       personalityType: profiles.personalityType,
       identity: profiles.identity,
       avatarPreset: profiles.avatarPreset,
+      challengeCredits: profiles.challengeCredits,
     })
     .from(profiles)
     .where(inArray(profiles.id, profileIds));
@@ -226,6 +227,7 @@ challengeRoutes.get("/", async (c) => {
         completedAt: row.completedAt,
       };
     }),
+    creditBalance: participantMap.get(own.profileId)?.challengeCredits ?? 0,
   });
 });
 
@@ -253,6 +255,19 @@ challengeRoutes.post("/", async (c) => {
   }
 
   const db = getDb(c.env);
+  const [ownProfile] = await db
+    .select({ challengeCredits: profiles.challengeCredits })
+    .from(profiles)
+    .where(eq(profiles.id, own.profileId))
+    .limit(1);
+
+  if (!ownProfile || ownProfile.challengeCredits < 1) {
+    return c.json(
+      { error: "You need at least 1 challenge credit before sending a challenge." },
+      402,
+    );
+  }
+
   const [targetProfile] = await db
     .select({ id: profiles.id, suspendedAt: profiles.suspendedAt })
     .from(profiles)
@@ -316,6 +331,13 @@ challengeRoutes.post("/", async (c) => {
   } as const;
 
   await db.insert(challengeSessions).values(session);
+  await db
+    .update(profiles)
+    .set({
+      challengeCredits: ownProfile.challengeCredits - 1,
+      updatedAt: now,
+    })
+    .where(eq(profiles.id, own.profileId));
 
   await createNotification(c.env, {
     profileId: payload.data.targetProfileId,
@@ -500,6 +522,22 @@ challengeRoutes.post("/:challengeId/cancel", async (c) => {
       updatedAt: Date.now(),
     })
     .where(eq(challengeSessions.id, session.id));
+
+  const [ownProfile] = await db
+    .select({ challengeCredits: profiles.challengeCredits })
+    .from(profiles)
+    .where(eq(profiles.id, own.profileId))
+    .limit(1);
+
+  if (ownProfile) {
+    await db
+      .update(profiles)
+      .set({
+        challengeCredits: ownProfile.challengeCredits + 1,
+        updatedAt: Date.now(),
+      })
+      .where(eq(profiles.id, own.profileId));
+  }
 
   return c.json({ ok: true });
 });
