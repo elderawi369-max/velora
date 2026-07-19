@@ -2,7 +2,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchChallenges } from "../../lib/api";
 
-function formatRelativeExpiry(expiresAt: number) {
+function formatChallengeTiming(status: string, expiresAt: number, completedAt: number | null) {
+  if (status === "completed") {
+    return completedAt ? "Finished" : "Completed";
+  }
+
+  if (status === "declined") {
+    return "Declined";
+  }
+
+  if (status === "canceled") {
+    return "Canceled";
+  }
+
+  if (status === "expired") {
+    return "Expired";
+  }
+
   const diffMs = expiresAt - Date.now();
   if (diffMs <= 0) {
     return "Expired";
@@ -55,6 +71,12 @@ export function ChallengesPage() {
         <h1>Challenges help conversations start with energy instead of a cold hello.</h1>
       </section>
 
+      <div className="action-row">
+        <Link className="primary-button" to="/browse">
+          Start another challenge
+        </Link>
+      </div>
+
       {challengeQuery.isLoading ? <p className="status-message">Loading challenges...</p> : null}
 
       {challengeQuery.error ? (
@@ -103,7 +125,13 @@ export function ChallengesPage() {
             </p>
 
             <div className="chip-row">
-              <span className="chip chip-muted">{formatRelativeExpiry(challenge.expiresAt)}</span>
+              <span className="chip chip-muted">
+                {formatChallengeTiming(
+                  challenge.status,
+                  challenge.expiresAt,
+                  challenge.completedAt,
+                )}
+              </span>
             </div>
 
             <div className="action-row">
