@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  fetchAdminProfileByUsername,
   fetchAdminConversation,
   fetchAdminAnalytics,
   fetchAdminReports,
@@ -11,6 +12,7 @@ import {
   updateProfileContent,
   verifyProfile,
   type AdminConversation,
+  type AdminProfile,
   type AdminReport,
   type DailyTrendPoint,
   type EngagementPeriod,
@@ -286,6 +288,8 @@ export function AdminPage() {
   const [adminKeyInput, setAdminKeyInput] = useState("");
   const [activeAdminKey, setActiveAdminKey] = useState("");
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
+  const [lookupUsername, setLookupUsername] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
   const [contentDrafts, setContentDrafts] = useState<
     Record<
       string,
@@ -373,6 +377,27 @@ export function AdminPage() {
       await queryClient.invalidateQueries({
         queryKey: ["adminReports", activeAdminKey],
       });
+      if (contentMutation.variables?.profileId === selectedProfile?.id) {
+        const updatedProfile = contentMutation.data?.profile;
+        if (updatedProfile) {
+          setSelectedProfile(updatedProfile);
+        }
+      }
+    },
+  });
+
+  const profileLookupMutation = useMutation({
+    mutationFn: async (username: string) =>
+      fetchAdminProfileByUsername(activeAdminKey, username),
+    onSuccess: ({ profile }) => {
+      setSelectedProfile(profile);
+      setContentDrafts((current) => ({
+        ...current,
+        [profile.id]: {
+          bio: profile.bio,
+          promptEntries: profile.promptEntries,
+        },
+      }));
     },
   });
 
@@ -412,6 +437,179 @@ export function AdminPage() {
   function toggleConversation(conversationId: string | null) {
     setOpenConversationId((current) =>
       current === conversationId || !conversationId ? null : conversationId,
+    );
+  }
+
+  function renderProfileCleanupCard(profile: AdminProfile, summary?: React.ReactNode) {
+    const suspended = Boolean(profile.suspendedAt);
+    const verifiedHuman = Boolean(profile.verifiedHumanAt);
+    const draft =
+      contentDrafts[profile.id] ?? {
+        bio: profile.bio,
+        promptEntries: profile.promptEntries,
+      };
+
+    return (
+      <article className="card profile-card" key={profile.id}>
+        <div className="meta-group">
+          <span className="meta-title">Target profile</span>
+          <p>
+            {profile.displayName} (@{profile.username})
+          </p>
+        </div>
+
+        {summary ?? null}
+
+        <div className="chip-row">
+          {verifiedHuman ? <span className="chip">Verified human</span> : null}
+          <span className={suspended ? "chip chip-muted" : "chip"}>
+            {suspended ? "Suspended" : "Active"}
+          </span>
+        </div>
+
+        <div className="meta-group">
+          <span className="meta-title">Profile cleanup</span>
+          <p>Remove email or off-app contact details from bio or prompts, then save the cleaned text.</p>
+        </div>
+
+        <label className="field">
+          <span>Bio</span>
+          <textarea
+            rows={4}
+            value={draft.bio}
+            onChange={(event) => setBioDraft(profile.id, event.target.value)}
+          />
+        </label>
+
+        {[0, 1, 2].map((index) => {
+          const prompt = getPromptDraft(draft.promptEntries, index);
+
+          return (
+            <div className="panel form-panel" key={`${profile.id}-prompt-${index}`}>
+              <label className="field">
+                <span>Prompt {index + 1} question</span>
+                <input
+                  type="text"
+                  value={prompt.question}
+                  onChange={(event) =>
+                    setPromptDraft(profile.id, index, "question", event.target.value)
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Prompt {index + 1} answer</span>
+                <textarea
+                  rows={3}
+                  value={prompt.answer}
+                  onChange={(event) =>
+                    setPromptDraft(profile.id, index, "answer", event.target.value)
+                  }
+                />
+              </label>
+            </div>
+          );
+        })}
+
+        <div className="action-row">
+          <button
+            className="primary-button"
+            type="button"
+            disabled={contentMutation.isPending}
+            onClick={() =>
+              contentMutation.mutate({
+                profileId: profile.id,
+                bio: draft.bio,
+                promptEntries: draft.promptEntries,
+              })
+            }
+          >
+            {contentMutation.isPending ? "Saving..." : "Save profile text"}
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={contentMutation.isPending}
+            onClick={() => setBioDraft(profile.id, "")}
+          >
+            Clear bio
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={contentMutation.isPending}
+            onClick={() =>
+              setContentDrafts((current) => ({
+                ...current,
+                [profile.id]: {
+                  bio: current[profile.id]?.bio ?? "",
+                  promptEntries: [],
+                },
+              }))
+            }
+          >
+            Clear prompts
+          </button>
+          <button
+            className="danger-button"
+            type="button"
+            disabled={contentMutation.isPending}
+            onClick={() =>
+              contentMutation.mutate({
+                profileId: profile.id,
+                bio: "",
+                promptEntries: [],
+              })
+            }
+          >
+            {contentMutation.isPending ? "Saving..." : "Clear all text"}
+          </button>
+        </div>
+
+        <div className="action-row">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={moderationMutation.isPending}
+            onClick={() =>
+              moderationMutation.mutate({
+                action: verifiedHuman ? "unverify" : "verify",
+                profileId: profile.id,
+              })
+            }
+          >
+            {moderationMutation.isPending
+              ? "Saving..."
+              : verifiedHuman
+                ? "Remove verification"
+                : "Verify human"}
+          </button>
+          <button
+            className={suspended ? "secondary-button" : "danger-button"}
+            type="button"
+            disabled={moderationMutation.isPending}
+            onClick={() =>
+              moderationMutation.mutate({
+                action: suspended ? "unsuspend" : "suspend",
+                profileId: profile.id,
+              })
+            }
+          >
+            {moderationMutation.isPending ? "Saving..." : suspended ? "Unsuspend" : "Suspend"}
+          </button>
+        </div>
+
+        {contentMutation.error && contentMutation.variables?.profileId === profile.id ? (
+          <p className="error-message">
+            {contentMutation.error instanceof Error
+              ? contentMutation.error.message
+              : "Unable to update profile content."}
+          </p>
+        ) : null}
+
+        {contentMutation.isSuccess && contentMutation.variables?.profileId === profile.id ? (
+          <p className="status-message">Profile text updated.</p>
+        ) : null}
+      </article>
     );
   }
 
@@ -563,6 +761,46 @@ export function AdminPage() {
             <p className="eyebrow">Founder view</p>
             <h2>See launch health, revenue, engagement, retention, and conversation quality.</h2>
           </section>
+
+          <section className="panel form-panel">
+            <div className="section-copy compact-copy">
+              <p className="eyebrow">Profile lookup</p>
+              <h2>Find any profile by username and clean it directly.</h2>
+            </div>
+            <label className="field">
+              <span>Username</span>
+              <input
+                value={lookupUsername}
+                onChange={(event) => setLookupUsername(event.target.value)}
+                placeholder="mercillar"
+              />
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!lookupUsername.trim() || profileLookupMutation.isPending}
+              onClick={() => profileLookupMutation.mutate(lookupUsername)}
+            >
+              {profileLookupMutation.isPending ? "Finding..." : "Find profile"}
+            </button>
+            {profileLookupMutation.error ? (
+              <p className="error-message">
+                {profileLookupMutation.error instanceof Error
+                  ? profileLookupMutation.error.message
+                  : "Unable to find profile."}
+              </p>
+            ) : null}
+          </section>
+
+          {selectedProfile
+            ? renderProfileCleanupCard(
+                selectedProfile,
+                <div className="meta-group">
+                  <span className="meta-title">Lookup result</span>
+                  <p>Direct moderation access for profiles that are not currently in the reports queue.</p>
+                </div>,
+              )
+            : null}
 
           {analyticsQuery.isLoading ? <p className="status-message">Loading founder analytics...</p> : null}
 
@@ -791,213 +1029,72 @@ export function AdminPage() {
                 <p>{report.conversationId ?? "Not attached to a conversation"}</p>
               </div>
 
-              {target ? (
-                <>
-                  <div className="meta-group">
-                    <span className="meta-title">Profile cleanup</span>
-                    <p>Remove off-app contact details from bio or prompts, then save the cleaned profile text.</p>
-                  </div>
-
-                  <label className="field">
-                    <span>Bio</span>
-                    <textarea
-                      rows={4}
-                      value={getContentDraft(report).bio}
-                      onChange={(event) => setBioDraft(target.id, event.target.value)}
-                    />
-                  </label>
-
-                  {[0, 1, 2].map((index) => {
-                    const prompt = getPromptDraft(getContentDraft(report).promptEntries, index);
-
-                    return (
-                      <div className="panel form-panel" key={`${target.id}-prompt-${index}`}>
-                        <label className="field">
-                          <span>Prompt {index + 1} question</span>
-                          <input
-                            type="text"
-                            value={prompt.question}
-                            onChange={(event) =>
-                              setPromptDraft(target.id, index, "question", event.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Prompt {index + 1} answer</span>
-                          <textarea
-                            rows={3}
-                            value={prompt.answer}
-                            onChange={(event) =>
-                              setPromptDraft(target.id, index, "answer", event.target.value)
-                            }
-                          />
-                        </label>
-                      </div>
-                    );
-                  })}
-
-                  <div className="action-row">
-                    {report.conversationId ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => toggleConversation(report.conversationId)}
-                      >
-                        {isConversationOpen ? "Hide conversation" : "Review conversation"}
-                      </button>
-                    ) : null}
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={contentMutation.isPending}
-                      onClick={() =>
-                        contentMutation.mutate({
-                          profileId: target.id,
-                          bio: getContentDraft(report).bio,
-                          promptEntries: getContentDraft(report).promptEntries,
-                        })
-                      }
-                    >
-                      {contentMutation.isPending ? "Saving..." : "Save profile text"}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={contentMutation.isPending}
-                      onClick={() => setBioDraft(target.id, "")}
-                    >
-                      Clear bio
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={contentMutation.isPending}
-                      onClick={() =>
-                        setContentDrafts((current) => ({
-                          ...current,
-                          [target.id]: {
-                            bio: current[target.id]?.bio ?? "",
-                            promptEntries: [],
-                          },
-                        }))
-                      }
-                    >
-                      Clear prompts
-                    </button>
-                    <button
-                      className="danger-button"
-                      type="button"
-                      disabled={contentMutation.isPending}
-                      onClick={() =>
-                        contentMutation.mutate({
-                          profileId: target.id,
-                          bio: "",
-                          promptEntries: [],
-                        })
-                      }
-                    >
-                      {contentMutation.isPending ? "Saving..." : "Clear all text"}
-                    </button>
-                  </div>
-
-                  <div className="action-row">
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={moderationMutation.isPending}
-                      onClick={() =>
-                        moderationMutation.mutate({
-                          action: verifiedHuman ? "unverify" : "verify",
-                          profileId: target.id,
-                        })
-                      }
-                    >
-                      {moderationMutation.isPending
-                        ? "Saving..."
-                        : verifiedHuman
-                          ? "Remove verification"
-                          : "Verify human"}
-                    </button>
-                    <button
-                      className={suspended ? "secondary-button" : "danger-button"}
-                      type="button"
-                      disabled={moderationMutation.isPending}
-                      onClick={() =>
-                        moderationMutation.mutate({
-                          action: suspended ? "unsuspend" : "suspend",
-                          profileId: target.id,
-                        })
-                      }
-                    >
-                      {moderationMutation.isPending ? "Saving..." : suspended ? "Unsuspend" : "Suspend"}
-                    </button>
-                    <span className={suspended ? "chip chip-muted" : "chip"}>
-                      {suspended ? "Suspended" : "Active"}
-                    </span>
-                  </div>
-
-                  {isConversationOpen ? (
-                    <section className="panel">
-                      <div className="meta-group">
-                        <span className="meta-title">Reported conversation</span>
-                        {conversationQuery.isLoading ? (
-                          <p className="status-message">Loading conversation...</p>
-                        ) : null}
-                        {conversationQuery.error ? (
-                          <p className="error-message">
-                            {conversationQuery.error instanceof Error
-                              ? conversationQuery.error.message
-                              : "Unable to load conversation."}
-                          </p>
-                        ) : null}
-                        {conversation ? (
-                          <>
-                            <p>
-                              {conversation.participants
-                                .filter(Boolean)
-                                .map((participant) =>
-                                  `${participant?.displayName} (@${participant?.username})`,
-                                )
-                                .join(" and ")}
-                            </p>
+              {target
+                ? renderProfileCleanupCard(
+                    target,
+                    report.conversationId ? (
+                      <>
+                        <div className="action-row">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => toggleConversation(report.conversationId)}
+                          >
+                            {isConversationOpen ? "Hide conversation" : "Review conversation"}
+                          </button>
+                        </div>
+                        {isConversationOpen ? (
+                          <section className="panel">
                             <div className="meta-group">
-                              {conversation.messages.length === 0 ? (
-                                <p>No messages in this conversation yet.</p>
-                              ) : (
-                                conversation.messages.map((message) => (
-                                  <article className="card profile-card" key={message.id}>
-                                    <div className="chip-row">
-                                      <span className="chip">
-                                        {message.sender?.displayName ?? "Unknown sender"}
-                                      </span>
-                                      <span className="chip chip-muted">
-                                        {formatDate(message.createdAt)}
-                                      </span>
-                                    </div>
-                                    <p>{message.body}</p>
-                                  </article>
-                                ))
-                              )}
+                              <span className="meta-title">Reported conversation</span>
+                              {conversationQuery.isLoading ? (
+                                <p className="status-message">Loading conversation...</p>
+                              ) : null}
+                              {conversationQuery.error ? (
+                                <p className="error-message">
+                                  {conversationQuery.error instanceof Error
+                                    ? conversationQuery.error.message
+                                    : "Unable to load conversation."}
+                                </p>
+                              ) : null}
+                              {conversation ? (
+                                <>
+                                  <p>
+                                    {conversation.participants
+                                      .filter(Boolean)
+                                      .map((participant) =>
+                                        `${participant?.displayName} (@${participant?.username})`,
+                                      )
+                                      .join(" and ")}
+                                  </p>
+                                  <div className="meta-group">
+                                    {conversation.messages.length === 0 ? (
+                                      <p>No messages in this conversation yet.</p>
+                                    ) : (
+                                      conversation.messages.map((message) => (
+                                        <article className="card profile-card" key={message.id}>
+                                          <div className="chip-row">
+                                            <span className="chip">
+                                              {message.sender?.displayName ?? "Unknown sender"}
+                                            </span>
+                                            <span className="chip chip-muted">
+                                              {formatDate(message.createdAt)}
+                                            </span>
+                                          </div>
+                                          <p>{message.body}</p>
+                                        </article>
+                                      ))
+                                    )}
+                                  </div>
+                                </>
+                              ) : null}
                             </div>
-                          </>
+                          </section>
                         ) : null}
-                      </div>
-                    </section>
-                  ) : null}
-                </>
-              ) : null}
-
-              {contentMutation.error && contentMutation.variables?.profileId === target?.id ? (
-                <p className="error-message">
-                  {contentMutation.error instanceof Error
-                    ? contentMutation.error.message
-                    : "Unable to update profile content."}
-                </p>
-              ) : null}
-
-              {contentMutation.isSuccess && contentMutation.variables?.profileId === target?.id ? (
-                <p className="status-message">Profile text updated.</p>
-              ) : null}
+                      </>
+                    ) : undefined,
+                  )
+                : null}
             </article>
           );
         })}

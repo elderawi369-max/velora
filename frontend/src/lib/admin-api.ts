@@ -66,6 +66,16 @@ export type SupportTicket = {
   createdAt: number;
 };
 
+export type AdminProfile = {
+  id: string;
+  username: string;
+  displayName: string;
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+  verifiedHumanAt: number | null;
+  suspendedAt: number | null;
+};
+
 export type AdminConversation = {
   id: string;
   createdAt: number;
@@ -227,6 +237,13 @@ export function unsuspendProfile(adminKey: string, profileId: string) {
 
 export function fetchSupportTickets(adminKey: string) {
   return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
+}
+
+export function fetchAdminProfileByUsername(adminKey: string, username: string) {
+  return adminRequest<{ profile: AdminProfile }>(
+    `/api/admin/profiles/by-username/${encodeURIComponent(username.trim().toLowerCase())}`,
+    adminKey,
+  );
 }
 
 export function fetchAdminConversation(adminKey: string, conversationId: string) {

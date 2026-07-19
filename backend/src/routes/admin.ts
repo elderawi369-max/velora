@@ -906,6 +906,39 @@ adminRoutes.get("/support-tickets", async (c) => {
   return c.json({ tickets: rows });
 });
 
+adminRoutes.get("/profiles/by-username/:username", async (c) => {
+  const db = getDb(c.env);
+  const username = c.req.param("username").trim().toLowerCase();
+
+  const [profile] = await db
+    .select({
+      id: profiles.id,
+      username: profiles.username,
+      displayName: profiles.displayName,
+      bio: profiles.bio,
+      promptEntries: profiles.promptEntries,
+      verifiedHumanAt: profiles.verifiedHumanAt,
+      suspendedAt: profiles.suspendedAt,
+    })
+    .from(profiles)
+    .where(eq(profiles.username, username))
+    .limit(1);
+
+  if (!profile) {
+    return c.json({ error: "Profile not found." }, 404);
+  }
+
+  return c.json({
+    profile: {
+      ...profile,
+      promptEntries: JSON.parse(profile.promptEntries) as Array<{
+        question: string;
+        answer: string;
+      }>,
+    },
+  });
+});
+
 adminRoutes.get("/conversations/:conversationId", async (c) => {
   const db = getDb(c.env);
   const conversationId = c.req.param("conversationId");
