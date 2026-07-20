@@ -262,6 +262,31 @@ body {
   margin: 0;
 }
 
+.home-web-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #b45469, #ef7d92 55%, #f3b1bc);
+  color: white;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 14px 28px rgba(180, 84, 105, 0.22);
+}
+
+.home-web-link:hover {
+  transform: translateY(-1px);
+}
+
+.profile-reward-note {
+  margin: -4px 0 0;
+  color: #8a5362;
+  font-size: 0.95rem;
+}
+
 .filter-panel,
 .filter-grid,
 .filter-panel-head {
@@ -1355,6 +1380,10 @@ body {
   .starter-credits-banner {
     grid-template-columns: 1fr;
     padding: 16px 18px;
+  }
+
+  .home-web-link {
+    width: 100%;
   }
 
   .card-grid {

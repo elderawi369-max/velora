@@ -155,6 +155,9 @@ export function MyProfileCard() {
           </span>
         ))}
       </div>
+      <p className="profile-reward-note">
+        Complete profiles may unlock occasional challenge credit rewards.
+      </p>
       <p className="status-message">
         {
           personalityTypeDescriptions[

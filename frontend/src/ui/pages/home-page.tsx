@@ -73,6 +73,15 @@ export function HomePage() {
             Browse profiles
           </Link>
         </div>
+
+        <a
+          className="home-web-link"
+          href="https://app.velorachat.com"
+          target="_blank"
+          rel="noreferrer"
+        >
+          app.velorachat.com
+        </a>
       </section>
 
       {isLoggedIn ? (
