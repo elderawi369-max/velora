@@ -16,6 +16,11 @@ import {
 } from "../lib/challenges";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked } from "../lib/relationships";
+import {
+  getPendingOutgoingChallengeCount,
+  isNewAccountWithinChallengeLimitWindow,
+  newAccountPendingChallengeLimit,
+} from "../lib/starter-credits";
 
 const liveTriviaPresenceTtlMs = 1000 * 60 * 60 * 12;
 const liveTriviaMatchStaleMs = 1000 * 60 * 10;
@@ -521,6 +526,25 @@ liveTriviaRoutes.post("/match", async (c) => {
 
   if (existingPendingInvite) {
     return c.json({ error: "There is already a pending live invite between you." }, 409);
+  }
+
+  const limitedNewAccount = await isNewAccountWithinChallengeLimitWindow(
+    c.env,
+    own.profileId,
+  );
+  if (limitedNewAccount) {
+    const pendingOutgoingCount = await getPendingOutgoingChallengeCount(
+      c.env,
+      own.profileId,
+    );
+    if (pendingOutgoingCount >= newAccountPendingChallengeLimit) {
+      return c.json(
+        {
+          error: `New accounts can keep up to ${newAccountPendingChallengeLimit} pending outgoing challenges during the first 24 hours.`,
+        },
+        429,
+      );
+    }
   }
 
   const [ownProfile] = await db

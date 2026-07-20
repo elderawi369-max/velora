@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { apiBaseUrl } from "../config";
 
 const authTokenStorageKey = "velora-auth-token";
+const installIdStorageKey = "velora-install-id";
 
 function getAuthToken() {
   if (typeof window === "undefined") {
@@ -31,6 +32,24 @@ export function hasStoredAuthToken() {
   return Boolean(getAuthToken());
 }
 
+function getInstallId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const existing = window.localStorage.getItem(installIdStorageKey) ?? "";
+  if (existing) {
+    return existing;
+  }
+
+  const next =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `velora-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  window.localStorage.setItem(installIdStorageKey, next);
+  return next;
+}
+
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -44,6 +63,11 @@ function getClientPlatformHeaders() {
     Capacitor.isNativePlatform()
   ) {
     headers["X-Velora-Client-Platform"] = "android-native";
+  }
+
+  const installId = getInstallId();
+  if (installId) {
+    headers["X-Velora-Install-Id"] = installId;
   }
 
   return headers;
@@ -388,6 +412,7 @@ export function fetchSession() {
     authenticated: boolean;
     user: { id: string; email: string; emailVerified: boolean } | null;
     hasProfile: boolean;
+    starterCreditGrant: { credits: number; grantedAt: number } | null;
   }>("/api/auth/me");
 }
 

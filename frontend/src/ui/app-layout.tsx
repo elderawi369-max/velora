@@ -1,13 +1,19 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } from "../lib/push";
 import { VeloraLogo } from "./components/velora-logo";
+
+const starterCreditsNoticeKeyPrefix = "velora-starter-credits-notice";
 
 export function AppLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [starterCreditsNotice, setStarterCreditsNotice] = useState<{
+    credits: number;
+    grantedAt: number;
+  } | null>(null);
 
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
@@ -49,6 +55,24 @@ export function AppLayout() {
     void ensureNativeAndroidPushPromptedOnce().catch(() => undefined);
     void syncPushNotificationsIfGranted().catch(() => undefined);
   }, [sessionQuery.data?.authenticated]);
+
+  useEffect(() => {
+    const grant = sessionQuery.data?.starterCreditGrant;
+    const userId = sessionQuery.data?.user?.id;
+
+    if (!grant || !userId || typeof window === "undefined") {
+      return;
+    }
+
+    const storageKey = `${starterCreditsNoticeKeyPrefix}:${userId}`;
+    const seenGrantAt = Number(window.localStorage.getItem(storageKey) ?? "0");
+    if (seenGrantAt >= grant.grantedAt) {
+      return;
+    }
+
+    setStarterCreditsNotice(grant);
+    window.localStorage.setItem(storageKey, String(grant.grantedAt));
+  }, [sessionQuery.data]);
 
   const conversationUnreadCount =
     conversationsQuery.data?.conversations.reduce(
@@ -122,6 +146,22 @@ export function AppLayout() {
           )}
         </nav>
       </header>
+
+      {starterCreditsNotice ? (
+        <section className="starter-credits-banner" aria-live="polite">
+          <div>
+            <p className="eyebrow">Reward unlocked</p>
+            <h2>We&apos;ve added {starterCreditsNotice.credits} Challenge Credits.</h2>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setStarterCreditsNotice(null)}
+          >
+            Dismiss
+          </button>
+        </section>
+      ) : null}
 
       <Outlet />
 

@@ -32,6 +32,11 @@ import { verifyTurnstileToken } from "../lib/turnstile";
 import { logEvent } from "../lib/analytics";
 import { sendPasswordResetEmail } from "../lib/email";
 import {
+  maybeGrantStarterCredits,
+  readClientIp,
+  readInstallId,
+} from "../lib/starter-credits";
+import {
   changePasswordSchema,
   deleteAccountSchema,
   forgotPasswordSchema,
@@ -60,7 +65,12 @@ authRoutes.get("/me", async (c) => {
   );
 
   if (!userId) {
-    return c.json({ authenticated: false, user: null, hasProfile: false });
+    return c.json({
+      authenticated: false,
+      user: null,
+      hasProfile: false,
+      starterCreditGrant: null,
+    });
   }
 
   const db = getDb(c.env);
@@ -75,8 +85,19 @@ authRoutes.get("/me", async (c) => {
     .limit(1);
 
   if (!user) {
-    return c.json({ authenticated: false, user: null, hasProfile: false });
+    return c.json({
+      authenticated: false,
+      user: null,
+      hasProfile: false,
+      starterCreditGrant: null,
+    });
   }
+
+  const starterCreditResult = await maybeGrantStarterCredits(c.env, {
+    userId,
+    installId: readInstallId(c.req.header("X-Velora-Install-Id")),
+    ip: readClientIp(c.req.header("CF-Connecting-IP")),
+  });
 
   const [profile] = await db
     .select({ id: profiles.id })
@@ -92,6 +113,7 @@ authRoutes.get("/me", async (c) => {
       emailVerified: Boolean(user.emailVerifiedAt),
     },
     hasProfile: Boolean(profile),
+    starterCreditGrant: starterCreditResult?.grant ?? null,
   });
 });
 

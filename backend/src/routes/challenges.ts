@@ -19,6 +19,11 @@ import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked } from "../lib/relationships";
 import { createNotification } from "../lib/commerce";
+import {
+  getPendingOutgoingChallengeCount,
+  isNewAccountWithinChallengeLimitWindow,
+  newAccountPendingChallengeLimit,
+} from "../lib/starter-credits";
 
 const sendChallengeSchema = z.object({
   targetProfileId: z.string().trim().min(1),
@@ -276,6 +281,25 @@ challengeRoutes.post("/", async (c) => {
 
   if (!targetProfile || targetProfile.suspendedAt) {
     return c.json({ error: "Profile not found." }, 404);
+  }
+
+  const limitedNewAccount = await isNewAccountWithinChallengeLimitWindow(
+    c.env,
+    own.profileId,
+  );
+  if (limitedNewAccount) {
+    const pendingOutgoingCount = await getPendingOutgoingChallengeCount(
+      c.env,
+      own.profileId,
+    );
+    if (pendingOutgoingCount >= newAccountPendingChallengeLimit) {
+      return c.json(
+        {
+          error: `New accounts can keep up to ${newAccountPendingChallengeLimit} pending outgoing challenges during the first 24 hours.`,
+        },
+        429,
+      );
+    }
   }
 
   const [existingPending] = await db

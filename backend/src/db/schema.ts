@@ -27,10 +27,24 @@ export const profiles = sqliteTable("profiles", {
   boundaries: text("boundaries").notNull(),
   vibeTags: text("vibe_tags").notNull(),
   challengeCredits: integer("challenge_credits").notNull().default(0),
+  starterCreditsGrantedAt: integer("starter_credits_granted_at"),
   verifiedHumanAt: integer("verified_human_at"),
   suspendedAt: integer("suspended_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+});
+
+export const starterCreditGrants = sqliteTable("starter_credit_grants", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  profileId: text("profile_id")
+    .notNull()
+    .references(() => profiles.id),
+  installId: text("install_id"),
+  ipAddress: text("ip_address"),
+  grantedAt: integer("granted_at").notNull(),
 });
 
 export const sessions = sqliteTable("sessions", {

@@ -244,6 +244,24 @@ body {
   box-shadow: 0 14px 32px rgba(83, 53, 59, 0.08);
 }
 
+.starter-credits-banner {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 18px 22px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(255, 244, 247, 0.96), rgba(255, 255, 255, 0.9));
+  border: 1px solid rgba(180, 84, 105, 0.2);
+  box-shadow: 0 12px 28px rgba(83, 53, 59, 0.08);
+}
+
+.starter-credits-banner h2,
+.starter-credits-banner p {
+  margin: 0;
+}
+
 .filter-panel,
 .filter-grid,
 .filter-panel-head {
@@ -1332,6 +1350,11 @@ body {
   .card {
     padding: 18px;
     border-radius: 20px;
+  }
+
+  .starter-credits-banner {
+    grid-template-columns: 1fr;
+    padding: 16px 18px;
   }
 
   .card-grid {
