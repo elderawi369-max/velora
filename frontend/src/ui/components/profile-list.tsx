@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   formatIdentityLabel,
@@ -13,15 +13,19 @@ import {
   preferenceOptions,
   vibeOptions,
 } from "../../config";
-import { fetchProfiles } from "../../lib/api";
+import { fetchProfiles, type PublicProfile } from "../../lib/api";
 import { ProfileAvatar } from "./profile-avatar";
 
-function readSavedBrowseFilters(storageKey: string) {
+const browseFilterStorageKey = "velora-browse-filters";
+const browseScrollStorageKey = "velora-browse-scroll-y";
+const browseBatchSize = 20;
+
+function readSavedBrowseFilters() {
   if (typeof window === "undefined") {
     return {};
   }
 
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = window.localStorage.getItem(browseFilterStorageKey);
   if (!raw) {
     return {};
   }
@@ -35,8 +39,7 @@ function readSavedBrowseFilters(storageKey: string) {
 }
 
 export function ProfileList() {
-  const filterStorageKey = "velora-browse-filters";
-  const savedFilters = readSavedBrowseFilters(filterStorageKey);
+  const savedFilters = readSavedBrowseFilters();
   const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? "");
   const [selectedVibe, setSelectedVibe] = useState<string>(savedFilters.selectedVibe ?? "all");
   const [selectedPreference, setSelectedPreference] = useState<string>(
@@ -58,51 +61,132 @@ export function ProfileList() {
   const [recommendedOnly, setRecommendedOnly] = useState(
     Boolean(savedFilters.recommendedOnly),
   );
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["profiles"],
-    queryFn: fetchProfiles,
+  const [loadMoreError, setLoadMoreError] = useState("");
+  const didRestoreScroll = useRef(false);
+
+  const filters = {
+    searchTerm,
+    selectedVibe,
+    selectedPreference,
+    selectedIdentity,
+    selectedPersonalityType,
+    selectedLookingFor,
+    sortMode,
+    favoritesOnly,
+    recommendedOnly,
+  } as const;
+
+  const profilesQuery = useInfiniteQuery({
+    queryKey: [
+      "profiles",
+      searchTerm,
+      selectedVibe,
+      selectedPreference,
+      selectedIdentity,
+      selectedPersonalityType,
+      selectedLookingFor,
+      sortMode,
+      favoritesOnly,
+      recommendedOnly,
+    ],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      fetchProfiles({
+        ...filters,
+        limit: browseBatchSize,
+        cursor: pageParam,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    retry: false,
   });
 
   useEffect(() => {
     window.localStorage.setItem(
-      filterStorageKey,
-      JSON.stringify({
-        searchTerm,
-        selectedVibe,
-        selectedPreference,
-        selectedIdentity,
-        selectedPersonalityType,
-        selectedLookingFor,
-        sortMode,
-        favoritesOnly,
-        recommendedOnly,
-      }),
+      browseFilterStorageKey,
+      JSON.stringify(filters),
     );
   }, [
     favoritesOnly,
     recommendedOnly,
     searchTerm,
     selectedIdentity,
-    selectedPersonalityType,
     selectedLookingFor,
+    selectedPersonalityType,
     selectedPreference,
     selectedVibe,
     sortMode,
   ]);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleScroll = () => {
+      window.sessionStorage.setItem(browseScrollStorageKey, String(window.scrollY));
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (didRestoreScroll.current || !profilesQuery.data?.pages.length) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const savedY = Number(window.sessionStorage.getItem(browseScrollStorageKey) ?? "0");
+    didRestoreScroll.current = true;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: Number.isFinite(savedY) ? savedY : 0, behavior: "auto" });
+    });
+  }, [profilesQuery.data?.pages.length]);
+
+  const seenProfileIds = new Set<string>();
+  const loadedProfiles: PublicProfile[] = [];
+  for (const page of profilesQuery.data?.pages ?? []) {
+    for (const profile of page.profiles) {
+      if (seenProfileIds.has(profile.id)) {
+        continue;
+      }
+
+      seenProfileIds.add(profile.id);
+      loadedProfiles.push(profile);
+    }
+  }
+
+  const lastPage = profilesQuery.data?.pages[profilesQuery.data.pages.length - 1];
+  const totalProfiles = lastPage?.totalProfiles ?? 0;
+  const filteredCount = lastPage?.filteredCount ?? 0;
+  const hasMore = Boolean(lastPage?.hasMore);
+
+  if (profilesQuery.isLoading) {
     return <p className="status-message">Loading profiles...</p>;
   }
 
-  if (error) {
+  if (profilesQuery.error) {
     return (
-      <p className="status-message error-message">
-        {error instanceof Error ? error.message : "Unable to load profiles."}
-      </p>
+      <div className="panel empty-state">
+        <h2>Unable to load profiles right now.</h2>
+        <p className="error-message">
+          {profilesQuery.error instanceof Error
+            ? profilesQuery.error.message
+            : "Please try again."}
+        </p>
+        <div className="action-row">
+          <button className="secondary-button" type="button" onClick={() => profilesQuery.refetch()}>
+            Retry
+          </button>
+        </div>
+      </div>
     );
   }
 
-  if (!data || data.profiles.length === 0) {
+  if (!profilesQuery.data || totalProfiles === 0) {
     return (
       <div className="panel empty-state">
         <h2>No profiles yet.</h2>
@@ -111,60 +195,17 @@ export function ProfileList() {
     );
   }
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredProfiles = [...data.profiles]
-    .filter((profile) => {
-      const visiblePreferences = profile.boundaries.filter(
-        (item) => !platformRules.includes(item as (typeof platformRules)[number]),
+  async function handleLoadMore() {
+    setLoadMoreError("");
+
+    try {
+      await profilesQuery.fetchNextPage();
+    } catch (error) {
+      setLoadMoreError(
+        error instanceof Error ? error.message : "Unable to load more profiles.",
       );
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        profile.displayName.toLowerCase().includes(normalizedSearch) ||
-        profile.username.toLowerCase().includes(normalizedSearch) ||
-        profile.bio.toLowerCase().includes(normalizedSearch);
-      const matchesVibe = selectedVibe === "all" || profile.vibeTags.includes(selectedVibe);
-      const matchesPreference =
-        selectedPreference === "all" || visiblePreferences.includes(selectedPreference);
-      const matchesIdentity =
-        selectedIdentity === "all" || profile.identity === selectedIdentity;
-      const matchesPersonalityType =
-        selectedPersonalityType === "all" ||
-        profile.personalityType === selectedPersonalityType;
-      const matchesLookingFor =
-        selectedLookingFor === "all" || profile.lookingFor === selectedLookingFor;
-      const matchesFavorite = !favoritesOnly || profile.isFavorited;
-      const matchesRecommended = !recommendedOnly || profile.recommended;
-
-      return (
-        matchesSearch &&
-        matchesVibe &&
-        matchesPreference &&
-        matchesIdentity &&
-        matchesPersonalityType &&
-        matchesLookingFor &&
-        matchesFavorite &&
-        matchesRecommended
-      );
-    })
-    .sort((left, right) => {
-      if (sortMode === "name") {
-        return left.displayName.localeCompare(right.displayName);
-      }
-
-      if (sortMode === "favorited") {
-        if (left.isFavorited === right.isFavorited) {
-          return right.createdAt - left.createdAt;
-        }
-
-        return left.isFavorited ? -1 : 1;
-      }
-
-      if (sortMode === "newest") {
-        return right.createdAt - left.createdAt;
-      }
-
-      return 0;
-    });
+    }
+  }
 
   return (
     <section className="content-section">
@@ -177,7 +218,7 @@ export function ProfileList() {
             </p>
           </div>
           <span className="chip">
-            {filteredProfiles.length} of {data.profiles.length} profiles
+            {loadedProfiles.length} of {filteredCount} profiles
           </span>
         </div>
 
@@ -310,6 +351,11 @@ export function ProfileList() {
               setSortMode("recommended");
               setFavoritesOnly(false);
               setRecommendedOnly(false);
+              setLoadMoreError("");
+              if (typeof window !== "undefined") {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                window.sessionStorage.setItem(browseScrollStorageKey, "0");
+              }
             }}
           >
             Clear filters
@@ -317,87 +363,118 @@ export function ProfileList() {
         </div>
       </div>
 
-      {filteredProfiles.length === 0 ? (
+      {filteredCount === 0 ? (
         <div className="panel empty-state">
           <h2>No profiles match those filters yet.</h2>
           <p>Try a broader vibe, fewer restrictions, or clear the filters.</p>
         </div>
       ) : null}
 
-      <section className="card-grid">
-        {filteredProfiles.map((profile) => {
-          const visiblePreferences = profile.boundaries
-            .filter((item) => !platformRules.includes(item as (typeof platformRules)[number]))
-            .slice(0, 2);
-          const bioPreview =
-            profile.bio.length > 140 ? `${profile.bio.slice(0, 137)}...` : profile.bio;
+      {loadedProfiles.length > 0 ? (
+        <section className="card-grid">
+          {loadedProfiles.map((profile) => {
+            const visiblePreferences = profile.boundaries
+              .filter((item) => !platformRules.includes(item as (typeof platformRules)[number]))
+              .slice(0, 2);
+            const bioPreview =
+              profile.bio.length > 140 ? `${profile.bio.slice(0, 137)}...` : profile.bio;
 
-          return (
-            <article className="card profile-card profile-preview-card" key={profile.id}>
-              <div className="profile-preview-head">
-                <ProfileAvatar
-                  personalityType={profile.personalityType}
-                  identity={profile.identity}
-                  dominantGiftType={profile.giftEffect.dominantGiftType}
-                  size="medium"
-                />
-                <div className="profile-head">
-                  <h2>{profile.displayName}</h2>
-                  <p>@{profile.username}</p>
+            return (
+              <article className="card profile-card profile-preview-card" key={profile.id}>
+                <div className="profile-preview-head">
+                  <ProfileAvatar
+                    personalityType={profile.personalityType}
+                    identity={profile.identity}
+                    dominantGiftType={profile.giftEffect.dominantGiftType}
+                    size="medium"
+                  />
+                  <div className="profile-head">
+                    <h2>{profile.displayName}</h2>
+                    <p>@{profile.username}</p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="chip-row">
-                {profile.recommended ? <span className="chip">Recommended</span> : null}
-                {profile.activityBadge ? <span className="chip">{profile.activityBadge}</span> : null}
-                <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
-                <span className="chip">{profile.personalityType}</span>
-                <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
-                <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
-              </div>
-
-              <p className="status-message">
-                {
-                  personalityTypeDescriptions[
-                    profile.personalityType as keyof typeof personalityTypeDescriptions
-                  ]
-                }
-              </p>
-
-              <p className="profile-bio">{bioPreview}</p>
-
-              <div className="chip-row">
-                {profile.vibeTags.slice(0, 3).map((tag) => (
-                  <span className="chip" key={tag}>
-                    {tag}
-                  </span>
-                ))}
-                {visiblePreferences.map((tag) => (
-                  <span className="chip chip-muted" key={tag}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              {profile.matchReasons.length > 0 ? (
                 <div className="chip-row">
-                  {profile.matchReasons.slice(0, 2).map((reason) => (
-                    <span className="chip chip-muted" key={`${profile.id}-${reason}`}>
-                      {reason}
+                  {profile.recommended ? <span className="chip">Recommended</span> : null}
+                  {profile.activityBadge ? <span className="chip">{profile.activityBadge}</span> : null}
+                  <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
+                  <span className="chip">{profile.personalityType}</span>
+                  <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
+                  <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
+                </div>
+
+                <p className="status-message">
+                  {
+                    personalityTypeDescriptions[
+                      profile.personalityType as keyof typeof personalityTypeDescriptions
+                    ]
+                  }
+                </p>
+
+                <p className="profile-bio">{bioPreview}</p>
+
+                <div className="chip-row">
+                  {profile.vibeTags.slice(0, 3).map((tag) => (
+                    <span className="chip" key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+                  {visiblePreferences.map((tag) => (
+                    <span className="chip chip-muted" key={tag}>
+                      {tag}
                     </span>
                   ))}
                 </div>
-              ) : null}
 
+                {profile.matchReasons.length > 0 ? (
+                  <div className="chip-row">
+                    {profile.matchReasons.slice(0, 2).map((reason) => (
+                      <span className="chip chip-muted" key={`${profile.id}-${reason}`}>
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="action-row">
+                  <Link className="primary-button" to={`/browse/${profile.username}`}>
+                    View profile
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {filteredCount > 0 ? (
+        <section className="panel browse-footer-panel">
+          {hasMore ? (
+            <div className="browse-footer-copy">
+              <p className="status-message">
+                Showing {loadedProfiles.length} of {filteredCount} matching profiles.
+              </p>
               <div className="action-row">
-                <Link className="primary-button" to={`/browse/${profile.username}`}>
-                  View profile
-                </Link>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={profilesQuery.isFetchingNextPage}
+                  onClick={() => void handleLoadMore()}
+                >
+                  {profilesQuery.isFetchingNextPage ? "Loading more..." : "Load more profiles"}
+                </button>
               </div>
-            </article>
-          );
-        })}
-      </section>
+              {loadMoreError ? <p className="error-message">{loadMoreError}</p> : null}
+            </div>
+          ) : (
+            <p className="status-message">
+              {filteredCount === loadedProfiles.length
+                ? "You’ve reached the end of these profiles."
+                : `Showing ${loadedProfiles.length} of ${filteredCount} matching profiles.`}
+            </p>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }

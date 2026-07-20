@@ -186,6 +186,28 @@ export type PublicProfile = {
   createdAt: number;
 };
 
+export type BrowseProfilesParams = {
+  limit?: number;
+  cursor?: string | null;
+  searchTerm?: string;
+  selectedVibe?: string;
+  selectedPreference?: string;
+  selectedIdentity?: string;
+  selectedPersonalityType?: string;
+  selectedLookingFor?: string;
+  sortMode?: "recommended" | "newest" | "name" | "favorited";
+  favoritesOnly?: boolean;
+  recommendedOnly?: boolean;
+};
+
+export type BrowseProfilesResponse = {
+  profiles: PublicProfile[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  totalProfiles: number;
+  filteredCount: number;
+};
+
 export type SupportTicketPayload = {
   email: string;
   subject: string;
@@ -456,8 +478,45 @@ export function updateOwnProfile(payload: ProfilePayload) {
   });
 }
 
-export function fetchProfiles() {
-  return request<{ profiles: PublicProfile[] }>("/api/profiles");
+export function fetchProfiles(params: BrowseProfilesParams = {}) {
+  const search = new URLSearchParams();
+
+  if (params.limit) {
+    search.set("limit", String(params.limit));
+  }
+  if (params.cursor) {
+    search.set("cursor", params.cursor);
+  }
+  if (params.searchTerm) {
+    search.set("searchTerm", params.searchTerm);
+  }
+  if (params.selectedVibe) {
+    search.set("selectedVibe", params.selectedVibe);
+  }
+  if (params.selectedPreference) {
+    search.set("selectedPreference", params.selectedPreference);
+  }
+  if (params.selectedIdentity) {
+    search.set("selectedIdentity", params.selectedIdentity);
+  }
+  if (params.selectedPersonalityType) {
+    search.set("selectedPersonalityType", params.selectedPersonalityType);
+  }
+  if (params.selectedLookingFor) {
+    search.set("selectedLookingFor", params.selectedLookingFor);
+  }
+  if (params.sortMode) {
+    search.set("sortMode", params.sortMode);
+  }
+  if (typeof params.favoritesOnly === "boolean") {
+    search.set("favoritesOnly", String(params.favoritesOnly));
+  }
+  if (typeof params.recommendedOnly === "boolean") {
+    search.set("recommendedOnly", String(params.recommendedOnly));
+  }
+
+  const query = search.toString();
+  return request<BrowseProfilesResponse>(`/api/profiles${query ? `?${query}` : ""}`);
 }
 
 export function fetchOwnProfile() {

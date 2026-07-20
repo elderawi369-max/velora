@@ -297,6 +297,14 @@ body {
   gap: 18px;
 }
 
+.browse-footer-panel,
+.browse-footer-copy {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
 .filter-panel-head {
   gap: 12px;
   align-items: start;

@@ -34,6 +34,27 @@ const boostLabels: Record<BoostType, string> = {
 };
 
 const browseAggregationChunkSize = 40;
+const browsePageSizeDefault = 20;
+const browsePageSizeMax = 40;
+const hiddenPlatformRules = new Set([
+  "No off-app contact",
+  "Text-only stays in Velora",
+  "No harassment or impersonation",
+  "No spam or begging",
+]);
+
+type BrowseSortMode = "recommended" | "newest" | "name" | "favorited";
+type BrowseFilters = {
+  searchTerm: string;
+  selectedVibe: string;
+  selectedPreference: string;
+  selectedIdentity: string;
+  selectedPersonalityType: string;
+  selectedLookingFor: string;
+  sortMode: BrowseSortMode;
+  favoritesOnly: boolean;
+  recommendedOnly: boolean;
+};
 
 function chunkItems<T>(items: T[], size: number) {
   const chunks: T[][] = [];
@@ -43,6 +64,46 @@ function chunkItems<T>(items: T[], size: number) {
   }
 
   return chunks;
+}
+
+function parseBooleanQuery(value: string | undefined) {
+  return value === "true";
+}
+
+function parseBrowseSortMode(value: string | undefined): BrowseSortMode {
+  if (
+    value === "newest" ||
+    value === "name" ||
+    value === "favorited" ||
+    value === "recommended"
+  ) {
+    return value;
+  }
+
+  return "recommended";
+}
+
+function parseBrowseFilters(query: Record<string, string | undefined>): BrowseFilters {
+  return {
+    searchTerm: query.searchTerm?.trim().toLowerCase() ?? "",
+    selectedVibe: query.selectedVibe?.trim() || "all",
+    selectedPreference: query.selectedPreference?.trim() || "all",
+    selectedIdentity: query.selectedIdentity?.trim() || "all",
+    selectedPersonalityType: query.selectedPersonalityType?.trim() || "all",
+    selectedLookingFor: query.selectedLookingFor?.trim() || "all",
+    sortMode: parseBrowseSortMode(query.sortMode),
+    favoritesOnly: parseBooleanQuery(query.favoritesOnly),
+    recommendedOnly: parseBooleanQuery(query.recommendedOnly),
+  };
+}
+
+function parseBrowseLimit(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return browsePageSizeDefault;
+  }
+
+  return Math.max(1, Math.min(browsePageSizeMax, Math.floor(parsed)));
 }
 
 function profileContainsBlockedContactInfo(input: {
@@ -697,6 +758,58 @@ function getBrowseCompletionScore(profile: {
   return score;
 }
 
+function matchesBrowseFilters(
+  profile: {
+    displayName: string;
+    username: string;
+    bio: string;
+    vibeTags: string[];
+    boundaries: string[];
+    identity: string;
+    personalityType: string;
+    lookingFor: string;
+    isFavorited: boolean;
+    recommended: boolean;
+  },
+  filters: BrowseFilters,
+) {
+  const visiblePreferences = profile.boundaries.filter(
+    (item) => !hiddenPlatformRules.has(item),
+  );
+
+  const matchesSearch =
+    filters.searchTerm.length === 0 ||
+    profile.displayName.toLowerCase().includes(filters.searchTerm) ||
+    profile.username.toLowerCase().includes(filters.searchTerm) ||
+    profile.bio.toLowerCase().includes(filters.searchTerm);
+  const matchesVibe =
+    filters.selectedVibe === "all" || profile.vibeTags.includes(filters.selectedVibe);
+  const matchesPreference =
+    filters.selectedPreference === "all" ||
+    visiblePreferences.includes(filters.selectedPreference);
+  const matchesIdentity =
+    filters.selectedIdentity === "all" || profile.identity === filters.selectedIdentity;
+  const matchesPersonalityType =
+    filters.selectedPersonalityType === "all" ||
+    profile.personalityType === filters.selectedPersonalityType;
+  const matchesLookingFor =
+    filters.selectedLookingFor === "all" ||
+    profile.lookingFor === filters.selectedLookingFor;
+  const matchesFavorite = !filters.favoritesOnly || profile.isFavorited;
+  const matchesRecommended = !filters.recommendedOnly || profile.recommended;
+
+  return (
+    matchesSearch &&
+    matchesVibe &&
+    matchesPreference &&
+    matchesIdentity &&
+    matchesPersonalityType &&
+    matchesLookingFor &&
+    matchesFavorite &&
+    matchesRecommended
+  );
+}
+
 function getBrowseActivity(input: {
   createdAt: number;
   latestConversationAt: number;
@@ -798,6 +911,9 @@ function getCompatibilityScore(
 }
 
 profileRoutes.get("/", async (c) => {
+  const filters = parseBrowseFilters(c.req.query());
+  const limit = parseBrowseLimit(c.req.query("limit"));
+  const cursor = c.req.query("cursor")?.trim() ?? "";
   const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
   const db = getDb(c.env);
   const results = await db
@@ -950,6 +1066,25 @@ profileRoutes.get("/", async (c) => {
   );
 
   rankedProfiles.sort((left, right) => {
+    if (filters.sortMode === "name") {
+      return (
+        left.displayName.localeCompare(right.displayName) ||
+        right.createdAt - left.createdAt ||
+        right.id.localeCompare(left.id)
+      );
+    }
+
+    if (filters.sortMode === "favorited") {
+      if (left.isFavorited !== right.isFavorited) {
+        return left.isFavorited ? -1 : 1;
+      }
+      return right.createdAt - left.createdAt || right.id.localeCompare(left.id);
+    }
+
+    if (filters.sortMode === "newest") {
+      return right.createdAt - left.createdAt || right.id.localeCompare(left.id);
+    }
+
     const leftBoosted = Boolean(left.boostEffect.activeBoostType);
     const rightBoosted = Boolean(right.boostEffect.activeBoostType);
 
@@ -979,11 +1114,34 @@ profileRoutes.get("/", async (c) => {
       return right.compatibilityScore - left.compatibilityScore;
     }
 
-    return right.createdAt - left.createdAt;
+    return right.createdAt - left.createdAt || right.id.localeCompare(left.id);
   });
 
+  const filteredProfiles = rankedProfiles.filter((profile) =>
+    matchesBrowseFilters(profile, filters),
+  );
+  const cursorIndex =
+    cursor.length > 0
+      ? filteredProfiles.findIndex((profile) => profile.id === cursor)
+      : -1;
+  const startIndex =
+    cursor.length > 0
+      ? cursorIndex >= 0
+        ? cursorIndex + 1
+        : filteredProfiles.length
+      : 0;
+  const pageProfiles = filteredProfiles.slice(startIndex, startIndex + limit);
+  const nextCursor =
+    startIndex + limit < filteredProfiles.length && pageProfiles.length > 0
+      ? pageProfiles[pageProfiles.length - 1]?.id ?? null
+      : null;
+
   return c.json({
-    profiles: rankedProfiles.map(({ activityScore: _activityScore, ...profile }) => profile),
+    profiles: pageProfiles.map(({ activityScore: _activityScore, ...profile }) => profile),
+    nextCursor,
+    hasMore: nextCursor !== null,
+    totalProfiles: rankedProfiles.length,
+    filteredCount: filteredProfiles.length,
   });
 });
 
