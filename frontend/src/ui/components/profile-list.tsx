@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -40,6 +40,7 @@ function readSavedBrowseFilters() {
 
 export function ProfileList() {
   const savedFilters = readSavedBrowseFilters();
+  const [searchInput, setSearchInput] = useState(savedFilters.searchTerm ?? "");
   const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? "");
   const [selectedVibe, setSelectedVibe] = useState<string>(savedFilters.selectedVibe ?? "all");
   const [selectedPreference, setSelectedPreference] = useState<string>(
@@ -97,8 +98,17 @@ export function ProfileList() {
         cursor: pageParam,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     retry: false,
   });
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchTerm(searchInput);
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -108,7 +118,7 @@ export function ProfileList() {
   }, [
     favoritesOnly,
     recommendedOnly,
-    searchTerm,
+    searchInput,
     selectedIdentity,
     selectedLookingFor,
     selectedPersonalityType,
@@ -227,8 +237,8 @@ export function ProfileList() {
             <span>Search</span>
             <input
               placeholder="Name, @username, or bio"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
             />
           </label>
 
@@ -343,6 +353,7 @@ export function ProfileList() {
             type="button"
             onClick={() => {
               setSearchTerm("");
+              setSearchInput("");
               setSelectedVibe("all");
               setSelectedPreference("all");
               setSelectedIdentity("all");
