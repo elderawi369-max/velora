@@ -579,6 +579,18 @@ body {
   min-width: 0;
 }
 
+.chat-topbar-profile-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 20px;
+  padding: 6px 8px;
+  margin: -6px -8px;
+}
+
+.chat-topbar-profile-link:hover {
+  background: rgba(180, 84, 105, 0.08);
+}
+
 .chat-topbar-profile .profile-head h2,
 .chat-topbar-profile .profile-head p {
   overflow: hidden;

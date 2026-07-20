@@ -119,7 +119,10 @@ export function ChatPage() {
           <Link className="secondary-button chat-back-link" to="/conversations">
             Back to conversations
           </Link>
-          <div className="chat-topbar-profile">
+          <Link
+            className="chat-topbar-profile chat-topbar-profile-link"
+            to={`/browse/${otherProfile.username}`}
+          >
             <ProfileAvatar
               personalityType={otherProfile.personalityType}
               identity={otherProfile.identity}
@@ -129,7 +132,7 @@ export function ChatPage() {
               <h2>{otherProfile.displayName}</h2>
               <p>@{otherProfile.username}</p>
             </div>
-          </div>
+          </Link>
           <button
             className="secondary-button"
             type="button"
