@@ -210,7 +210,7 @@ export function ProfileDetailPage() {
           </div>
           <div className="action-row">
             <button
-              className="secondary-button"
+              className="secondary-button challenge-button challenge-button-vibe"
               type="button"
               disabled={
                 vibeCheckMutation.isPending || triviaMutation.isPending || creditBalance < 1
@@ -220,7 +220,7 @@ export function ProfileDetailPage() {
               {vibeCheckMutation.isPending ? "Starting..." : "Start Vibe Check"}
             </button>
             <button
-              className="secondary-button"
+              className="secondary-button challenge-button challenge-button-trivia"
               type="button"
               disabled={
                 vibeCheckMutation.isPending || triviaMutation.isPending || creditBalance < 1

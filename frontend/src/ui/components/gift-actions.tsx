@@ -59,7 +59,15 @@ export function GiftActions({ profileId }: GiftActionsProps) {
         {(giftCatalogQuery.data?.gifts ?? []).map((gift) => (
           <button
             key={gift.key}
-            className="gift-button"
+            className={`gift-button ${
+              gift.key === "rose"
+                ? "gift-button-rose"
+                : gift.key === "starlight"
+                  ? "gift-button-starlight"
+                  : gift.key === "crown"
+                    ? "gift-button-crown"
+                    : ""
+            }`}
             type="button"
             disabled={giftMutation.isPending}
             onClick={() => {
