@@ -7,7 +7,12 @@ import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } f
 import { VeloraLogo } from "./components/velora-logo";
 
 const starterCreditsNoticeKeyPrefix = "velora-starter-credits-notice";
-const streakRewardNoticeKeyPrefix = "velora-streak-reward-notice";
+const streakDailyNoticeKeyPrefix = "velora-streak-daily-notice";
+const dayMs = 1000 * 60 * 60 * 24;
+
+function getUtcDayNumber(timestamp = Date.now()) {
+  return Math.floor(timestamp / dayMs);
+}
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -16,10 +21,12 @@ export function AppLayout() {
     credits: number;
     grantedAt: number;
   } | null>(null);
-  const [streakRewardNotice, setStreakRewardNotice] = useState<{
-    credits: number;
-    grantedAt: number;
-    streakDays: number;
+  const [streakDailyNotice, setStreakDailyNotice] = useState<{
+    currentDays: number;
+    targetDays: number;
+    daysRemaining: number;
+    rewardCredits: number;
+    rewardEarnedToday: boolean;
   } | null>(null);
 
   const ownProfileQuery = useQuery({
@@ -82,21 +89,28 @@ export function AppLayout() {
   }, [sessionQuery.data]);
 
   useEffect(() => {
-    const grant = sessionQuery.data?.loginStreakRewardGrant;
+    const streak = sessionQuery.data?.loginStreak;
     const userId = sessionQuery.data?.user?.id;
 
-    if (!grant || !userId || typeof window === "undefined") {
+    if (!streak || !userId || typeof window === "undefined") {
       return;
     }
 
-    const storageKey = `${streakRewardNoticeKeyPrefix}:${userId}`;
-    const seenGrantAt = Number(window.localStorage.getItem(storageKey) ?? "0");
-    if (seenGrantAt >= grant.grantedAt) {
+    const storageKey = `${streakDailyNoticeKeyPrefix}:${userId}`;
+    const todayDay = getUtcDayNumber();
+    const seenDay = Number(window.localStorage.getItem(storageKey) ?? "-1");
+    if (seenDay >= todayDay) {
       return;
     }
 
-    setStreakRewardNotice(grant);
-    window.localStorage.setItem(storageKey, String(grant.grantedAt));
+    setStreakDailyNotice({
+      currentDays: streak.currentDays,
+      targetDays: streak.targetDays,
+      daysRemaining: streak.daysRemaining,
+      rewardCredits: streak.rewardCredits,
+      rewardEarnedToday: streak.rewardEarnedToday,
+    });
+    window.localStorage.setItem(storageKey, String(todayDay));
   }, [sessionQuery.data]);
 
   const conversationUnreadCount =
@@ -199,22 +213,58 @@ export function AppLayout() {
         </section>
       ) : null}
 
-      {streakRewardNotice ? (
-        <section className="starter-credits-banner" aria-live="polite">
+      {streakDailyNotice ? (
+        <section className="starter-credits-banner streak-daily-banner" aria-live="polite">
           <div>
-            <p className="eyebrow">Consistency reward</p>
+            <p className="eyebrow">Consistency challenge</p>
             <h2>
-              Day {streakRewardNotice.streakDays} complete. We&apos;ve added{" "}
-              {streakRewardNotice.credits} Challenge Credit.
+              {streakDailyNotice.rewardEarnedToday
+                ? `Day ${streakDailyNotice.targetDays} complete. We added ${streakDailyNotice.rewardCredits} Challenge Credit.`
+                : `Day ${streakDailyNotice.currentDays} of ${streakDailyNotice.targetDays} is locked in.`}
             </h2>
+            <p className="streak-banner-copy">
+              {streakDailyNotice.rewardEarnedToday
+                ? "Your next streak starts with tomorrow's visit."
+                : `${streakDailyNotice.daysRemaining} day${streakDailyNotice.daysRemaining === 1 ? "" : "s"} left until your free Challenge Credit.`}
+            </p>
+            <div className="streak-banner-track" aria-label="Consistency challenge progress">
+              {Array.from({ length: streakDailyNotice.targetDays }, (_, index) => {
+                const completed = index < streakDailyNotice.currentDays;
+                return (
+                  <span
+                    className={
+                      completed
+                        ? "streak-banner-step streak-banner-step-complete"
+                        : "streak-banner-step"
+                    }
+                    key={`streak-banner-step-${index + 1}`}
+                  >
+                    {completed ? "✓" : ""}
+                  </span>
+                );
+              })}
+              <span className="streak-banner-gift">🎁</span>
+            </div>
           </div>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => setStreakRewardNotice(null)}
-          >
-            Dismiss
-          </button>
+          <div className="streak-banner-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setStreakDailyNotice(null)}
+            >
+              Dismiss
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                setStreakDailyNotice(null);
+                navigate("/challenges");
+              }}
+            >
+              Open challenges
+            </button>
+          </div>
         </section>
       ) : null}
 
