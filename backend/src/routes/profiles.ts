@@ -51,6 +51,7 @@ type BrowseFilters = {
   selectedIdentity: string;
   selectedPersonalityType: string;
   selectedLookingFor: string;
+  activeNowOnly: boolean;
   sortMode: BrowseSortMode;
   favoritesOnly: boolean;
   recommendedOnly: boolean;
@@ -91,6 +92,7 @@ function parseBrowseFilters(query: Record<string, string | undefined>): BrowseFi
     selectedIdentity: query.selectedIdentity?.trim() || "all",
     selectedPersonalityType: query.selectedPersonalityType?.trim() || "all",
     selectedLookingFor: query.selectedLookingFor?.trim() || "all",
+    activeNowOnly: parseBooleanQuery(query.activeNowOnly),
     sortMode: parseBrowseSortMode(query.sortMode),
     favoritesOnly: parseBooleanQuery(query.favoritesOnly),
     recommendedOnly: parseBooleanQuery(query.recommendedOnly),
@@ -770,6 +772,7 @@ function matchesBrowseFilters(
     lookingFor: string;
     isFavorited: boolean;
     recommended: boolean;
+    activityBadge?: string | null;
   },
   filters: BrowseFilters,
 ) {
@@ -795,6 +798,8 @@ function matchesBrowseFilters(
   const matchesLookingFor =
     filters.selectedLookingFor === "all" ||
     profile.lookingFor === filters.selectedLookingFor;
+  const matchesActiveNow =
+    !filters.activeNowOnly || profile.activityBadge === "Active today";
   const matchesFavorite = !filters.favoritesOnly || profile.isFavorited;
   const matchesRecommended = !filters.recommendedOnly || profile.recommended;
 
@@ -805,6 +810,7 @@ function matchesBrowseFilters(
     matchesIdentity &&
     matchesPersonalityType &&
     matchesLookingFor &&
+    matchesActiveNow &&
     matchesFavorite &&
     matchesRecommended
   );

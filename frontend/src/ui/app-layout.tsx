@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
 import { useEffect, useState } from "react";
+import { clearNativeAppBadgeCount, syncNativeAppBadgeCount } from "../lib/app-badge";
 import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } from "../lib/push";
 import { VeloraLogo } from "./components/velora-logo";
 
@@ -82,12 +83,14 @@ export function AppLayout() {
     ) ?? 0;
   const notificationUnreadCount =
     notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
+  const totalAppBadgeCount = conversationUnreadCount + notificationUnreadCount;
   const hasProfile = Boolean(sessionQuery.data?.hasProfile);
   const isLoggedIn = Boolean(sessionQuery.data?.authenticated);
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: async () => {
       clearAuthToken();
+      await clearNativeAppBadgeCount();
       await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
       await queryClient.invalidateQueries({ queryKey: ["session"] });
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -95,6 +98,15 @@ export function AppLayout() {
       navigate("/login");
     },
   });
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      void clearNativeAppBadgeCount();
+      return;
+    }
+
+    void syncNativeAppBadgeCount(totalAppBadgeCount);
+  }, [isLoggedIn, totalAppBadgeCount]);
 
   const navItems = [
     { to: "/", label: "Home" },

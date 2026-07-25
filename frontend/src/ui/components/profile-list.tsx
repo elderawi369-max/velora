@@ -55,6 +55,7 @@ export function ProfileList() {
   const [selectedLookingFor, setSelectedLookingFor] = useState<string>(
     savedFilters.selectedLookingFor ?? "all",
   );
+  const [activeNowOnly, setActiveNowOnly] = useState(Boolean(savedFilters.activeNowOnly));
   const [sortMode, setSortMode] = useState<"recommended" | "newest" | "name" | "favorited">(
     savedFilters.sortMode ?? "recommended",
   );
@@ -72,6 +73,7 @@ export function ProfileList() {
     selectedIdentity,
     selectedPersonalityType,
     selectedLookingFor,
+    activeNowOnly,
     sortMode,
     favoritesOnly,
     recommendedOnly,
@@ -86,6 +88,7 @@ export function ProfileList() {
       selectedIdentity,
       selectedPersonalityType,
       selectedLookingFor,
+      activeNowOnly,
       sortMode,
       favoritesOnly,
       recommendedOnly,
@@ -124,6 +127,7 @@ export function ProfileList() {
     selectedPersonalityType,
     selectedPreference,
     selectedVibe,
+    activeNowOnly,
     sortMode,
   ]);
 
@@ -335,6 +339,13 @@ export function ProfileList() {
 
         <div className="action-row">
           <button
+            className={activeNowOnly ? "tag-button tag-active" : "tag-button"}
+            type="button"
+            onClick={() => setActiveNowOnly((current) => !current)}
+          >
+            {activeNowOnly ? "Showing active now only" : "Active now"}
+          </button>
+          <button
             className={favoritesOnly ? "tag-button tag-active" : "tag-button"}
             type="button"
             onClick={() => setFavoritesOnly((current) => !current)}
@@ -359,6 +370,7 @@ export function ProfileList() {
               setSelectedIdentity("all");
               setSelectedPersonalityType("all");
               setSelectedLookingFor("all");
+              setActiveNowOnly(false);
               setSortMode("recommended");
               setFavoritesOnly(false);
               setRecommendedOnly(false);

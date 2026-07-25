@@ -195,6 +195,7 @@ export type BrowseProfilesParams = {
   selectedIdentity?: string;
   selectedPersonalityType?: string;
   selectedLookingFor?: string;
+  activeNowOnly?: boolean;
   sortMode?: "recommended" | "newest" | "name" | "favorited";
   favoritesOnly?: boolean;
   recommendedOnly?: boolean;
@@ -504,6 +505,9 @@ export function fetchProfiles(params: BrowseProfilesParams = {}) {
   }
   if (params.selectedLookingFor) {
     search.set("selectedLookingFor", params.selectedLookingFor);
+  }
+  if (typeof params.activeNowOnly === "boolean") {
+    search.set("activeNowOnly", String(params.activeNowOnly));
   }
   if (params.sortMode) {
     search.set("sortMode", params.sortMode);
