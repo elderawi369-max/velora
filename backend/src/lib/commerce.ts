@@ -29,7 +29,7 @@ export async function createNotification(
   input: {
     profileId: string;
     actorProfileId: string;
-    type: "favorite" | "gift" | "challenge" | "challenge_result";
+    type: "favorite" | "gift" | "challenge" | "challenge_result" | "starter_credit_reward";
     giftType?: string;
     challengeSessionId?: string;
   },
@@ -71,17 +71,21 @@ export async function createNotification(
           ? `${actorProfile?.displayName ?? "Someone"} sent you a challenge.`
           : input.type === "challenge_result"
             ? `${actorProfile?.displayName ?? "Someone"} finished your challenge.`
-            : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
+            : input.type === "starter_credit_reward"
+              ? "Velora added 2 Challenge Credits to your account."
+              : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
 
     const link =
       input.type === "challenge" || input.type === "challenge_result"
         ? input.challengeSessionId
           ? `/challenges/${input.challengeSessionId}`
           : "/challenges"
-        : "/activity";
+        : input.type === "starter_credit_reward"
+          ? "/challenges"
+          : "/activity";
 
     await sendPushToUser(env, targetProfile.userId, {
-      title: "Velora activity",
+      title: input.type === "starter_credit_reward" ? "Velora reward" : "Velora activity",
       body,
       link,
     }).catch(() => undefined);

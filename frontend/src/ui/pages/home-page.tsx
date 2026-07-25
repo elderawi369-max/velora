@@ -11,16 +11,16 @@ const pillars = [
 function getProfileCompletionPercent(profile: NonNullable<Awaited<ReturnType<typeof fetchOwnProfile>>["profile"]>) {
   let completed = 0;
 
-  if (profile.bio.trim().length >= 10) {
+  if (profile.bio.trim().length >= 20) {
     completed += 1;
   }
-  if (profile.promptEntries.length >= 2) {
+  if (profile.promptEntries.length >= 1) {
     completed += 1;
   }
-  if (profile.vibeTags.length >= 3) {
+  if (profile.vibeTags.length >= 1) {
     completed += 1;
   }
-  if (profile.boundaries.length >= 2) {
+  if (profile.boundaries.length >= 1) {
     completed += 1;
   }
 

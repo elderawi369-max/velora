@@ -10,6 +10,10 @@ import {
 import { ProfileAvatar } from "./profile-avatar";
 
 function describeNotification(item: NotificationItem) {
+  if (item.type === "starter_credit_reward") {
+    return "Velora added 2 Challenge Credits to your account.";
+  }
+
   if (item.type === "gift") {
     const label =
       item.giftType === "rose"
@@ -35,6 +39,10 @@ function describeNotification(item: NotificationItem) {
 }
 
 function getNotificationLabel(item: NotificationItem) {
+  if (item.type === "starter_credit_reward") {
+    return "Reward";
+  }
+
   if (item.type === "gift") {
     return "Gift";
   }
@@ -47,6 +55,10 @@ function getNotificationLabel(item: NotificationItem) {
 }
 
 function getNotificationLink(item: NotificationItem) {
+  if (item.type === "starter_credit_reward") {
+    return "/challenges";
+  }
+
   if ((item.type === "challenge" || item.type === "challenge_result") && item.challengeSessionId) {
     return `/challenges/${item.challengeSessionId}`;
   }
@@ -55,6 +67,10 @@ function getNotificationLink(item: NotificationItem) {
 }
 
 function getNotificationActionLabel(item: NotificationItem) {
+  if (item.type === "starter_credit_reward") {
+    return "Use credits";
+  }
+
   if (item.type === "challenge") {
     return "Open challenge";
   }

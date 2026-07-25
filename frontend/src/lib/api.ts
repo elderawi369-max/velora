@@ -241,7 +241,7 @@ export type Conversation = {
 
 export type NotificationItem = {
   id: string;
-  type: "favorite" | "gift" | "challenge" | "challenge_result";
+  type: "favorite" | "gift" | "challenge" | "challenge_result" | "starter_credit_reward";
   giftType: string | null;
   challengeSessionId?: string | null;
   readAt: number | null;

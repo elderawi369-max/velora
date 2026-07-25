@@ -1,6 +1,7 @@
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import {
   liveTriviaMatches,
+  notifications,
   profiles,
   starterCreditGrants,
   users,
@@ -9,6 +10,7 @@ import {
 import type { EnvBindings } from "./db";
 import { getDb } from "./db";
 import { logEvent } from "./analytics";
+import { createNotification } from "./commerce";
 
 export const starterCreditAmount = 2;
 export const starterCreditAccountAgeMs = 1000 * 60 * 60 * 24;
@@ -39,10 +41,10 @@ export function isFullProfile(input: {
   boundaries: string[];
 }) {
   return (
-    input.bio.trim().length >= 40 &&
-    input.promptEntries.length >= 2 &&
-    input.vibeTags.length >= 3 &&
-    input.boundaries.length >= 2
+    input.bio.trim().length >= 20 &&
+    input.promptEntries.length >= 1 &&
+    input.vibeTags.length >= 1 &&
+    input.boundaries.length >= 1
   );
 }
 
@@ -196,6 +198,23 @@ export async function maybeGrantStarterCredits(
       installId: input.installId,
       ip: input.ip,
     },
+  });
+
+  await db
+    .delete(notifications)
+    .where(
+      and(
+        eq(notifications.profileId, row.profileId),
+        eq(notifications.actorProfileId, row.profileId),
+        eq(notifications.type, "starter_credit_reward"),
+        isNotNull(notifications.readAt),
+      ),
+    );
+
+  await createNotification(env, {
+    profileId: row.profileId,
+    actorProfileId: row.profileId,
+    type: "starter_credit_reward",
   });
 
   return {
