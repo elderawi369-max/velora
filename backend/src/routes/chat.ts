@@ -540,8 +540,12 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
 
   if (targetUser?.userId) {
     await sendPushToUser(c.env, targetUser.userId, {
-      title: `${ownProfileRow?.displayName ?? "Someone"} sent a message`,
-      body: trimmedBody.slice(0, 120),
+      title: wasFirstMessage
+        ? `${ownProfileRow?.displayName ?? "Someone"} started a chat`
+        : `${ownProfileRow?.displayName ?? "Someone"} sent a message`,
+      body: wasFirstMessage
+        ? "Open Velora and see where the conversation goes."
+        : trimmedBody.slice(0, 120),
       link: `/chat/${conversation.id}`,
     }).catch(() => undefined);
   }

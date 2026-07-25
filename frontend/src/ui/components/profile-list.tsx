@@ -230,6 +230,9 @@ export function ProfileList() {
             <p className="status-message">
               Scan quickly here, then open a full profile when someone catches your attention.
             </p>
+            <p className="social-proof-note">
+              Profiles with prompts and clear preferences usually earn faster replies than blank profiles.
+            </p>
           </div>
           <span className="chip">
             {loadedProfiles.length} of {filteredCount} profiles
@@ -435,6 +438,9 @@ export function ProfileList() {
                 </p>
 
                 <p className="profile-bio">{bioPreview}</p>
+                <p className="social-proof-note">
+                  Open the full profile, start with the opener, or send a challenge to improve your odds of a reply.
+                </p>
 
                 <div className="chip-row">
                   {profile.vibeTags.slice(0, 3).map((tag) => (

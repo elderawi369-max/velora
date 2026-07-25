@@ -1,5 +1,5 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
-import { profiles, users } from "../db/schema";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { challengeSessions, conversations, profiles, users } from "../db/schema";
 import type { EnvBindings } from "./db";
 import { getDb } from "./db";
 import { logEvent } from "./analytics";
@@ -200,7 +200,7 @@ export async function maybeProcessLoginStreak(
   };
 }
 
-export async function sendLoginStreakReminders(env: EnvBindings) {
+export async function sendDailyRetentionReminders(env: EnvBindings) {
   const db = getDb(env);
   const todayDay = getUtcDayNumber();
   const yesterdayDay = todayDay - 1;
@@ -209,6 +209,7 @@ export async function sendLoginStreakReminders(env: EnvBindings) {
       userId: users.id,
       profileId: profiles.id,
       streakCount: users.loginStreakCount,
+      lastCheckInDay: users.loginStreakLastCheckInDay,
       lastReminderDay: users.loginStreakLastReminderDay,
     })
     .from(users)
@@ -216,40 +217,134 @@ export async function sendLoginStreakReminders(env: EnvBindings) {
     .where(
       and(
         isNull(profiles.suspendedAt),
-        eq(users.loginStreakLastCheckInDay, yesterdayDay),
-        lt(users.loginStreakCount, loginStreakTargetDays),
+        or(
+          isNull(users.loginStreakLastReminderDay),
+          lt(users.loginStreakLastReminderDay, todayDay),
+        ),
       ),
     );
 
   for (const row of rows) {
-    if (!row.profileId || !row.streakCount) {
+    if (!row.profileId) {
       continue;
     }
     if (row.lastReminderDay === todayDay) {
       continue;
     }
 
-    await sendPushToUser(env, row.userId, {
-      title: "Keep your Velora streak alive",
-      body: `Day ${row.streakCount} of ${loginStreakTargetDays}. Open Velora today to keep the streak and earn ${loginStreakRewardCredits} Challenge Credit.`,
-      link: "/",
-    }).catch(() => undefined);
-
-    await db
-      .update(users)
-      .set({
-        loginStreakLastReminderDay: todayDay,
-        updatedAt: Date.now(),
+    const [pendingChallengeRow] = await db
+      .select({
+        count: sql<number>`count(*)`,
       })
-      .where(eq(users.id, row.userId));
+      .from(challengeSessions)
+      .where(
+        and(
+          eq(challengeSessions.recipientProfileId, row.profileId),
+          eq(challengeSessions.status, "pending"),
+          lt(challengeSessions.createdAt, Date.now() - 1000 * 60 * 60 * 2),
+          sql`${challengeSessions.expiresAt} > ${Date.now()}`,
+        ),
+      );
 
-    await logEvent(env, {
-      eventType: "login_streak_reminder_sent",
-      userId: row.userId,
-      profileId: row.profileId,
-      eventData: {
-        streakCount: row.streakCount,
-      },
-    });
+    const pendingChallengeCount = Number(pendingChallengeRow?.count ?? 0);
+
+    const [unreadConversationRow] = await db
+      .select({
+        count: sql<number>`count(*)`,
+      })
+      .from(conversations)
+      .where(
+        or(
+          and(
+            eq(conversations.profileAId, row.profileId),
+            sql`${conversations.hiddenAtA} IS NULL`,
+            sql`${conversations.lastMessageSenderProfileId} = ${conversations.profileBId}`,
+            sql`${conversations.lastMessageAt} > ${conversations.lastReadAtA}`,
+          ),
+          and(
+            eq(conversations.profileBId, row.profileId),
+            sql`${conversations.hiddenAtB} IS NULL`,
+            sql`${conversations.lastMessageSenderProfileId} = ${conversations.profileAId}`,
+            sql`${conversations.lastMessageAt} > ${conversations.lastReadAtB}`,
+          ),
+        ),
+      );
+
+    const unreadConversationCount = Number(unreadConversationRow?.count ?? 0);
+
+    let reminderSent = false;
+
+    if (pendingChallengeCount > 0) {
+      await sendPushToUser(env, row.userId, {
+        title: "You have a challenge waiting",
+        body:
+          pendingChallengeCount === 1
+            ? "A Vibe Check or Trivia round is waiting for you on Velora."
+            : `${pendingChallengeCount} challenges are waiting for you on Velora.`,
+        link: "/challenges",
+      }).catch(() => undefined);
+
+      await logEvent(env, {
+        eventType: "pending_challenge_reminder_sent",
+        userId: row.userId,
+        profileId: row.profileId,
+        eventData: {
+          pendingChallengeCount,
+        },
+      });
+      reminderSent = true;
+    } else if (unreadConversationCount > 0) {
+      await sendPushToUser(env, row.userId, {
+        title:
+          unreadConversationCount === 1
+            ? "Someone is waiting on your reply"
+            : `${unreadConversationCount} conversations are waiting on you`,
+        body:
+          unreadConversationCount === 1
+            ? "Open Velora and reply while the conversation is still warm."
+            : "Open Velora and reply while the conversations are still warm.",
+        link: "/conversations",
+      }).catch(() => undefined);
+
+      await logEvent(env, {
+        eventType: "unread_message_reminder_sent",
+        userId: row.userId,
+        profileId: row.profileId,
+        eventData: {
+          unreadConversationCount,
+        },
+      });
+      reminderSent = true;
+    } else if (
+      row.streakCount &&
+      row.streakCount < loginStreakTargetDays &&
+      row.lastCheckInDay === yesterdayDay
+    ) {
+      await sendPushToUser(env, row.userId, {
+        title: "Keep your Velora streak alive",
+        body: `Day ${row.streakCount} of ${loginStreakTargetDays}. Open Velora today to keep the streak and earn ${loginStreakRewardCredits} Challenge Credit.`,
+        link: "/",
+      }).catch(() => undefined);
+
+      await logEvent(env, {
+        eventType: "login_streak_reminder_sent",
+        userId: row.userId,
+        profileId: row.profileId,
+        eventData: {
+          streakCount: row.streakCount,
+        },
+      });
+      reminderSent = true;
+    }
+
+    if (reminderSent) {
+      await db
+        .update(users)
+        .set({
+          loginStreakLastReminderDay: todayDay,
+          updatedAt: Date.now(),
+        })
+        .where(eq(users.id, row.userId));
+    }
   }
 }

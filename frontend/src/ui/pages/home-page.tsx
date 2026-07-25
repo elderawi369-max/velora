@@ -138,6 +138,9 @@ export function HomePage() {
                   ? `Your profile is ${profileCompletionPercent}% complete. Richer profiles get better visibility and easier conversation starts.`
                   : "Pick your personality and go live fast, then fill in the extra details later."}
               </p>
+              <p className="social-proof-note">
+                Profiles with a prompt, a vibe tag, and a clear boundary usually get better starts.
+              </p>
               <Link className="secondary-button" to={hasProfile ? "/my-profile" : "/create-profile"}>
                 {hasProfile ? "Improve profile" : "Create profile"}
               </Link>
@@ -156,6 +159,9 @@ export function HomePage() {
                   : conversationCount > 0
                     ? `${conversationCount} recurring conversation${conversationCount === 1 ? "" : "s"} waiting for you. ${needsTheirReplyCount > 0 ? `${needsTheirReplyCount} are now waiting on the other person.` : ""}`
                     : "Browse and open a conversation with someone who fits your vibe."}
+              </p>
+              <p className="social-proof-note">
+                First replies usually happen faster when people answer the same day.
               </p>
               <Link className="secondary-button" to={conversationCount > 0 ? "/conversations" : "/browse"}>
                 {conversationCount > 0 ? "Open conversations" : "Browse profiles"}

@@ -196,6 +196,9 @@ export function ProfileDetailPage() {
         <div className="meta-group">
           <span className="meta-title">Suggested opener</span>
           <p className="status-message">{suggestedOpener}</p>
+          <p className="social-proof-note">
+            Profiles that start with the opener instead of a plain hello usually get warmer first replies.
+          </p>
         </div>
 
         <div className="meta-group">
@@ -203,6 +206,9 @@ export function ProfileDetailPage() {
           <p className="status-message">
             Pick a challenge that fits the mood. Vibe Check compares chemistry, while
             Trivia turns the first interaction into a light competition.
+          </p>
+          <p className="social-proof-note">
+            Challenges often help people move from profile view into a real chat faster.
           </p>
           <div className="chip-row">
             <span className="chip">{creditBalance} credit{creditBalance === 1 ? "" : "s"} available</span>

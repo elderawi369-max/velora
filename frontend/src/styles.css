@@ -389,6 +389,13 @@ body {
   font-size: 0.95rem;
 }
 
+.social-proof-note {
+  margin: 0;
+  color: #8a5362;
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
 .filter-panel,
 .filter-grid,
 .filter-panel-head {
