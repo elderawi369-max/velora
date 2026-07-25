@@ -36,6 +36,7 @@ import {
   readClientIp,
   readInstallId,
 } from "../lib/starter-credits";
+import { maybeProcessLoginStreak } from "../lib/streaks";
 import {
   changePasswordSchema,
   deleteAccountSchema,
@@ -70,6 +71,8 @@ authRoutes.get("/me", async (c) => {
       user: null,
       hasProfile: false,
       starterCreditGrant: null,
+      loginStreak: null,
+      loginStreakRewardGrant: null,
     });
   }
 
@@ -90,6 +93,8 @@ authRoutes.get("/me", async (c) => {
       user: null,
       hasProfile: false,
       starterCreditGrant: null,
+      loginStreak: null,
+      loginStreakRewardGrant: null,
     });
   }
 
@@ -98,6 +103,7 @@ authRoutes.get("/me", async (c) => {
     installId: readInstallId(c.req.header("X-Velora-Install-Id")),
     ip: readClientIp(c.req.header("CF-Connecting-IP")),
   });
+  const loginStreakResult = await maybeProcessLoginStreak(c.env, userId);
 
   const [profile] = await db
     .select({ id: profiles.id })
@@ -114,6 +120,8 @@ authRoutes.get("/me", async (c) => {
     },
     hasProfile: Boolean(profile),
     starterCreditGrant: starterCreditResult?.grant ?? null,
+    loginStreak: loginStreakResult?.status ?? null,
+    loginStreakRewardGrant: loginStreakResult?.grant ?? null,
   });
 });
 

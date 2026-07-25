@@ -241,7 +241,13 @@ export type Conversation = {
 
 export type NotificationItem = {
   id: string;
-  type: "favorite" | "gift" | "challenge" | "challenge_result" | "starter_credit_reward";
+  type:
+    | "favorite"
+    | "gift"
+    | "challenge"
+    | "challenge_result"
+    | "starter_credit_reward"
+    | "streak_reward";
   giftType: string | null;
   challengeSessionId?: string | null;
   readAt: number | null;
@@ -436,6 +442,19 @@ export function fetchSession() {
     user: { id: string; email: string; emailVerified: boolean } | null;
     hasProfile: boolean;
     starterCreditGrant: { credits: number; grantedAt: number } | null;
+    loginStreak: {
+      currentDays: number;
+      targetDays: number;
+      daysRemaining: number;
+      checkedInToday: boolean;
+      rewardCredits: number;
+      rewardEarnedToday: boolean;
+    } | null;
+    loginStreakRewardGrant: {
+      credits: number;
+      grantedAt: number;
+      streakDays: number;
+    } | null;
   }>("/api/auth/me");
 }
 

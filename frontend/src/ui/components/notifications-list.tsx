@@ -14,6 +14,10 @@ function describeNotification(item: NotificationItem) {
     return "Velora added 2 Challenge Credits to your account.";
   }
 
+  if (item.type === "streak_reward") {
+    return "Velora added 1 Challenge Credit for your consistency streak.";
+  }
+
   if (item.type === "gift") {
     const label =
       item.giftType === "rose"
@@ -43,6 +47,10 @@ function getNotificationLabel(item: NotificationItem) {
     return "Reward";
   }
 
+  if (item.type === "streak_reward") {
+    return "Reward";
+  }
+
   if (item.type === "gift") {
     return "Gift";
   }
@@ -55,7 +63,7 @@ function getNotificationLabel(item: NotificationItem) {
 }
 
 function getNotificationLink(item: NotificationItem) {
-  if (item.type === "starter_credit_reward") {
+  if (item.type === "starter_credit_reward" || item.type === "streak_reward") {
     return "/challenges";
   }
 
@@ -67,7 +75,7 @@ function getNotificationLink(item: NotificationItem) {
 }
 
 function getNotificationActionLabel(item: NotificationItem) {
-  if (item.type === "starter_credit_reward") {
+  if (item.type === "starter_credit_reward" || item.type === "streak_reward") {
     return "Use credits";
   }
 

@@ -6,6 +6,10 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
   emailVerifiedAt: integer("email_verified_at"),
+  loginStreakCount: integer("login_streak_count").notNull().default(0),
+  loginStreakLastCheckInDay: integer("login_streak_last_check_in_day"),
+  loginStreakLastRewardedDay: integer("login_streak_last_rewarded_day"),
+  loginStreakLastReminderDay: integer("login_streak_last_reminder_day"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchConversations, fetchNotifications, fetchOwnProfile } from "../../lib/api";
+import { fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession } from "../../lib/api";
 
 const pillars = [
   "Persistent profiles that people can return to",
@@ -28,6 +28,12 @@ function getProfileCompletionPercent(profile: NonNullable<Awaited<ReturnType<typ
 }
 
 export function HomePage() {
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+    refetchInterval: 15000,
+  });
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
@@ -48,7 +54,8 @@ export function HomePage() {
   });
   const hasProfile = Boolean(ownProfileQuery.data?.profile);
   const ownProfile = ownProfileQuery.data?.profile ?? null;
-  const isLoggedIn = ownProfileQuery.data?.profile !== null || typeof window !== "undefined" && Boolean(window.localStorage.getItem("velora-auth-token"));
+  const isLoggedIn = Boolean(sessionQuery.data?.authenticated) ||
+    (typeof window !== "undefined" && Boolean(window.localStorage.getItem("velora-auth-token")));
   const conversationCount = conversationsQuery.data?.conversations.length ?? 0;
   const awaitingReplyCount =
     conversationsQuery.data?.conversations.filter((conversation) => conversation.awaitingReply).length ?? 0;
@@ -56,6 +63,7 @@ export function HomePage() {
     conversationsQuery.data?.conversations.filter((conversation) => conversation.needsTheirReply).length ?? 0;
   const notificationCount = notificationsQuery.data?.notifications.filter((item) => !item.readAt).length ?? 0;
   const profileCompletionPercent = ownProfile ? getProfileCompletionPercent(ownProfile) : 0;
+  const loginStreak = sessionQuery.data?.loginStreak ?? null;
 
   return (
     <main className="content-section">
@@ -91,6 +99,38 @@ export function HomePage() {
             <h2>{hasProfile ? "Keep the momentum going." : "Finish setup and start chatting."}</h2>
           </div>
           <div className="card-grid onboarding-grid">
+            <article className="card streak-card">
+              <h2>Consistency challenge</h2>
+              <p>
+                Open Velora 5 days in a row to earn 1 free Challenge Credit.
+              </p>
+              <div className="streak-track" aria-label="Consistency challenge progress">
+                {Array.from({ length: loginStreak?.targetDays ?? 5 }, (_, index) => {
+                  const filled = index < (loginStreak?.currentDays ?? 0);
+                  const rewardStep = index === (loginStreak?.targetDays ?? 5) - 1;
+                  return (
+                    <span
+                      className={filled ? "streak-step streak-step-active" : "streak-step"}
+                      key={`streak-step-${index + 1}`}
+                    >
+                      {rewardStep ? "🎁" : index + 1}
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="streak-status">
+                {loginStreak?.rewardEarnedToday
+                  ? "Reward unlocked today. Your next streak starts with tomorrow's visit."
+                  : loginStreak?.checkedInToday
+                    ? `Checked in for day ${loginStreak.currentDays} of ${loginStreak.targetDays}. ${loginStreak.daysRemaining} day${loginStreak.daysRemaining === 1 ? "" : "s"} left.`
+                    : loginStreak
+                      ? `${loginStreak.currentDays > 0 ? `You are on day ${loginStreak.currentDays} of ${loginStreak.targetDays}.` : "Your streak starts with today's visit."} Open Velora daily so you do not lose momentum.`
+                      : "Create your profile and keep showing up so the reward can start stacking for you."}
+              </p>
+              <Link className="secondary-button" to={hasProfile ? "/challenges" : "/create-profile"}>
+                {hasProfile ? "Use challenges" : "Finish profile"}
+              </Link>
+            </article>
             <article className="card">
               <h2>{hasProfile ? "Profile strength" : "Create your profile"}</h2>
               <p>

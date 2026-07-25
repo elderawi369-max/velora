@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { apiRoutes } from "./routes";
 import type { EnvBindings } from "./lib/db";
 import { seedDatabase } from "./db/seed";
+import { sendLoginStreakReminders } from "./lib/streaks";
 
 const app = new Hono<{ Bindings: EnvBindings }>();
 
@@ -63,4 +64,9 @@ app.post("/api/dev/seed", async (c) => {
   return c.json({ ok: true });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled(_controller: ScheduledController, env: EnvBindings, ctx: ExecutionContext) {
+    ctx.waitUntil(sendLoginStreakReminders(env));
+  },
+};

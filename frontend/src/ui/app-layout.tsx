@@ -7,6 +7,7 @@ import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } f
 import { VeloraLogo } from "./components/velora-logo";
 
 const starterCreditsNoticeKeyPrefix = "velora-starter-credits-notice";
+const streakRewardNoticeKeyPrefix = "velora-streak-reward-notice";
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -14,6 +15,11 @@ export function AppLayout() {
   const [starterCreditsNotice, setStarterCreditsNotice] = useState<{
     credits: number;
     grantedAt: number;
+  } | null>(null);
+  const [streakRewardNotice, setStreakRewardNotice] = useState<{
+    credits: number;
+    grantedAt: number;
+    streakDays: number;
   } | null>(null);
 
   const ownProfileQuery = useQuery({
@@ -72,6 +78,24 @@ export function AppLayout() {
     }
 
     setStarterCreditsNotice(grant);
+    window.localStorage.setItem(storageKey, String(grant.grantedAt));
+  }, [sessionQuery.data]);
+
+  useEffect(() => {
+    const grant = sessionQuery.data?.loginStreakRewardGrant;
+    const userId = sessionQuery.data?.user?.id;
+
+    if (!grant || !userId || typeof window === "undefined") {
+      return;
+    }
+
+    const storageKey = `${streakRewardNoticeKeyPrefix}:${userId}`;
+    const seenGrantAt = Number(window.localStorage.getItem(storageKey) ?? "0");
+    if (seenGrantAt >= grant.grantedAt) {
+      return;
+    }
+
+    setStreakRewardNotice(grant);
     window.localStorage.setItem(storageKey, String(grant.grantedAt));
   }, [sessionQuery.data]);
 
@@ -169,6 +193,25 @@ export function AppLayout() {
             className="secondary-button"
             type="button"
             onClick={() => setStarterCreditsNotice(null)}
+          >
+            Dismiss
+          </button>
+        </section>
+      ) : null}
+
+      {streakRewardNotice ? (
+        <section className="starter-credits-banner" aria-live="polite">
+          <div>
+            <p className="eyebrow">Consistency reward</p>
+            <h2>
+              Day {streakRewardNotice.streakDays} complete. We&apos;ve added{" "}
+              {streakRewardNotice.credits} Challenge Credit.
+            </h2>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setStreakRewardNotice(null)}
           >
             Dismiss
           </button>

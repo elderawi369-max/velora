@@ -29,7 +29,13 @@ export async function createNotification(
   input: {
     profileId: string;
     actorProfileId: string;
-    type: "favorite" | "gift" | "challenge" | "challenge_result" | "starter_credit_reward";
+    type:
+      | "favorite"
+      | "gift"
+      | "challenge"
+      | "challenge_result"
+      | "starter_credit_reward"
+      | "streak_reward";
     giftType?: string;
     challengeSessionId?: string;
   },
@@ -69,10 +75,12 @@ export async function createNotification(
           }.`
         : input.type === "challenge"
           ? `${actorProfile?.displayName ?? "Someone"} sent you a challenge.`
-          : input.type === "challenge_result"
+        : input.type === "challenge_result"
             ? `${actorProfile?.displayName ?? "Someone"} finished your challenge.`
             : input.type === "starter_credit_reward"
               ? "Velora added 2 Challenge Credits to your account."
+              : input.type === "streak_reward"
+                ? "Velora added 1 Challenge Credit for your streak."
               : `${actorProfile?.displayName ?? "Someone"} favorited your profile.`;
 
     const link =
@@ -80,12 +88,15 @@ export async function createNotification(
         ? input.challengeSessionId
           ? `/challenges/${input.challengeSessionId}`
           : "/challenges"
-        : input.type === "starter_credit_reward"
+        : input.type === "starter_credit_reward" || input.type === "streak_reward"
           ? "/challenges"
           : "/activity";
 
     await sendPushToUser(env, targetProfile.userId, {
-      title: input.type === "starter_credit_reward" ? "Velora reward" : "Velora activity",
+      title:
+        input.type === "starter_credit_reward" || input.type === "streak_reward"
+          ? "Velora reward"
+          : "Velora activity",
       body,
       link,
     }).catch(() => undefined);

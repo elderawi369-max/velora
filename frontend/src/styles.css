@@ -223,6 +223,40 @@ body {
   gap: 18px;
 }
 
+.streak-card {
+  gap: 14px;
+}
+
+.streak-track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.streak-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 79, 89, 0.16);
+  background: rgba(255, 255, 255, 0.82);
+  color: #7a5b66;
+  font-weight: 700;
+}
+
+.streak-step-active {
+  border-color: rgba(180, 84, 105, 0.22);
+  background: linear-gradient(135deg, #d64d69, #ef7c92 55%, #f7c0cc);
+  color: white;
+  box-shadow: 0 12px 24px rgba(180, 84, 105, 0.16);
+}
+
+.streak-status {
+  color: #6d5760;
+}
+
 .onboarding-grid .card,
 .settings-subpanel {
   height: 100%;
@@ -1444,6 +1478,16 @@ body {
   .card-grid {
     grid-template-columns: 1fr;
     gap: 14px;
+  }
+
+  .streak-track {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .streak-step {
+    min-height: 46px;
+    font-size: 0.9rem;
   }
 
   .action-row,
