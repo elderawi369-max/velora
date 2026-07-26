@@ -168,6 +168,42 @@ export type DailyTrendPoint = {
   twoWayConversations: number;
 };
 
+export type GooglePlayBillingSummary = {
+  verifiedPurchases: number;
+  fulfilledPurchases: number;
+  consumedPurchases: number;
+  pendingConsumption: number;
+  failedConsumption: number;
+  atRiskPurchases: number;
+  legacyUntrackedPurchases: number;
+  revenueUsdCents: number;
+};
+
+export type GooglePlayBillingPurchase = {
+  id: string;
+  externalPaymentId: string;
+  buyerDisplayName: string;
+  buyerUsername: string;
+  targetDisplayName: string | null;
+  targetUsername: string | null;
+  productKind: string;
+  itemKey: string;
+  amountCents: number;
+  status: string;
+  createdAt: number;
+  fulfilledAt: number | null;
+  mobileProductId: string | null;
+  mobileOrderId: string | null;
+  mobilePurchaseState: number | null;
+  mobileConsumptionState: number | null;
+  mobileAcknowledgementState: number | null;
+  mobileConsumeStatus: string | null;
+  mobileConsumeAttemptCount: number;
+  mobileConsumeLastError: string | null;
+  mobileConsumedAt: number | null;
+  isLegacyUntracked: number;
+};
+
 export type AdminAnalytics = {
   overview: {
     totalUsers: number;
@@ -198,6 +234,10 @@ export type AdminAnalytics = {
   };
   retention: RetentionPeriod[];
   dailyTrends: DailyTrendPoint[];
+  googlePlayBilling: {
+    summary: GooglePlayBillingSummary;
+    recentPurchases: GooglePlayBillingPurchase[];
+  };
   topProfiles: Array<{
     id: string;
     username: string;

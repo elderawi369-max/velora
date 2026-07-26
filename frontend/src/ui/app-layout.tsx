@@ -5,14 +5,20 @@ import { useEffect, useState } from "react";
 import { clearNativeAppBadgeCount, syncNativeAppBadgeCount } from "../lib/app-badge";
 import { recoverGooglePlayPurchases } from "../lib/google-play-billing";
 import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } from "../lib/push";
+import { canPromptForAndroidRating, openVeloraPlayStoreRating } from "../lib/rate-app";
 import { VeloraLogo } from "./components/velora-logo";
 
 const starterCreditsNoticeKeyPrefix = "velora-starter-credits-notice";
 const streakDailyNoticeKeyPrefix = "velora-streak-daily-notice";
+const appRatingCompletedKeyPrefix = "velora-app-rating-completed";
 const dayMs = 1000 * 60 * 60 * 24;
 
 function getUtcDayNumber(timestamp = Date.now()) {
   return Math.floor(timestamp / dayMs);
+}
+
+function getAppRatingCompletedKey(userId: string) {
+  return `${appRatingCompletedKeyPrefix}:${userId}`;
 }
 
 export function AppLayout() {
@@ -28,6 +34,10 @@ export function AppLayout() {
     daysRemaining: number;
     rewardCredits: number;
     rewardEarnedToday: boolean;
+  } | null>(null);
+  const [ratingPrompt, setRatingPrompt] = useState<{
+    credits: number;
+    source: "starter" | "streak";
   } | null>(null);
 
   const ownProfileQuery = useQuery({
@@ -133,6 +143,16 @@ export function AppLayout() {
 
     setStarterCreditsNotice(grant);
     window.localStorage.setItem(storageKey, String(grant.grantedAt));
+
+    if (
+      canPromptForAndroidRating() &&
+      window.localStorage.getItem(getAppRatingCompletedKey(userId)) !== "true"
+    ) {
+      setRatingPrompt({
+        credits: grant.credits,
+        source: "starter",
+      });
+    }
   }, [sessionQuery.data]);
 
   useEffect(() => {
@@ -158,6 +178,17 @@ export function AppLayout() {
       rewardEarnedToday: streak.rewardEarnedToday,
     });
     window.localStorage.setItem(storageKey, String(todayDay));
+
+    if (
+      streak.rewardEarnedToday &&
+      canPromptForAndroidRating() &&
+      window.localStorage.getItem(getAppRatingCompletedKey(userId)) !== "true"
+    ) {
+      setRatingPrompt({
+        credits: streak.rewardCredits,
+        source: "streak",
+      });
+    }
   }, [sessionQuery.data]);
 
   const conversationUnreadCount =
@@ -311,6 +342,44 @@ export function AppLayout() {
             >
               Open challenges
             </button>
+          </div>
+        </section>
+      ) : null}
+
+      {ratingPrompt ? (
+        <section className="rate-app-overlay" aria-live="polite" role="dialog" aria-modal="true">
+          <div className="rate-app-modal">
+            <p className="eyebrow">Quick favor</p>
+            <h2>Enjoying Velora so far?</h2>
+            <p className="rate-app-copy">
+              {ratingPrompt.source === "starter"
+                ? `You just unlocked ${ratingPrompt.credits} free Challenge Credits.`
+                : `You earned ${ratingPrompt.credits} free Challenge Credit from your consistency challenge.`}{" "}
+              If Velora feels good so far, rating the app on Google Play would really help.
+            </p>
+            <div className="rate-app-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setRatingPrompt(null)}
+              >
+                Maybe later
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  const userId = sessionQuery.data?.user?.id;
+                  if (typeof window !== "undefined" && userId) {
+                    window.localStorage.setItem(getAppRatingCompletedKey(userId), "true");
+                  }
+                  setRatingPrompt(null);
+                  openVeloraPlayStoreRating();
+                }}
+              >
+                Rate on Google Play
+              </button>
+            </div>
           </div>
         </section>
       ) : null}

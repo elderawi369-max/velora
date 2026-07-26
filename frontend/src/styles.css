@@ -364,6 +364,45 @@ body {
   box-shadow: 0 8px 18px rgba(83, 53, 59, 0.06);
 }
 
+.rate-app-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(36, 26, 31, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.rate-app-modal {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(255, 248, 250, 0.98), rgba(255, 255, 255, 0.94));
+  border: 1px solid rgba(180, 84, 105, 0.18);
+  box-shadow: 0 22px 48px rgba(83, 53, 59, 0.18);
+}
+
+.rate-app-modal h2,
+.rate-app-modal p {
+  margin: 0;
+}
+
+.rate-app-copy {
+  color: #5f4c53;
+  line-height: 1.65;
+}
+
+.rate-app-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
 .home-web-link {
   display: inline-flex;
   align-items: center;
@@ -1582,6 +1621,19 @@ body {
   .streak-banner-step::after {
     right: -8px;
     width: 8px;
+  }
+
+  .rate-app-overlay {
+    padding: 16px;
+  }
+
+  .rate-app-modal {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .rate-app-actions {
+    flex-direction: column;
   }
 
   .action-row,

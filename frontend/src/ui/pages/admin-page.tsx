@@ -18,6 +18,8 @@ import {
   type AdminReport,
   type DailyTrendPoint,
   type EngagementPeriod,
+  type GooglePlayBillingPurchase,
+  type GooglePlayBillingSummary,
   type SignupFunnelPeriod,
 } from "../../lib/admin-api";
 
@@ -59,6 +61,19 @@ function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
+  });
+}
+
+function formatDateTime(timestamp: number | null) {
+  if (!timestamp) {
+    return "—";
+  }
+
+  return new Date(timestamp).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -126,6 +141,116 @@ function MetricGrid({
           </article>
         ))}
       </section>
+    </section>
+  );
+}
+
+function getBillingStatusLabel(purchase: GooglePlayBillingPurchase) {
+  if (purchase.isLegacyUntracked) {
+    return "Legacy untracked";
+  }
+
+  if (purchase.mobileConsumeStatus === "consumed") {
+    return "Consumed";
+  }
+
+  if (purchase.mobileConsumeStatus === "failed") {
+    return "Failed";
+  }
+
+  if (purchase.status === "fulfilled") {
+    return "Pending consume";
+  }
+
+  return purchase.status;
+}
+
+function BillingPanel({
+  summary,
+  recentPurchases,
+}: {
+  summary: GooglePlayBillingSummary;
+  recentPurchases: GooglePlayBillingPurchase[];
+}) {
+  const metrics = [
+    { label: "Verified", value: summary.verifiedPurchases.toString() },
+    { label: "Fulfilled", value: summary.fulfilledPurchases.toString() },
+    { label: "Consumed", value: summary.consumedPurchases.toString() },
+    { label: "Pending consumption", value: summary.pendingConsumption.toString() },
+    { label: "Failed consumption", value: summary.failedConsumption.toString() },
+    { label: "Refund-risk", value: summary.atRiskPurchases.toString() },
+    { label: "Legacy untracked", value: summary.legacyUntrackedPurchases.toString() },
+    { label: "Google revenue", value: formatUsd(summary.revenueUsdCents) },
+  ];
+
+  return (
+    <section className="panel">
+      <div className="section-copy compact-copy">
+        <p className="eyebrow">Billing health</p>
+        <h2>Google Play one-time purchases at a glance.</h2>
+        <p>
+          Refunds are not directly tracked yet, so refund-risk shows fulfilled purchases that still
+          are not consumed after 30 minutes. Legacy purchases from before tracking are labeled
+          separately.
+        </p>
+      </div>
+
+      <section className="card-grid">
+        {metrics.map((metric) => (
+          <article className="card profile-card" key={metric.label}>
+            <div className="meta-group">
+              <span className="meta-title">{metric.label}</span>
+              <h2>{metric.value}</h2>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <div className="meta-group">
+        <span className="meta-title">Recent Google Play purchases</span>
+        {recentPurchases.length === 0 ? (
+          <p className="status-message">No Google Play purchases yet.</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Buyer</th>
+                  <th>Target</th>
+                  <th>Product</th>
+                  <th>Price</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>Last error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentPurchases.map((purchase) => (
+                  <tr key={purchase.id}>
+                    <td>{formatDateTime(purchase.createdAt)}</td>
+                    <td>
+                      {purchase.buyerDisplayName} (@{purchase.buyerUsername})
+                    </td>
+                    <td>
+                      {purchase.targetDisplayName && purchase.targetUsername
+                        ? `${purchase.targetDisplayName} (@${purchase.targetUsername})`
+                        : "—"}
+                    </td>
+                    <td>
+                      {purchase.itemKey} ({purchase.productKind})
+                    </td>
+                    <td>{formatUsd(purchase.amountCents)}</td>
+                    <td>{getBillingStatusLabel(purchase)}</td>
+                    <td>{purchase.mobileConsumeAttemptCount}</td>
+                    <td>{purchase.mobileConsumeLastError ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -938,6 +1063,11 @@ export function AdminPage() {
                 eyebrow="Legacy 7-day pulse"
                 title="Existing funnel and revenue pulse."
                 items={funnelCards}
+              />
+
+              <BillingPanel
+                summary={analytics.googlePlayBilling.summary}
+                recentPurchases={analytics.googlePlayBilling.recentPurchases}
               />
 
               <section className="card-grid">

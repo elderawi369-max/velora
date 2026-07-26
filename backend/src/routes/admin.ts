@@ -6,6 +6,7 @@ import {
   eventLogs,
   gifts,
   messages,
+  purchases,
   profiles,
   reports,
   supportTickets,
@@ -70,6 +71,42 @@ type DailyTrendPoint = {
   messagesSent: number;
   conversationsStarted: number;
   twoWayConversations: number;
+};
+
+type GooglePlayBillingSummary = {
+  verifiedPurchases: number;
+  fulfilledPurchases: number;
+  consumedPurchases: number;
+  pendingConsumption: number;
+  failedConsumption: number;
+  atRiskPurchases: number;
+  legacyUntrackedPurchases: number;
+  revenueUsdCents: number;
+};
+
+type GooglePlayBillingPurchaseRow = {
+  id: string;
+  externalPaymentId: string;
+  buyerDisplayName: string;
+  buyerUsername: string;
+  targetDisplayName: string | null;
+  targetUsername: string | null;
+  productKind: string;
+  itemKey: string;
+  amountCents: number;
+  status: string;
+  createdAt: number;
+  fulfilledAt: number | null;
+  mobileProductId: string | null;
+  mobileOrderId: string | null;
+  mobilePurchaseState: number | null;
+  mobileConsumptionState: number | null;
+  mobileAcknowledgementState: number | null;
+  mobileConsumeStatus: string | null;
+  mobileConsumeAttemptCount: number;
+  mobileConsumeLastError: string | null;
+  mobileConsumedAt: number | null;
+  isLegacyUntracked: number;
 };
 
 export const adminRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -770,6 +807,122 @@ async function getRecentEvents(env: EnvBindings) {
   });
 }
 
+async function getGooglePlayBillingHealth(
+  env: EnvBindings,
+): Promise<{
+  summary: GooglePlayBillingSummary;
+  recentPurchases: GooglePlayBillingPurchaseRow[];
+}> {
+  const now = Date.now();
+  const atRiskCutoff = now - 30 * 60 * 1000;
+
+  const summaryRow = await queryFirst<{
+    verifiedPurchases: number;
+    fulfilledPurchases: number;
+    consumedPurchases: number;
+    pendingConsumption: number;
+    failedConsumption: number;
+    atRiskPurchases: number;
+    legacyUntrackedPurchases: number;
+    revenueUsdCents: number;
+  }>(
+    env,
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN stripe_session_id LIKE 'google:%' THEN 1 ELSE 0 END), 0) AS verifiedPurchases,
+        COALESCE(SUM(CASE WHEN stripe_session_id LIKE 'google:%' AND status = 'fulfilled' THEN 1 ELSE 0 END), 0) AS fulfilledPurchases,
+        COALESCE(SUM(CASE WHEN stripe_session_id LIKE 'google:%' AND mobile_consume_status = 'consumed' THEN 1 ELSE 0 END), 0) AS consumedPurchases,
+        COALESCE(SUM(CASE
+          WHEN stripe_session_id LIKE 'google:%'
+            AND mobile_provider = 'google'
+            AND status = 'fulfilled'
+            AND COALESCE(mobile_consume_status, 'pending') NOT IN ('consumed', 'failed')
+          THEN 1 ELSE 0 END), 0) AS pendingConsumption,
+        COALESCE(SUM(CASE WHEN stripe_session_id LIKE 'google:%' AND mobile_consume_status = 'failed' THEN 1 ELSE 0 END), 0) AS failedConsumption,
+        COALESCE(SUM(CASE
+          WHEN stripe_session_id LIKE 'google:%'
+            AND mobile_provider = 'google'
+            AND status = 'fulfilled'
+            AND COALESCE(mobile_consume_status, 'pending') <> 'consumed'
+            AND created_at < ?
+          THEN 1 ELSE 0 END), 0) AS atRiskPurchases,
+        COALESCE(SUM(CASE
+          WHEN stripe_session_id LIKE 'google:%'
+            AND status = 'fulfilled'
+            AND mobile_provider IS NULL
+          THEN 1 ELSE 0 END), 0) AS legacyUntrackedPurchases,
+        COALESCE(SUM(CASE WHEN stripe_session_id LIKE 'google:%' AND status = 'fulfilled' THEN amount_cents ELSE 0 END), 0) AS revenueUsdCents
+      FROM purchases
+    `,
+    [atRiskCutoff],
+  );
+
+  const recentPurchases = await queryAll<GooglePlayBillingPurchaseRow>(
+    env,
+    `
+      SELECT
+        p.id AS id,
+        p.stripe_session_id AS externalPaymentId,
+        buyer.display_name AS buyerDisplayName,
+        buyer.username AS buyerUsername,
+        target.display_name AS targetDisplayName,
+        target.username AS targetUsername,
+        p.product_kind AS productKind,
+        p.item_key AS itemKey,
+        p.amount_cents AS amountCents,
+        p.status AS status,
+        p.created_at AS createdAt,
+        p.fulfilled_at AS fulfilledAt,
+        p.mobile_product_id AS mobileProductId,
+        p.mobile_order_id AS mobileOrderId,
+        p.mobile_purchase_state AS mobilePurchaseState,
+        p.mobile_consumption_state AS mobileConsumptionState,
+        p.mobile_acknowledgement_state AS mobileAcknowledgementState,
+        p.mobile_consume_status AS mobileConsumeStatus,
+        COALESCE(p.mobile_consume_attempt_count, 0) AS mobileConsumeAttemptCount,
+        p.mobile_consume_last_error AS mobileConsumeLastError,
+        p.mobile_consumed_at AS mobileConsumedAt,
+        CASE WHEN p.mobile_provider IS NULL THEN 1 ELSE 0 END AS isLegacyUntracked
+      FROM purchases p
+      INNER JOIN profiles buyer ON buyer.id = p.buyer_profile_id
+      LEFT JOIN profiles target ON target.id = p.target_profile_id
+      WHERE p.stripe_session_id LIKE 'google:%'
+      ORDER BY p.created_at DESC
+      LIMIT 20
+    `,
+  );
+
+  return {
+    summary: {
+      verifiedPurchases: normalizeNumber(summaryRow?.verifiedPurchases),
+      fulfilledPurchases: normalizeNumber(summaryRow?.fulfilledPurchases),
+      consumedPurchases: normalizeNumber(summaryRow?.consumedPurchases),
+      pendingConsumption: normalizeNumber(summaryRow?.pendingConsumption),
+      failedConsumption: normalizeNumber(summaryRow?.failedConsumption),
+      atRiskPurchases: normalizeNumber(summaryRow?.atRiskPurchases),
+      legacyUntrackedPurchases: normalizeNumber(summaryRow?.legacyUntrackedPurchases),
+      revenueUsdCents: normalizeNumber(summaryRow?.revenueUsdCents),
+    },
+    recentPurchases: recentPurchases.map((row) => ({
+      ...row,
+      amountCents: normalizeNumber(row.amountCents),
+      createdAt: normalizeNumber(row.createdAt),
+      fulfilledAt: row.fulfilledAt ? normalizeNumber(row.fulfilledAt) : null,
+      mobilePurchaseState:
+        row.mobilePurchaseState === null ? null : normalizeNumber(row.mobilePurchaseState),
+      mobileConsumptionState:
+        row.mobileConsumptionState === null ? null : normalizeNumber(row.mobileConsumptionState),
+      mobileAcknowledgementState:
+        row.mobileAcknowledgementState === null
+          ? null
+          : normalizeNumber(row.mobileAcknowledgementState),
+      mobileConsumeAttemptCount: normalizeNumber(row.mobileConsumeAttemptCount),
+      mobileConsumedAt: row.mobileConsumedAt ? normalizeNumber(row.mobileConsumedAt) : null,
+      isLegacyUntracked: normalizeNumber(row.isLegacyUntracked),
+    })),
+  };
+}
+
 adminRoutes.get("/analytics", async (c) => {
   const now = Date.now();
   const sevenDaysAgo = now - DAY_MS * 7;
@@ -785,6 +938,7 @@ adminRoutes.get("/analytics", async (c) => {
     signupFunnelLast30d,
     retention,
     dailyTrends,
+    googlePlayBilling,
   ] = await Promise.all([
     getOverview(c.env),
     getTopProfiles(c.env),
@@ -795,6 +949,7 @@ adminRoutes.get("/analytics", async (c) => {
     getPeriodSignupFunnel(c.env, thirtyDaysAgo, now),
     getRetention(c.env),
     getDailyTrends(c.env, thirtyDaysAgo, now),
+    getGooglePlayBillingHealth(c.env),
   ]);
 
   const purchasesLast7d = await queryFirst<{
@@ -846,6 +1001,7 @@ adminRoutes.get("/analytics", async (c) => {
     },
     retention,
     dailyTrends,
+    googlePlayBilling,
     topProfiles,
     recentEvents,
   });
