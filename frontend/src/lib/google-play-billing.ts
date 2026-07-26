@@ -26,10 +26,15 @@ type ConsumePurchaseResult = {
   purchaseToken: string;
 };
 
+type QueryActivePurchasesResult = {
+  purchases: PurchaseProductResult[];
+};
+
 type GooglePlayBillingPlugin = {
   isAvailable(): Promise<BillingAvailability>;
   purchaseProduct(options: PurchaseProductOptions): Promise<PurchaseProductResult>;
   consumePurchase(options: { purchaseToken: string }): Promise<ConsumePurchaseResult>;
+  queryActivePurchases(): Promise<QueryActivePurchasesResult>;
 };
 
 const GooglePlayBilling = registerPlugin<GooglePlayBillingPlugin>("GooglePlayBilling");
@@ -44,8 +49,92 @@ const googlePlayProductIds = {
   challenge_pack_10: "challenge_credits_10",
 } as const;
 
+type GooglePlayPurchaseContext = {
+  productKind: "gift" | "boost" | "challenge_credit_pack";
+  itemKey: string;
+  targetProfileId?: string;
+  createdAt: number;
+};
+
+const purchaseContextStorageKeyPrefix = "velora-google-play-purchase-context";
+
 function resolveGooglePlayProductId(itemKey: string) {
   return googlePlayProductIds[itemKey as keyof typeof googlePlayProductIds] ?? "";
+}
+
+function resolveCatalogItemByGoogleProductId(productId: string) {
+  const entry = Object.entries(googlePlayProductIds).find(([, value]) => value === productId);
+  if (!entry) {
+    return null;
+  }
+
+  const [itemKey] = entry;
+  if (itemKey === "rose" || itemKey === "starlight" || itemKey === "crown") {
+    return {
+      productKind: "gift" as const,
+      itemKey,
+    };
+  }
+
+  if (itemKey === "spark" || itemKey === "spotlight") {
+    return {
+      productKind: "boost" as const,
+      itemKey,
+    };
+  }
+
+  return {
+    productKind: "challenge_credit_pack" as const,
+    itemKey,
+  };
+}
+
+function getPurchaseContextStorageKey(itemKey: string) {
+  return `${purchaseContextStorageKeyPrefix}:${itemKey}`;
+}
+
+function saveGooglePlayPurchaseContext(context: GooglePlayPurchaseContext) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    getPurchaseContextStorageKey(context.itemKey),
+    JSON.stringify(context),
+  );
+}
+
+function readGooglePlayPurchaseContext(itemKey: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(getPurchaseContextStorageKey(itemKey));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as GooglePlayPurchaseContext;
+    if (!parsed?.itemKey || !parsed?.productKind) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearGooglePlayPurchaseContext(itemKey: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(getPurchaseContextStorageKey(itemKey));
+}
+
+async function delay(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function isNativeAndroidApp() {
@@ -91,11 +180,19 @@ export async function completeGooglePlayPurchase(input: {
     throw new Error("This Android purchase item is not mapped to a Google Play product yet.");
   }
 
+  saveGooglePlayPurchaseContext({
+    productKind: input.productKind,
+    itemKey: input.itemKey,
+    targetProfileId: input.targetProfileId,
+    createdAt: Date.now(),
+  });
+
   const purchase = await GooglePlayBilling.purchaseProduct({
     productId,
   });
 
   if (purchase.cancelled) {
+    clearGooglePlayPurchaseContext(input.itemKey);
     return { cancelled: true as const };
   }
 
@@ -114,14 +211,95 @@ export async function completeGooglePlayPurchase(input: {
     orderId: purchase.orderId ?? undefined,
   });
 
-  try {
-    await GooglePlayBilling.consumePurchase({ purchaseToken: purchase.purchaseToken });
-  } catch (error) {
-    console.warn("Unable to consume Google Play purchase token after fulfillment.", error);
+  if (verification.googlePlay?.consumeStatus !== "consumed") {
+    try {
+      await GooglePlayBilling.consumePurchase({ purchaseToken: purchase.purchaseToken });
+    } catch (error) {
+      console.warn("Unable to consume Google Play purchase token after backend verification.", error);
+    }
   }
+
+  clearGooglePlayPurchaseContext(input.itemKey);
 
   return {
     cancelled: false as const,
     purchase: verification.purchase,
   };
+}
+
+export async function recoverGooglePlayPurchases() {
+  if (!isNativeAndroidApp() || !Capacitor.isPluginAvailable("GooglePlayBilling")) {
+    return { recoveredCount: 0 };
+  }
+
+  const available = await ensureGooglePlayBillingAvailable();
+  if (!available) {
+    return { recoveredCount: 0 };
+  }
+
+  const result = await GooglePlayBilling.queryActivePurchases();
+  const purchases = result.purchases ?? [];
+  let recoveredCount = 0;
+
+  for (const purchase of purchases) {
+    if (
+      purchase.cancelled ||
+      purchase.purchaseState !== "purchased" ||
+      !purchase.purchaseToken ||
+      !purchase.packageName ||
+      !purchase.productId
+    ) {
+      continue;
+    }
+
+    const catalogItem = resolveCatalogItemByGoogleProductId(purchase.productId);
+    if (!catalogItem) {
+      continue;
+    }
+
+    const context = readGooglePlayPurchaseContext(catalogItem.itemKey);
+    const maxAttempts = 3;
+    let verified = false;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const response = await verifyGoogleMobilePurchase({
+          provider: "google",
+          productKind: catalogItem.productKind,
+          itemKey: catalogItem.itemKey,
+          targetProfileId: context?.targetProfileId,
+          purchaseToken: purchase.purchaseToken,
+          packageName: purchase.packageName,
+          productId: purchase.productId,
+          orderId: purchase.orderId ?? undefined,
+        });
+
+        if (response.googlePlay?.consumeStatus !== "consumed") {
+          try {
+            await GooglePlayBilling.consumePurchase({ purchaseToken: purchase.purchaseToken });
+          } catch (error) {
+            console.warn("Client fallback consume failed during Google Play recovery.", error);
+          }
+        }
+
+        clearGooglePlayPurchaseContext(catalogItem.itemKey);
+        recoveredCount += 1;
+        verified = true;
+        break;
+      } catch (error) {
+        if (attempt === maxAttempts - 1) {
+          console.warn("Unable to recover Google Play purchase.", error);
+          break;
+        }
+
+        await delay(1000 * 2 ** attempt);
+      }
+    }
+
+    if (verified) {
+      continue;
+    }
+  }
+
+  return { recoveredCount };
 }

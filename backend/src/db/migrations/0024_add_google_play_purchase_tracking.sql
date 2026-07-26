@@ -1,0 +1,14 @@
+ALTER TABLE purchases ADD COLUMN mobile_provider TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_purchase_token TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_package_name TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_product_id TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_order_id TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_purchase_state INTEGER;
+ALTER TABLE purchases ADD COLUMN mobile_consumption_state INTEGER;
+ALTER TABLE purchases ADD COLUMN mobile_acknowledgement_state INTEGER;
+ALTER TABLE purchases ADD COLUMN mobile_verified_at INTEGER;
+ALTER TABLE purchases ADD COLUMN mobile_consume_status TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_consume_attempt_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchases ADD COLUMN mobile_consume_last_attempt_at INTEGER;
+ALTER TABLE purchases ADD COLUMN mobile_consume_last_error TEXT;
+ALTER TABLE purchases ADD COLUMN mobile_consumed_at INTEGER;

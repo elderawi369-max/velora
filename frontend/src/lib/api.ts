@@ -708,6 +708,13 @@ export function verifyGoogleMobilePurchase(payload: {
   return request<{
     ok: true;
     purchase: { id: string; productKind: string; itemKey: string; status: string };
+    googlePlay?: {
+      purchaseState: number | null;
+      consumptionState: number | null;
+      acknowledgementState: number | null;
+      consumeStatus: string;
+      consumeError: string | null;
+    };
   }>("/api/payments/mobile/verify/google", {
     method: "POST",
     body: payload,

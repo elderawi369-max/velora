@@ -16,6 +16,7 @@ import com.android.billingclient.api.ProductDetails;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesUpdatedListener;
 import com.android.billingclient.api.QueryProductDetailsParams;
+import com.android.billingclient.api.QueryPurchasesParams;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -105,6 +106,33 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
                         result.put("purchaseToken", token);
                         call.resolve(result);
                     }
+                }
+            )
+        );
+    }
+
+    @PluginMethod
+    public void queryActivePurchases(PluginCall call) {
+        withReadyBillingClient(call, () ->
+            billingClient.queryPurchasesAsync(
+                QueryPurchasesParams.newBuilder()
+                    .setProductType(BillingClient.ProductType.INAPP)
+                    .build(),
+                (billingResult, purchaseList) -> {
+                    if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                        call.reject(resolveBillingMessage(billingResult, "Unable to query Google Play purchases."));
+                        return;
+                    }
+
+                    JSObject result = new JSObject();
+                    JSArray items = new JSArray();
+                    if (purchaseList != null) {
+                        for (Purchase purchase : purchaseList) {
+                            items.put(serializePurchase(purchase));
+                        }
+                    }
+                    result.put("purchases", items);
+                    call.resolve(result);
                 }
             )
         );

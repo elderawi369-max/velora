@@ -25,6 +25,25 @@ type GoogleServiceAccountCredentials = {
   token_uri?: string;
 };
 
+type GooglePurchaseVerification = {
+  purchaseState?: number;
+  consumptionState?: number;
+  acknowledgementState?: number;
+  orderId?: string;
+  error?: {
+    code?: number;
+    message?: string;
+  };
+};
+
+type GoogleConsumeResult = {
+  status: "not_applicable" | "already_consumed" | "consumed" | "failed";
+  purchaseState?: number;
+  consumptionState?: number;
+  acknowledgementState?: number;
+  error?: string;
+};
+
 class PaymentRouteError extends Error {
   status: number;
 
@@ -579,16 +598,7 @@ async function verifyGooglePurchase(
     },
   );
 
-  const data = (await response.json()) as {
-    purchaseState?: number;
-    consumptionState?: number;
-    acknowledgementState?: number;
-    orderId?: string;
-    error?: {
-      code?: number;
-      message?: string;
-    };
-  };
+  const data = (await response.json()) as GooglePurchaseVerification;
 
   if (!response.ok) {
     throw new PaymentRouteError(
@@ -616,6 +626,230 @@ async function verifyGooglePurchase(
   return data;
 }
 
+function isGooglePurchaseSettled(data: GooglePurchaseVerification) {
+  return data.consumptionState === 1 || data.acknowledgementState === 1;
+}
+
+async function syncGooglePurchaseState(
+  env: EnvBindings,
+  purchaseId: string,
+  input: {
+    provider?: string | null;
+    purchaseToken?: string | null;
+    packageName?: string | null;
+    productId?: string | null;
+    orderId?: string | null;
+    purchaseState?: number | null;
+    consumptionState?: number | null;
+    acknowledgementState?: number | null;
+    verifiedAt?: number | null;
+    consumeStatus?: string | null;
+    consumeAttemptCount?: number;
+    consumeLastAttemptAt?: number | null;
+    consumeLastError?: string | null;
+    consumedAt?: number | null;
+  },
+) {
+  const db = getDb(env);
+  await db
+    .update(purchases)
+    .set({
+      mobileProvider: input.provider ?? undefined,
+      mobilePurchaseToken: input.purchaseToken ?? undefined,
+      mobilePackageName: input.packageName ?? undefined,
+      mobileProductId: input.productId ?? undefined,
+      mobileOrderId: input.orderId ?? undefined,
+      mobilePurchaseState: input.purchaseState ?? undefined,
+      mobileConsumptionState: input.consumptionState ?? undefined,
+      mobileAcknowledgementState: input.acknowledgementState ?? undefined,
+      mobileVerifiedAt: input.verifiedAt ?? undefined,
+      mobileConsumeStatus: input.consumeStatus ?? undefined,
+      mobileConsumeAttemptCount: input.consumeAttemptCount ?? undefined,
+      mobileConsumeLastAttemptAt: input.consumeLastAttemptAt ?? undefined,
+      mobileConsumeLastError: input.consumeLastError ?? undefined,
+      mobileConsumedAt: input.consumedAt ?? undefined,
+    })
+    .where(eq(purchases.id, purchaseId));
+}
+
+async function consumeGooglePurchase(
+  env: EnvBindings,
+  input: {
+    packageName: string;
+    productId: string;
+    purchaseToken: string;
+  },
+) {
+  const accessToken = await getGooglePlayAccessToken(env);
+  const response = await fetch(
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(
+      input.packageName,
+    )}/purchases/products/${encodeURIComponent(input.productId)}/tokens/${encodeURIComponent(
+      input.purchaseToken,
+    )}:consume`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    },
+  );
+
+  if (!response.ok) {
+    let message = "Unable to consume Google Play purchase.";
+    try {
+      const data = (await response.json()) as GooglePurchaseVerification;
+      message = data.error?.message ?? message;
+    } catch {
+      const text = await response.text();
+      if (text.trim()) {
+        message = text.trim();
+      }
+    }
+
+    throw new PaymentRouteError(
+      message,
+      response.status === 401 || response.status === 403 ? 501 : 500,
+    );
+  }
+}
+
+async function consumeGooglePurchaseIfNeeded(
+  env: EnvBindings,
+  purchase: typeof purchases.$inferSelect,
+  verifiedState?: GooglePurchaseVerification,
+): Promise<GoogleConsumeResult> {
+  if (
+    purchase.mobileProvider !== "google" ||
+    !purchase.mobilePackageName ||
+    !purchase.mobileProductId ||
+    !purchase.mobilePurchaseToken
+  ) {
+    return { status: "not_applicable" };
+  }
+
+  const latestState =
+    verifiedState ??
+    (await verifyGooglePurchase(env, {
+      packageName: purchase.mobilePackageName,
+      productId: purchase.mobileProductId,
+      purchaseToken: purchase.mobilePurchaseToken,
+      orderId: purchase.mobileOrderId ?? undefined,
+    }));
+
+  const now = Date.now();
+  await syncGooglePurchaseState(env, purchase.id, {
+    provider: "google",
+    purchaseToken: purchase.mobilePurchaseToken,
+    packageName: purchase.mobilePackageName,
+    productId: purchase.mobileProductId,
+    orderId: latestState.orderId ?? purchase.mobileOrderId ?? null,
+    purchaseState: latestState.purchaseState ?? null,
+    consumptionState: latestState.consumptionState ?? null,
+    acknowledgementState: latestState.acknowledgementState ?? null,
+    verifiedAt: now,
+  });
+
+  if (isGooglePurchaseSettled(latestState)) {
+    await syncGooglePurchaseState(env, purchase.id, {
+      consumeStatus: "consumed",
+      consumedAt: purchase.mobileConsumedAt ?? now,
+      consumeLastError: null,
+    });
+
+    await logEvent(env, {
+      eventType: "google_mobile_purchase_already_consumed",
+      profileId: purchase.buyerProfileId,
+      eventData: {
+        purchaseId: purchase.id,
+        externalPaymentId: purchase.stripeSessionId,
+        productKind: purchase.productKind,
+        itemKey: purchase.itemKey,
+      },
+    });
+
+    return {
+      status: "already_consumed",
+      purchaseState: latestState.purchaseState,
+      consumptionState: latestState.consumptionState,
+      acknowledgementState: latestState.acknowledgementState,
+    };
+  }
+
+  const attemptCount = (purchase.mobileConsumeAttemptCount ?? 0) + 1;
+  const attemptAt = Date.now();
+
+  try {
+    await consumeGooglePurchase(env, {
+      packageName: purchase.mobilePackageName,
+      productId: purchase.mobileProductId,
+      purchaseToken: purchase.mobilePurchaseToken,
+    });
+
+    await syncGooglePurchaseState(env, purchase.id, {
+      consumeStatus: "consumed",
+      consumeAttemptCount: attemptCount,
+      consumeLastAttemptAt: attemptAt,
+      consumeLastError: null,
+      consumedAt: attemptAt,
+      consumptionState: 1,
+      acknowledgementState: latestState.acknowledgementState ?? 1,
+    });
+
+    await logEvent(env, {
+      eventType: "google_mobile_purchase_consumed",
+      profileId: purchase.buyerProfileId,
+      eventData: {
+        purchaseId: purchase.id,
+        externalPaymentId: purchase.stripeSessionId,
+        productKind: purchase.productKind,
+        itemKey: purchase.itemKey,
+        attemptCount,
+      },
+    });
+
+    return {
+      status: "consumed",
+      purchaseState: latestState.purchaseState,
+      consumptionState: 1,
+      acknowledgementState: latestState.acknowledgementState ?? 1,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to consume Google Play purchase.";
+
+    await syncGooglePurchaseState(env, purchase.id, {
+      consumeStatus: "failed",
+      consumeAttemptCount: attemptCount,
+      consumeLastAttemptAt: attemptAt,
+      consumeLastError: message,
+    });
+
+    await logEvent(env, {
+      eventType: "google_mobile_purchase_consume_failed",
+      profileId: purchase.buyerProfileId,
+      eventData: {
+        purchaseId: purchase.id,
+        externalPaymentId: purchase.stripeSessionId,
+        productKind: purchase.productKind,
+        itemKey: purchase.itemKey,
+        attemptCount,
+        error: message,
+      },
+    });
+
+    return {
+      status: "failed",
+      purchaseState: latestState.purchaseState,
+      consumptionState: latestState.consumptionState,
+      acknowledgementState: latestState.acknowledgementState,
+      error: message,
+    };
+  }
+}
+
 async function upsertAndFulfillMobilePurchase(
   env: EnvBindings,
   input: {
@@ -627,6 +861,13 @@ async function upsertAndFulfillMobilePurchase(
     itemKey: string;
     amountCents: number;
     rawPayload: Record<string, string | null | undefined>;
+    mobilePurchaseToken?: string;
+    mobilePackageName?: string;
+    mobileProductId?: string;
+    mobileOrderId?: string;
+    mobilePurchaseState?: number;
+    mobileConsumptionState?: number;
+    mobileAcknowledgementState?: number;
   },
 ) {
   const db = getDb(env);
@@ -654,6 +895,20 @@ async function upsertAndFulfillMobilePurchase(
     stripeSessionId: input.externalPaymentId,
     buyerProfileId: input.buyerProfileId,
     targetProfileId: input.targetProfileId,
+    mobileProvider: input.provider,
+    mobilePurchaseToken: input.mobilePurchaseToken ?? null,
+    mobilePackageName: input.mobilePackageName ?? null,
+    mobileProductId: input.mobileProductId ?? null,
+    mobileOrderId: input.mobileOrderId ?? null,
+    mobilePurchaseState: input.mobilePurchaseState ?? null,
+    mobileConsumptionState: input.mobileConsumptionState ?? null,
+    mobileAcknowledgementState: input.mobileAcknowledgementState ?? null,
+    mobileVerifiedAt: Date.now(),
+    mobileConsumeStatus: input.provider === "google" ? "pending" : null,
+    mobileConsumeAttemptCount: 0,
+    mobileConsumeLastAttemptAt: null,
+    mobileConsumeLastError: null,
+    mobileConsumedAt: null,
     productKind: input.productKind,
     itemKey: input.itemKey,
     amountCents: input.amountCents,
@@ -990,34 +1245,103 @@ paymentRoutes.post("/mobile/verify/google", async (c) => {
       return c.json({ error: "Invalid Google purchase verification payload." }, 400);
     }
 
+    const externalPaymentId = `google:${payload.data.purchaseToken}`;
+    const db = getDb(c.env);
+    const [existingPurchase] = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.stripeSessionId, externalPaymentId))
+      .limit(1);
+
     const product = assertCatalogItem(payload.data);
-    if (payload.data.productKind === "gift") {
+    if (!existingPurchase && payload.data.productKind === "gift") {
       await assertValidGiftTarget(c.env, own.profileId, payload.data.targetProfileId);
     }
 
-    await verifyGooglePurchase(c.env, {
+    const googleVerification = await verifyGooglePurchase(c.env, {
       packageName: payload.data.packageName,
       productId: payload.data.productId,
       purchaseToken: payload.data.purchaseToken,
       orderId: payload.data.orderId,
     });
 
-    const purchase = await upsertAndFulfillMobilePurchase(c.env, {
-      provider: "google",
-      externalPaymentId: `google:${payload.data.purchaseToken}`,
-      buyerProfileId: own.profileId,
-      targetProfileId: payload.data.targetProfileId ?? null,
-      productKind: payload.data.productKind,
-      itemKey: payload.data.itemKey,
-      amountCents: product.priceCents,
-      rawPayload: {
-        orderId: payload.data.orderId ?? null,
+    let purchase: typeof purchases.$inferSelect;
+
+    if (existingPurchase) {
+      if (existingPurchase.buyerProfileId !== own.profileId) {
+        return c.json({ error: "This purchase does not belong to you." }, 403);
+      }
+
+      await syncGooglePurchaseState(c.env, existingPurchase.id, {
+        provider: "google",
+        purchaseToken: payload.data.purchaseToken,
         packageName: payload.data.packageName,
         productId: payload.data.productId,
+        orderId: payload.data.orderId ?? googleVerification.orderId ?? null,
+        purchaseState: googleVerification.purchaseState ?? null,
+        consumptionState: googleVerification.consumptionState ?? null,
+        acknowledgementState: googleVerification.acknowledgementState ?? null,
+        verifiedAt: Date.now(),
+      });
+
+      purchase =
+        existingPurchase.status === "fulfilled"
+          ? {
+              ...existingPurchase,
+              mobileProvider: "google",
+              mobilePurchaseToken: payload.data.purchaseToken,
+              mobilePackageName: payload.data.packageName,
+              mobileProductId: payload.data.productId,
+              mobileOrderId: payload.data.orderId ?? googleVerification.orderId ?? null,
+              mobilePurchaseState: googleVerification.purchaseState ?? null,
+              mobileConsumptionState: googleVerification.consumptionState ?? null,
+              mobileAcknowledgementState: googleVerification.acknowledgementState ?? null,
+              mobileVerifiedAt: Date.now(),
+            }
+          : await fulfillPurchase(c.env, existingPurchase.id);
+    } else {
+      purchase = await upsertAndFulfillMobilePurchase(c.env, {
+        provider: "google",
+        externalPaymentId,
+        buyerProfileId: own.profileId,
+        targetProfileId: payload.data.targetProfileId ?? null,
+        productKind: payload.data.productKind,
+        itemKey: payload.data.itemKey,
+        amountCents: product.priceCents,
+        rawPayload: {
+          orderId: payload.data.orderId ?? null,
+          packageName: payload.data.packageName,
+          productId: payload.data.productId,
+        },
+        mobilePurchaseToken: payload.data.purchaseToken,
+        mobilePackageName: payload.data.packageName,
+        mobileProductId: payload.data.productId,
+        mobileOrderId: payload.data.orderId ?? googleVerification.orderId,
+        mobilePurchaseState: googleVerification.purchaseState,
+        mobileConsumptionState: googleVerification.consumptionState,
+        mobileAcknowledgementState: googleVerification.acknowledgementState,
+      });
+    }
+
+    const consumeResult = await consumeGooglePurchaseIfNeeded(c.env, purchase, googleVerification);
+
+    return c.json({
+      ok: true,
+      purchase,
+      googlePlay: {
+        purchaseState: googleVerification.purchaseState ?? null,
+        consumptionState:
+          consumeResult.status === "consumed"
+            ? 1
+            : googleVerification.consumptionState ?? null,
+        acknowledgementState:
+          consumeResult.status === "consumed"
+            ? googleVerification.acknowledgementState ?? 1
+            : googleVerification.acknowledgementState ?? null,
+        consumeStatus: consumeResult.status,
+        consumeError: consumeResult.error ?? null,
       },
     });
-
-    return c.json({ ok: true, purchase });
   } catch (error) {
     const status = (error instanceof PaymentRouteError ? error.status : 500) as
       | 400
