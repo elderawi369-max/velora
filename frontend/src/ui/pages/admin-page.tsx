@@ -7,6 +7,7 @@ import {
   fetchAdminReports,
   fetchSupportTickets,
   grantFounderCredits,
+  replyToSupportTicket,
   sendFounderGift,
   suspendProfile,
   unverifyProfile,
@@ -419,6 +420,9 @@ export function AdminPage() {
   const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
   const [creditGrantDrafts, setCreditGrantDrafts] = useState<Record<string, string>>({});
   const [giftDrafts, setGiftDrafts] = useState<Record<string, "rose" | "starlight" | "crown">>({});
+  const [supportReplyDrafts, setSupportReplyDrafts] = useState<
+    Record<string, { subject: string; message: string }>
+  >({});
   const [contentDrafts, setContentDrafts] = useState<
     Record<
       string,
@@ -536,6 +540,26 @@ export function AdminPage() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["adminAnalytics", activeAdminKey],
+      });
+    },
+  });
+
+  const supportReplyMutation = useMutation({
+    mutationFn: async (input: { ticketId: string; subject: string; message: string }) =>
+      replyToSupportTicket(activeAdminKey, input.ticketId, {
+        subject: input.subject,
+        message: input.message,
+      }),
+    onSuccess: async (_result, variables) => {
+      setSupportReplyDrafts((current) => ({
+        ...current,
+        [variables.ticketId]: {
+          subject: variables.subject,
+          message: "",
+        },
+      }));
+      await queryClient.invalidateQueries({
+        queryKey: ["adminSupportTickets", activeAdminKey],
       });
     },
   });
@@ -1365,25 +1389,100 @@ export function AdminPage() {
         <section className="card-grid">
           {tickets.map((ticket) => (
             <article className="card profile-card" key={ticket.id}>
-              <div className="chip-row">
-                <span className="chip">{ticket.status}</span>
-                <span className="chip chip-muted">{ticket.email}</span>
-              </div>
+              {(() => {
+                const replyDraft = supportReplyDrafts[ticket.id] ?? {
+                  subject: `Re: ${ticket.subject}`,
+                  message: "",
+                };
 
-              <div className="meta-group">
-                <span className="meta-title">Subject</span>
-                <p>{ticket.subject}</p>
-              </div>
+                return (
+                  <>
+                    <div className="chip-row">
+                      <span className="chip">{ticket.status}</span>
+                      <span className="chip chip-muted">{ticket.email}</span>
+                    </div>
 
-              <div className="meta-group">
-                <span className="meta-title">Message</span>
-                <p>{ticket.message}</p>
-              </div>
+                    <div className="meta-group">
+                      <span className="meta-title">Subject</span>
+                      <p>{ticket.subject}</p>
+                    </div>
 
-              <div className="meta-group">
-                <span className="meta-title">Profile</span>
-                <p>{ticket.profileId ?? "Submitted without a linked profile"}</p>
-              </div>
+                    <div className="meta-group">
+                      <span className="meta-title">Message</span>
+                      <p>{ticket.message}</p>
+                    </div>
+
+                    <div className="meta-group">
+                      <span className="meta-title">Profile</span>
+                      <p>{ticket.profileId ?? "Submitted without a linked profile"}</p>
+                    </div>
+
+                    <div className="meta-group">
+                      <span className="meta-title">Reply from founder console</span>
+                      <label className="field">
+                        <span>Subject</span>
+                        <input
+                          type="text"
+                          value={replyDraft.subject}
+                          onChange={(event) => {
+                            const nextSubject = event.target.value;
+                            setSupportReplyDrafts((current) => ({
+                              ...current,
+                              [ticket.id]: {
+                                ...replyDraft,
+                                subject: nextSubject,
+                              },
+                            }));
+                          }}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Reply</span>
+                        <textarea
+                          rows={5}
+                          value={replyDraft.message}
+                          onChange={(event) => {
+                            const nextMessage = event.target.value;
+                            setSupportReplyDrafts((current) => ({
+                              ...current,
+                              [ticket.id]: {
+                                ...replyDraft,
+                                message: nextMessage,
+                              },
+                            }));
+                          }}
+                          placeholder="Reply here. Velora will send this to the user's email."
+                        />
+                      </label>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={
+                          supportReplyMutation.isPending ||
+                          !replyDraft.subject.trim() ||
+                          replyDraft.message.trim().length < 10
+                        }
+                        onClick={() => {
+                          supportReplyMutation.mutate({
+                            ticketId: ticket.id,
+                            subject: replyDraft.subject.trim(),
+                            message: replyDraft.message.trim(),
+                          });
+                        }}
+                      >
+                        {supportReplyMutation.isPending ? "Sending reply..." : "Send reply"}
+                      </button>
+                      {supportReplyMutation.error ? (
+                        <p className="form-error">
+                          {supportReplyMutation.error instanceof Error
+                            ? supportReplyMutation.error.message
+                            : "Unable to send support reply."}
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                );
+              })()}
             </article>
           ))}
         </section>

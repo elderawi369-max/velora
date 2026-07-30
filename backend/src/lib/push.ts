@@ -1,12 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { pushDevices } from "../db/schema";
 import type { EnvBindings } from "./db";
+import { getUnreadBadgeCountForUser } from "./badges";
 import { getDb } from "./db";
 
 type PushPayload = {
   title: string;
   body: string;
   link?: string;
+  badgeCount?: number;
 };
 
 function isPushConfigured(env: EnvBindings) {
@@ -180,6 +182,10 @@ export async function sendPushToUser(
   }
 
   const accessToken = await getGoogleAccessToken(env);
+  const badgeCount =
+    typeof payload.badgeCount === "number"
+      ? Math.max(0, Math.floor(payload.badgeCount))
+      : await getUnreadBadgeCountForUser(env, userId);
   let delivered = 0;
 
   for (const device of devices) {
@@ -202,6 +208,7 @@ export async function sendPushToUser(
               link: payload.link ?? "/",
               title: payload.title,
               body: payload.body,
+              badgeCount: String(badgeCount),
             },
             webpush: {
               fcm_options: {
@@ -210,6 +217,10 @@ export async function sendPushToUser(
             },
             android: {
               priority: "high",
+              notification: {
+                channel_id: "velora_activity",
+                notification_count: badgeCount,
+              },
             },
           },
         }),

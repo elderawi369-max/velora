@@ -12,7 +12,9 @@
 		"GOOGLE_PLAY_PACKAGE_NAME": "com.velorachat.app",
 		"PAYPAL_ENV": "live",
 		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
-		"RESEND_FROM_NAME": "Velora"
+		"RESEND_FROM_NAME": "Velora",
+		"RESEND_SUPPORT_FROM_EMAIL": "support@velorachat.com",
+		"SUPPORT_REPLY_TO_EMAIL": "support@velorachat.com"
 	},
 	"routes": [
 		{

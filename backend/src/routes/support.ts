@@ -1,6 +1,7 @@
 import { Hono } from "hono";
+import { eq } from "drizzle-orm";
 import { getDb, type EnvBindings } from "../lib/db";
-import { supportTickets } from "../db/schema";
+import { profiles, supportTickets, users } from "../db/schema";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { supportTicketSchema } from "../lib/validation";
@@ -31,9 +32,30 @@ supportRoutes.post("/tickets", async (c) => {
     return c.json({ error: "Please complete the human verification check." }, 400);
   }
 
+  let linkedProfileId = own?.profileId ?? null;
+
+  if (!linkedProfileId) {
+    const db = getDb(c.env);
+    const [matchedUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, payload.data.email))
+      .limit(1);
+
+    if (matchedUser) {
+      const [matchedProfile] = await db
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(eq(profiles.userId, matchedUser.id))
+        .limit(1);
+
+      linkedProfileId = matchedProfile?.id ?? null;
+    }
+  }
+
   await getDb(c.env).insert(supportTickets).values({
     id: crypto.randomUUID(),
-    profileId: own?.profileId ?? null,
+    profileId: linkedProfileId,
     email: payload.data.email,
     subject: payload.data.subject,
     message: payload.data.message,

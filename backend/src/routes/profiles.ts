@@ -1169,7 +1169,11 @@ profileRoutes.post("/", async (c) => {
 
   const payload = profileSchema.safeParse(await c.req.json());
   if (!payload.success) {
-    return c.json({ error: "Invalid profile payload." }, 400);
+    const firstIssue = payload.error.issues[0];
+    return c.json(
+      { error: firstIssue?.message ? `Invalid profile: ${firstIssue.message}` : "Invalid profile payload." },
+      400,
+    );
   }
 
   if (profileContainsBlockedContactInfo(payload.data)) {
@@ -1301,7 +1305,11 @@ profileRoutes.put("/me", async (c) => {
 
   const payload = profileSchema.safeParse(await c.req.json());
   if (!payload.success) {
-    return c.json({ error: "Invalid profile payload." }, 400);
+    const firstIssue = payload.error.issues[0];
+    return c.json(
+      { error: firstIssue?.message ? `Invalid profile: ${firstIssue.message}` : "Invalid profile payload." },
+      400,
+    );
   }
 
   if (profileContainsBlockedContactInfo(payload.data)) {

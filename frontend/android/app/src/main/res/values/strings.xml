@@ -4,4 +4,7 @@
     <string name="title_activity_main">Velora</string>
     <string name="package_name">com.velorachat.app</string>
     <string name="custom_url_scheme">com.velorachat.app</string>
+    <string name="velora_notification_channel_id">velora_activity</string>
+    <string name="velora_notification_channel_name">Velora activity</string>
+    <string name="velora_notification_channel_description">Messages, challenges, gifts, and account activity.</string>
 </resources>

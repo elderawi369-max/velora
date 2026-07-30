@@ -16,6 +16,8 @@ export type EnvBindings = {
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
   RESEND_FROM_NAME?: string;
+  RESEND_SUPPORT_FROM_EMAIL?: string;
+  SUPPORT_REPLY_TO_EMAIL?: string;
   APPLE_BUNDLE_ID?: string;
   APPLE_SHARED_SECRET?: string;
   GOOGLE_PLAY_PACKAGE_NAME?: string;

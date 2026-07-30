@@ -62,8 +62,8 @@ export const profileSchema = z.object({
     .min(0)
     .max(3),
   avatarPreset: z.string().trim().min(1).max(30),
-  vibeTags: z.array(z.string().trim().min(1).max(24)).min(1).max(6),
-  boundaries: z.array(z.string().trim().min(1).max(40)).min(1).max(8),
+  vibeTags: z.array(z.string().trim().min(1).max(24)).min(0).max(6),
+  boundaries: z.array(z.string().trim().min(1).max(40)).min(0).max(8),
 });
 
 export const supportTicketSchema = z.object({

@@ -98,6 +98,17 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
     setIsSubmitting(true);
 
     try {
+      const shortPromptAnswer = promptEntries.find((entry) => {
+        const answerLength = entry.answer.trim().length;
+        return answerLength > 0 && answerLength < 4;
+      });
+
+      if (shortPromptAnswer) {
+        setError("Finish or clear any prompt answer shorter than 4 characters.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const payload = {
         username,
         displayName,
@@ -105,7 +116,7 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         identity,
         lookingFor,
         bio,
-        promptEntries: answeredPrompts,
+        promptEntries: answeredPrompts.filter((entry) => entry.answer.trim().length >= 4),
         avatarPreset,
         vibeTags,
         boundaries,

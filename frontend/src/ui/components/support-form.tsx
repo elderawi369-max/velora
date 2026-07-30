@@ -1,6 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useState } from "react";
-import { submitSupportTicket } from "../../lib/api";
+import { fetchSession, submitSupportTicket } from "../../lib/api";
 import { TurnstileWidget } from "./turnstile-widget";
 
 export function SupportForm() {
@@ -9,6 +11,18 @@ export function SupportForm() {
   const [message, setMessage] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [success, setSuccess] = useState("");
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+  });
+  const sessionEmail = sessionQuery.data?.user?.email?.toLowerCase() ?? "";
+
+  useEffect(() => {
+    if (!email && sessionEmail) {
+      setEmail(sessionEmail);
+    }
+  }, [email, sessionEmail]);
 
   const supportMutation = useMutation({
     mutationFn: submitSupportTicket,
@@ -31,6 +45,13 @@ export function SupportForm() {
           required
         />
       </label>
+
+      {sessionEmail ? (
+        <p className="status-message">
+          Signed in as <strong>{sessionEmail}</strong>. If this email already has a Velora profile,
+          the support ticket will be linked to it automatically.
+        </p>
+      ) : null}
 
       <label className="field">
         <span>Subject</span>

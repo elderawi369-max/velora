@@ -15,6 +15,7 @@ import { requireFounderAdmin } from "../lib/admin";
 import { logEvent } from "../lib/analytics";
 import { giftCatalog, createNotification, type GiftType } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
+import { sendSupportReplyEmail } from "../lib/email";
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
 
@@ -129,6 +130,11 @@ const adminGrantCreditsSchema = z.object({
 
 const adminFreeGiftSchema = z.object({
   giftType: z.enum(["rose", "starlight", "crown"]),
+});
+
+const adminSupportReplySchema = z.object({
+  subject: z.string().trim().min(4).max(160),
+  message: z.string().trim().min(10).max(4000),
 });
 
 adminRoutes.use("*", async (c, next) => {
@@ -1073,6 +1079,51 @@ adminRoutes.get("/support-tickets", async (c) => {
     .limit(200);
 
   return c.json({ tickets: rows });
+});
+
+adminRoutes.post("/support-tickets/:ticketId/reply", async (c) => {
+  const db = getDb(c.env);
+  const ticketId = c.req.param("ticketId");
+  const payload = adminSupportReplySchema.safeParse(await c.req.json());
+
+  if (!payload.success) {
+    return c.json({ error: "Invalid support reply payload." }, 400);
+  }
+
+  const [ticket] = await db
+    .select()
+    .from(supportTickets)
+    .where(eq(supportTickets.id, ticketId))
+    .limit(1);
+
+  if (!ticket) {
+    return c.json({ error: "Support ticket not found." }, 404);
+  }
+
+  await sendSupportReplyEmail(c.env, {
+    to: ticket.email,
+    subject: payload.data.subject,
+    message: payload.data.message,
+  });
+
+  await db
+    .update(supportTickets)
+    .set({
+      status: "replied",
+    })
+    .where(eq(supportTickets.id, ticketId));
+
+  await logEvent(c.env, {
+    eventType: "support_ticket_replied",
+    profileId: ticket.profileId,
+    eventData: {
+      ticketId: ticket.id,
+      email: ticket.email,
+      subject: payload.data.subject,
+    },
+  });
+
+  return c.json({ ok: true });
 });
 
 adminRoutes.get("/profiles/by-username/:username", async (c) => {

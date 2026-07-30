@@ -294,6 +294,24 @@ export function fetchSupportTickets(adminKey: string) {
   return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
 }
 
+export function replyToSupportTicket(
+  adminKey: string,
+  ticketId: string,
+  payload: {
+    subject: string;
+    message: string;
+  },
+) {
+  return adminRequest<{ ok: true }>(
+    `/api/admin/support-tickets/${ticketId}/reply`,
+    adminKey,
+    {
+      method: "POST",
+      body: payload,
+    },
+  );
+}
+
 export function fetchAdminProfileByUsername(adminKey: string, username: string) {
   return adminRequest<{ profile: AdminProfile }>(
     `/api/admin/profiles/by-username/${encodeURIComponent(username.trim().toLowerCase())}`,
