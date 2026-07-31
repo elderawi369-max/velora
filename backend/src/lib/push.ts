@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { pushDevices } from "../db/schema";
+import { logEvent } from "./analytics";
 import type { EnvBindings } from "./db";
 import { getUnreadBadgeCountForUser } from "./badges";
 import { getDb } from "./db";
@@ -164,6 +165,13 @@ export async function sendPushToUser(
   payload: PushPayload,
 ) {
   if (!isPushConfigured(env)) {
+    await logEvent(env, {
+      eventType: "push_delivery_skipped",
+      userId,
+      eventData: {
+        reason: "push_not_configured",
+      },
+    }).catch(() => undefined);
     return { delivered: 0, skipped: true };
   }
 
@@ -178,61 +186,100 @@ export async function sendPushToUser(
     .limit(20);
 
   if (devices.length === 0) {
+    await logEvent(env, {
+      eventType: "push_delivery_skipped",
+      userId,
+      eventData: {
+        reason: "no_registered_devices",
+      },
+    }).catch(() => undefined);
     return { delivered: 0, skipped: false };
   }
 
-  const accessToken = await getGoogleAccessToken(env);
-  const badgeCount =
-    typeof payload.badgeCount === "number"
-      ? Math.max(0, Math.floor(payload.badgeCount))
-      : await getUnreadBadgeCountForUser(env, userId);
-  let delivered = 0;
+  try {
+    const accessToken = await getGoogleAccessToken(env);
+    const badgeCount =
+      typeof payload.badgeCount === "number"
+        ? Math.max(0, Math.floor(payload.badgeCount))
+        : await getUnreadBadgeCountForUser(env, userId);
+    let delivered = 0;
 
-  for (const device of devices) {
-    const response = await fetch(
-      `https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          message: {
-            token: device.token,
-            data: {
-              link: payload.link ?? "/",
-              title: payload.title,
-              body: payload.body,
-              badgeCount: String(badgeCount),
-            },
-            webpush: {
-              notification: {
+    for (const device of devices) {
+      const response = await fetch(
+        `https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            message: {
+              token: device.token,
+              data: {
+                link: payload.link ?? "/",
                 title: payload.title,
                 body: payload.body,
+                badgeCount: String(badgeCount),
               },
-              fcm_options: {
-                link: payload.link ?? "/",
+              webpush: {
+                notification: {
+                  title: payload.title,
+                  body: payload.body,
+                },
+                fcm_options: {
+                  link: payload.link ?? "/",
+                },
+              },
+              android: {
+                priority: "high",
               },
             },
-            android: {
-              priority: "high",
-            },
-          },
-        }),
+          }),
+        },
+      );
+
+      if (response.ok) {
+        delivered += 1;
+        continue;
+      }
+
+      const raw = await response.text();
+      await logEvent(env, {
+        eventType: "push_delivery_failed",
+        userId,
+        eventData: {
+          deviceId: device.id,
+          status: response.status,
+          body: raw.slice(0, 800),
+        },
+      }).catch(() => undefined);
+
+      if (raw.includes("UNREGISTERED") || raw.includes("registration-token-not-registered")) {
+        await db.delete(pushDevices).where(eq(pushDevices.id, device.id));
+      }
+    }
+
+    if (delivered > 0) {
+      await logEvent(env, {
+        eventType: "push_delivery_sent",
+        userId,
+        eventData: {
+          delivered,
+          attempted: devices.length,
+        },
+      }).catch(() => undefined);
+    }
+
+    return { delivered, skipped: false };
+  } catch (error) {
+    await logEvent(env, {
+      eventType: "push_delivery_error",
+      userId,
+      eventData: {
+        message: error instanceof Error ? error.message : "Unknown push delivery error.",
       },
-    );
-
-    if (response.ok) {
-      delivered += 1;
-      continue;
-    }
-
-    const raw = await response.text();
-    if (raw.includes("UNREGISTERED") || raw.includes("registration-token-not-registered")) {
-      await db.delete(pushDevices).where(eq(pushDevices.id, device.id));
-    }
+    }).catch(() => undefined);
+    throw error;
   }
-
-  return { delivered, skipped: false };
 }

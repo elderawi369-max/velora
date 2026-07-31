@@ -7,22 +7,13 @@ export async function getUnreadBadgeCountForProfile(
   profileId: string,
 ) {
   const db = getDb(env);
-
-  const [conversationCountRow] = await db
+  const conversationRows = await db
     .select({
-      count: sql<number>`COALESCE(SUM((
-        SELECT COUNT(*)
-        FROM ${messages} AS unread_messages
-        WHERE unread_messages.${messages.conversationId.name} = ${conversations.id}
-          AND unread_messages.${messages.senderProfileId.name} = CASE
-            WHEN ${conversations.profileAId} = ${profileId} THEN ${conversations.profileBId}
-            ELSE ${conversations.profileAId}
-          END
-          AND unread_messages.${messages.createdAt.name} > CASE
-            WHEN ${conversations.profileAId} = ${profileId} THEN ${conversations.lastReadAtA}
-            ELSE ${conversations.lastReadAtB}
-          END
-      )), 0)`,
+      id: conversations.id,
+      profileAId: conversations.profileAId,
+      profileBId: conversations.profileBId,
+      lastReadAtA: conversations.lastReadAtA,
+      lastReadAtB: conversations.lastReadAtB,
     })
     .from(conversations)
     .where(
@@ -32,6 +23,34 @@ export async function getUnreadBadgeCountForProfile(
       ),
     );
 
+  let unreadConversationMessageCount = 0;
+
+  for (const conversation of conversationRows) {
+    const otherProfileId =
+      conversation.profileAId === profileId
+        ? conversation.profileBId
+        : conversation.profileAId;
+    const ownLastReadAt =
+      conversation.profileAId === profileId
+        ? conversation.lastReadAtA
+        : conversation.lastReadAtB;
+
+    const [messageCountRow] = await db
+      .select({
+        count: sql<number>`count(*)`,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversation.id),
+          eq(messages.senderProfileId, otherProfileId),
+          sql`${messages.createdAt} > ${ownLastReadAt}`,
+        ),
+      );
+
+    unreadConversationMessageCount += Number(messageCountRow?.count ?? 0);
+  }
+
   const [notificationCountRow] = await db
     .select({
       count: sql<number>`count(*)`,
@@ -39,7 +58,7 @@ export async function getUnreadBadgeCountForProfile(
     .from(notifications)
     .where(and(eq(notifications.profileId, profileId), isNull(notifications.readAt)));
 
-  return Number(conversationCountRow?.count ?? 0) + Number(notificationCountRow?.count ?? 0);
+  return unreadConversationMessageCount + Number(notificationCountRow?.count ?? 0);
 }
 
 export async function getUnreadBadgeCountForUser(
