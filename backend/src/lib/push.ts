@@ -200,10 +200,6 @@ export async function sendPushToUser(
         body: JSON.stringify({
           message: {
             token: device.token,
-            notification: {
-              title: payload.title,
-              body: payload.body,
-            },
             data: {
               link: payload.link ?? "/",
               title: payload.title,
@@ -211,16 +207,16 @@ export async function sendPushToUser(
               badgeCount: String(badgeCount),
             },
             webpush: {
+              notification: {
+                title: payload.title,
+                body: payload.body,
+              },
               fcm_options: {
                 link: payload.link ?? "/",
               },
             },
             android: {
               priority: "high",
-              notification: {
-                channel_id: "velora_activity",
-                notification_count: badgeCount,
-              },
             },
           },
         }),

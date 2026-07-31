@@ -16,6 +16,12 @@ import {
   getPushAvailabilityMessage,
   isNativeAndroidApp,
 } from "../../lib/push";
+import {
+  clearNativeAppBadgeCount,
+  getNativeAppBadgeSupport,
+  sendNativeAppBadgeTestNotification,
+  setNativeAppBadgeTestCount,
+} from "../../lib/app-badge";
 
 const adminStorageKey = "velora-admin-key";
 const founderEmail = "elderawi369@gmail.com";
@@ -29,6 +35,8 @@ export function AccountSettingsPanel() {
     queryFn: fetchSession,
     retry: false,
   });
+  const canAccessAdmin =
+    sessionQuery.data?.user?.email?.toLowerCase() === founderEmail;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changeMessage, setChangeMessage] = useState("");
@@ -39,6 +47,9 @@ export function AccountSettingsPanel() {
   const [pushMessage, setPushMessage] = useState("");
   const [pushError, setPushError] = useState("");
   const [pushPermissionState, setPushPermissionState] = useState("");
+  const [badgeSupport, setBadgeSupport] = useState<"" | "checking" | "supported" | "unsupported">("");
+  const [badgeMessage, setBadgeMessage] = useState("");
+  const [badgeError, setBadgeError] = useState("");
   const [adminKey, setAdminKey] = useState(
     typeof window !== "undefined"
       ? window.localStorage.getItem(adminStorageKey) ?? ""
@@ -82,6 +93,33 @@ export function AccountSettingsPanel() {
       window.removeEventListener("focus", handleWindowFocus);
     };
   }, []);
+
+  useEffect(() => {
+    if (!nativeAndroid || !canAccessAdmin) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadBadgeSupport() {
+      setBadgeSupport("checking");
+      try {
+        const supported = await getNativeAppBadgeSupport();
+        if (!cancelled) {
+          setBadgeSupport(supported ? "supported" : "unsupported");
+        }
+      } catch {
+        if (!cancelled) {
+          setBadgeSupport("unsupported");
+        }
+      }
+    }
+
+    void loadBadgeSupport();
+    return () => {
+      cancelled = true;
+    };
+  }, [canAccessAdmin, nativeAndroid]);
 
   const changePasswordMutation = useMutation({
     mutationFn: changePassword,
@@ -156,8 +194,6 @@ export function AccountSettingsPanel() {
     },
   });
 
-  const canAccessAdmin =
-    sessionQuery.data?.user?.email?.toLowerCase() === founderEmail;
   const showAndroidSettingsWarning = nativeAndroid && pushPermissionState === "denied";
 
   return (
@@ -333,6 +369,67 @@ export function AccountSettingsPanel() {
                 }}
               >
                 Clear admin key
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {canAccessAdmin && nativeAndroid ? (
+          <section className="panel form-panel settings-subpanel">
+            <span className="meta-title">Android badge test</span>
+            <p className="status-message">
+              Test whether this phone and launcher can show a numbered Velora app-icon badge.
+            </p>
+            <div className="chip-row">
+              <span className="chip chip-muted">
+                Badge support:{" "}
+                {badgeSupport === "checking"
+                  ? "Checking..."
+                  : badgeSupport === "supported"
+                    ? "Supported"
+                    : badgeSupport === "unsupported"
+                      ? "Not supported"
+                      : "Unknown"}
+              </span>
+              <span className="chip chip-muted">
+                Notifications: {pushPermissionState || "unknown"}
+              </span>
+            </div>
+            {badgeError ? <p className="form-error">{badgeError}</p> : null}
+            {badgeMessage ? <p className="success-message">{badgeMessage}</p> : null}
+            <div className="action-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={async () => {
+                  setBadgeError("");
+                  setBadgeMessage("");
+                  const result = await sendNativeAppBadgeTestNotification(7);
+                  if (!result.supported) {
+                    setBadgeError(
+                      "Velora could not post the badge test notification. Enable notifications for the app, then try again.",
+                    );
+                    return;
+                  }
+                  void setNativeAppBadgeTestCount(7);
+                  setBadgeMessage(
+                    "Badge test notification sent. Go to the home screen and check whether Velora shows 7.",
+                  );
+                }}
+              >
+                Test badge 7
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={async () => {
+                  setBadgeError("");
+                  setBadgeMessage("");
+                  await clearNativeAppBadgeCount();
+                  setBadgeMessage("Badge cleared for Velora.");
+                }}
+              >
+                Clear badge
               </button>
             </div>
           </section>
