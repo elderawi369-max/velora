@@ -3,6 +3,12 @@ import { cors } from "hono/cors";
 import { apiRoutes } from "./routes";
 import type { EnvBindings } from "./lib/db";
 import { seedDatabase } from "./db/seed";
+import { getUserIdFromSession } from "./lib/auth";
+import {
+  maybeGrantStarterCredits,
+  readClientIp,
+  readInstallId,
+} from "./lib/starter-credits";
 import { sendDailyRetentionReminders } from "./lib/streaks";
 
 const app = new Hono<{ Bindings: EnvBindings }>();
@@ -35,6 +41,24 @@ app.use(
     credentials: true,
   }),
 );
+
+app.use("/api/*", async (c, next) => {
+  const userId = await getUserIdFromSession(
+    c.env,
+    c.req.header("Cookie"),
+    c.req.header("Authorization"),
+  );
+
+  if (userId) {
+    await maybeGrantStarterCredits(c.env, {
+      userId,
+      installId: readInstallId(c.req.header("X-Velora-Install-Id")),
+      ip: readClientIp(c.req.header("CF-Connecting-IP")),
+    });
+  }
+
+  await next();
+});
 
 app.get("/", (c) => {
   return c.json({

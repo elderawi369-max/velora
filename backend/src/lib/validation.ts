@@ -49,7 +49,7 @@ export const profileSchema = z.object({
     "emotionally distant",
     "roleplay / fantasy",
   ]),
-  identity: z.enum(["woman", "man", "prefer not to say"]),
+  identity: z.enum(["woman", "man"]),
   lookingFor: z.enum(["women", "men", "any"]),
   bio: z.string().trim().min(10).max(280),
   promptEntries: z

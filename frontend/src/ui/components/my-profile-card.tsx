@@ -128,6 +128,7 @@ export function MyProfileCard() {
   }
 
   const profile = data.profile;
+  const identityLabel = formatIdentityLabel(profile.identity);
   const visiblePreferences = profile.boundaries.filter(
     (item) => !platformRules.includes(item as (typeof platformRules)[number]),
   );
@@ -147,7 +148,7 @@ export function MyProfileCard() {
       <div className="chip-row">
         <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
         <span className="chip">{profile.personalityType}</span>
-        <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
+        {identityLabel ? <span className="chip chip-muted">{identityLabel}</span> : null}
         <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
         {profile.trustSignals.map((signal) => (
           <span className="chip" key={signal}>

@@ -13,7 +13,7 @@ import { logEvent } from "./analytics";
 import { createNotification } from "./commerce";
 
 export const starterCreditAmount = 2;
-export const starterCreditAccountAgeMs = 1000 * 60 * 60 * 24;
+export const starterCreditAccountAgeMs = 1000 * 60 * 60 * 48;
 export const starterCreditInstallCooldownMs = 1000 * 60 * 60 * 24;
 export const starterCreditIpCooldownMs = 1000 * 60 * 60 * 24;
 export const newAccountPendingChallengeWindowMs = 1000 * 60 * 60 * 24;
@@ -34,17 +34,23 @@ export function readClientIp(value: string | undefined) {
   return ip.length > 0 && ip.length <= 128 ? ip : null;
 }
 
-export function isFullProfile(input: {
+export function hasStarterCreditEligibleCoreProfile(input: {
+  username: string;
+  displayName: string;
+  personalityType: string;
+  identity: string;
+  lookingFor: string;
   bio: string;
-  promptEntries: Array<{ question: string; answer: string }>;
-  vibeTags: string[];
-  boundaries: string[];
+  avatarPreset: string;
 }) {
   return (
-    input.bio.trim().length >= 20 &&
-    input.promptEntries.length >= 1 &&
-    input.vibeTags.length >= 1 &&
-    input.boundaries.length >= 1
+    input.username.trim().length >= 3 &&
+    input.displayName.trim().length >= 2 &&
+    input.personalityType.trim().length >= 1 &&
+    input.identity.trim().length >= 1 &&
+    input.lookingFor.trim().length >= 1 &&
+    input.bio.trim().length >= 10 &&
+    input.avatarPreset.trim().length >= 1
   );
 }
 
@@ -102,10 +108,13 @@ export async function maybeGrantStarterCredits(
       userId: users.id,
       userCreatedAt: users.createdAt,
       profileId: profiles.id,
+      username: profiles.username,
+      displayName: profiles.displayName,
+      personalityType: profiles.personalityType,
+      identity: profiles.identity,
+      lookingFor: profiles.lookingFor,
       bio: profiles.bio,
-      promptEntries: profiles.promptEntries,
-      vibeTags: profiles.vibeTags,
-      boundaries: profiles.boundaries,
+      avatarPreset: profiles.avatarPreset,
       starterCreditsGrantedAt: profiles.starterCreditsGrantedAt,
     })
     .from(users)
@@ -116,10 +125,13 @@ export async function maybeGrantStarterCredits(
   if (
     !row?.profileId ||
     row.starterCreditsGrantedAt ||
+    row.username == null ||
+    row.displayName == null ||
+    row.personalityType == null ||
+    row.identity == null ||
+    row.lookingFor == null ||
     row.bio == null ||
-    row.promptEntries == null ||
-    row.vibeTags == null ||
-    row.boundaries == null
+    row.avatarPreset == null
   ) {
     return null;
   }
@@ -129,16 +141,15 @@ export async function maybeGrantStarterCredits(
     return null;
   }
 
-  const promptEntries = JSON.parse(row.promptEntries) as Array<{ question: string; answer: string }>;
-  const vibeTags = JSON.parse(row.vibeTags) as string[];
-  const boundaries = JSON.parse(row.boundaries) as string[];
-
   if (
-    !isFullProfile({
+    !hasStarterCreditEligibleCoreProfile({
+      username: row.username,
+      displayName: row.displayName,
+      personalityType: row.personalityType,
+      identity: row.identity,
+      lookingFor: row.lookingFor,
       bio: row.bio,
-      promptEntries,
-      vibeTags,
-      boundaries,
+      avatarPreset: row.avatarPreset,
     })
   ) {
     return null;

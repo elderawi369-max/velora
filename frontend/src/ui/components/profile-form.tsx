@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  formatAvatarPreviewLabel,
   identityOptions,
+  isLegacyIdentity,
   lookingForOptions,
-  personalityTypeIcons,
-  personalityTypeAvatarMap,
+  getPersonalityAvatarPreset,
   personalityTypeDescriptions,
   personalityTypeOptions,
   platformRules,
@@ -60,7 +61,9 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
     initialProfile?.personalityType ?? "soft / sweet",
   );
   const [identity, setIdentity] = useState<string>(
-    initialProfile?.identity ?? "prefer not to say",
+    initialProfile?.identity && !isLegacyIdentity(initialProfile.identity)
+      ? initialProfile.identity
+      : "",
   );
   const [lookingFor, setLookingFor] = useState<string>(initialProfile?.lookingFor ?? "any");
   const [bio, setBio] = useState(initialProfile?.bio ?? "");
@@ -79,10 +82,8 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(mode === "edit");
-  const avatarPreset =
-    personalityTypeAvatarMap[
-      personalityType as keyof typeof personalityTypeAvatarMap
-    ] ?? "rose";
+  const avatarPreset = getPersonalityAvatarPreset(personalityType, identity);
+  const hasLegacyIdentity = Boolean(initialProfile?.identity && isLegacyIdentity(initialProfile.identity));
   const answeredPrompts = promptEntries.filter((entry) => entry.answer.trim().length > 0);
   const completionCount = countProfileCompletion({
     bio,
@@ -102,6 +103,24 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         const answerLength = entry.answer.trim().length;
         return answerLength > 0 && answerLength < 4;
       });
+      const selectedIdentity = identity;
+
+      if (selectedIdentity !== "woman" && selectedIdentity !== "man") {
+        setError("Choose whether your profile appears as woman or man before saving.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const selectedAvatarPreset = getPersonalityAvatarPreset(
+        personalityType,
+        selectedIdentity,
+      );
+
+      if (!selectedAvatarPreset) {
+        setError("Unable to assign your portrait avatar. Try changing personality or identity.");
+        setIsSubmitting(false);
+        return;
+      }
 
       if (shortPromptAnswer) {
         setError("Finish or clear any prompt answer shorter than 4 characters.");
@@ -113,11 +132,11 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
         username,
         displayName,
         personalityType,
-        identity,
+        identity: selectedIdentity,
         lookingFor,
         bio,
         promptEntries: answeredPrompts.filter((entry) => entry.answer.trim().length >= 4),
-        avatarPreset,
+        avatarPreset: selectedAvatarPreset,
         vibeTags,
         boundaries,
       };
@@ -234,12 +253,20 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
           <label className="field">
             <span>I am</span>
             <select value={identity} onChange={(event) => setIdentity(event.target.value)}>
+              <option value="" disabled>
+                Choose one
+              </option>
               {identityOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
               ))}
             </select>
+            {hasLegacyIdentity ? (
+              <small className="form-hint">
+                Your older profile used a retired identity setting. Choose woman or man to keep updating this profile.
+              </small>
+            ) : null}
           </label>
 
           <label className="field">
@@ -275,20 +302,27 @@ export function ProfileForm({ mode = "create", initialProfile = null }: ProfileF
 
         <div className="picker-group">
           <span className="picker-label">Profile picture</span>
-          <div className="chip-row">
-            <ProfileAvatar
-              personalityType={personalityType}
-              identity={identity}
-              size="large"
-            />
-            <span className="chip">
-              {personalityTypeIcons[
-                personalityType as keyof typeof personalityTypeIcons
-              ]} {avatarPreset}
-            </span>
+            <div className="chip-row">
+              <ProfileAvatar
+                personalityType={personalityType}
+                identity={identity || initialProfile?.identity}
+                size="medium"
+              />
+              {avatarPreset ? (
+                <span className="chip">
+                  {formatAvatarPreviewLabel(
+                    personalityType,
+                    identity || initialProfile?.identity,
+                  )}
+                </span>
+              ) : (
+                <span className="chip chip-muted">
+                Choose woman or man to unlock the new portrait avatar.
+              </span>
+            )}
           </div>
           <p className="status-message">
-            Your profile picture is assigned automatically from your personality type.
+            Your profile picture is assigned automatically from your personality type and identity.
           </p>
         </div>
 

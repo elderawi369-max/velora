@@ -11,6 +11,12 @@ type SupportReplyEmailInput = {
   message: string;
 };
 
+type FounderAnnouncementEmailInput = {
+  to: string;
+  subject: string;
+  message: string;
+};
+
 function isResendConfigured(env: EnvBindings) {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_EMAIL);
 }
@@ -101,6 +107,37 @@ export async function sendSupportReplyEmail(
         <h1 style="margin-bottom: 12px;">Velora support reply</h1>
         <p>${escapedMessage}</p>
         <p style="margin-top: 20px;">Reply to this email if you still need help.</p>
+      </div>
+    `,
+  });
+}
+
+export async function sendFounderAnnouncementEmail(
+  env: EnvBindings,
+  input: FounderAnnouncementEmailInput,
+) {
+  const escapedMessage = input.message
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replaceAll("\n", "<br />"))
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph}</p>`)
+    .join("");
+
+  return sendResendEmail(env, {
+    to: input.to,
+    subject: input.subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #241622;">
+        <h1 style="margin-bottom: 12px;">A quick update from Velora</h1>
+        ${escapedMessage}
+        <p style="margin-top: 24px;">
+          <a href="https://app.velorachat.com" style="display:inline-block;padding:12px 18px;background:#b14f69;color:#fff;text-decoration:none;border-radius:999px;">
+            Open Velora
+          </a>
+        </p>
       </div>
     `,
   });

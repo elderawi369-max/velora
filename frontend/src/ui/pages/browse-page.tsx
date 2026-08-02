@@ -6,8 +6,8 @@ export function BrowsePage() {
       <section className="section-copy">
         <p className="eyebrow">Discovery</p>
         <h1>Browse profiles designed for recurring conversations.</h1>
-        <p className="intro">
-          Complete profiles and active tones usually turn into better replies, so this page is built to help people find momentum faster.
+        <p className="intro browse-roleplay-callout">
+          Try a playful role, lean into fantasy, or test the chemistry fast. Velora hits harder when people bring a clear vibe and let the conversation feel a little cinematic.
         </p>
       </section>
 

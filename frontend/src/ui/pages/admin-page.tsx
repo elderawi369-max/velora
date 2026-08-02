@@ -5,9 +5,11 @@ import {
   fetchAdminConversation,
   fetchAdminAnalytics,
   fetchAdminReports,
+  fetchStarterCreditEligibleUsers,
   fetchSupportTickets,
   grantFounderCredits,
   replyToSupportTicket,
+  sendStarterCreditEmailBatch,
   sendFounderGift,
   suspendProfile,
   unverifyProfile,
@@ -22,6 +24,7 @@ import {
   type GooglePlayBillingPurchase,
   type GooglePlayBillingSummary,
   type SignupFunnelPeriod,
+  type StarterCreditEligibleUser,
 } from "../../lib/admin-api";
 
 const adminStorageKey = "velora-admin-key";
@@ -77,6 +80,27 @@ function formatDateTime(timestamp: number | null) {
     minute: "2-digit",
   });
 }
+
+const starterCreditCampaignDefaultSubject = "Your Velora starter credits are waiting";
+
+const starterCreditCampaignDefaultMessage = `Hi,
+
+Your Velora profile now looks ready to unlock 2 complimentary Challenge Credits.
+
+You can use them for fun inside Velora:
+- Vibe Check to compare chemistry
+- Trivia Challenge to break the ice
+- Live trivia when someone else is active
+
+If everything on your account still checks out, Velora will add the credits automatically when you open the app.
+
+To avoid missing replies, challenge invites, and reward moments, please turn notifications on for Velora in your phone settings.
+
+Open Velora here:
+https://app.velorachat.com
+
+See you inside,
+Velora`;
 
 function getPromptDraft(
   promptEntries: Array<{ question: string; answer: string }>,
@@ -420,6 +444,15 @@ export function AdminPage() {
   const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
   const [creditGrantDrafts, setCreditGrantDrafts] = useState<Record<string, string>>({});
   const [giftDrafts, setGiftDrafts] = useState<Record<string, "rose" | "starlight" | "crown">>({});
+  const [selectedStarterCreditProfileIds, setSelectedStarterCreditProfileIds] = useState<
+    Record<string, boolean>
+  >({});
+  const [starterCreditEmailSubject, setStarterCreditEmailSubject] = useState(
+    starterCreditCampaignDefaultSubject,
+  );
+  const [starterCreditEmailMessage, setStarterCreditEmailMessage] = useState(
+    starterCreditCampaignDefaultMessage,
+  );
   const [supportReplyDrafts, setSupportReplyDrafts] = useState<
     Record<string, { subject: string; message: string }>
   >({});
@@ -452,6 +485,11 @@ export function AdminPage() {
   const ticketsQuery = useQuery({
     queryKey: ["adminSupportTickets", activeAdminKey],
     queryFn: () => fetchSupportTickets(activeAdminKey),
+    enabled: Boolean(activeAdminKey),
+  });
+  const starterCreditEligibleUsersQuery = useQuery({
+    queryKey: ["adminStarterCreditEligibleUsers", activeAdminKey],
+    queryFn: () => fetchStarterCreditEligibleUsers(activeAdminKey),
     enabled: Boolean(activeAdminKey),
   });
   const conversationQuery = useQuery({
@@ -564,6 +602,23 @@ export function AdminPage() {
     },
   });
 
+  const starterCreditEmailMutation = useMutation({
+    mutationFn: async (input: { profileIds: string[]; subject: string; message: string }) =>
+      sendStarterCreditEmailBatch(activeAdminKey, input),
+    onSuccess: async (_result, variables) => {
+      setSelectedStarterCreditProfileIds((current) => {
+        const next = { ...current };
+        for (const profileId of variables.profileIds) {
+          delete next[profileId];
+        }
+        return next;
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["adminStarterCreditEligibleUsers", activeAdminKey],
+      });
+    },
+  });
+
   const profileLookupMutation = useMutation({
     mutationFn: async (username: string) =>
       fetchAdminProfileByUsername(activeAdminKey, username),
@@ -581,7 +636,16 @@ export function AdminPage() {
 
   const reports = useMemo(() => reportsQuery.data?.reports ?? [], [reportsQuery.data]);
   const tickets = useMemo(() => ticketsQuery.data?.tickets ?? [], [ticketsQuery.data]);
+  const starterCreditEligibleUsers = useMemo(
+    () => starterCreditEligibleUsersQuery.data?.users ?? [],
+    [starterCreditEligibleUsersQuery.data],
+  );
   const analytics = analyticsQuery.data;
+  const selectedStarterCreditRecipients = useMemo(
+    () =>
+      starterCreditEligibleUsers.filter((user) => selectedStarterCreditProfileIds[user.profileId]),
+    [selectedStarterCreditProfileIds, starterCreditEligibleUsers],
+  );
 
   useEffect(() => {
     if (!reports.length) {
@@ -618,6 +682,23 @@ export function AdminPage() {
     );
   }
 
+  function toggleStarterCreditRecipient(profileId: string) {
+    setSelectedStarterCreditProfileIds((current) => ({
+      ...current,
+      [profileId]: !current[profileId],
+    }));
+  }
+
+  function selectAllStarterCreditRecipients() {
+    setSelectedStarterCreditProfileIds(
+      Object.fromEntries(starterCreditEligibleUsers.map((user) => [user.profileId, true])),
+    );
+  }
+
+  function clearStarterCreditRecipients() {
+    setSelectedStarterCreditProfileIds({});
+  }
+
   function renderProfileCleanupCard(profile: AdminProfile, summary?: React.ReactNode) {
     const suspended = Boolean(profile.suspendedAt);
     const verifiedHuman = Boolean(profile.verifiedHumanAt);
@@ -628,15 +709,29 @@ export function AdminPage() {
       };
 
     return (
-      <article className="card profile-card" key={profile.id}>
-        <div className="meta-group">
-          <span className="meta-title">Target profile</span>
-          <p>
-            {profile.displayName} (@{profile.username})
-          </p>
-        </div>
+        <article className="card profile-card" key={profile.id}>
+          <div className="meta-group">
+            <span className="meta-title">Target profile</span>
+            <p>
+              {profile.displayName} (@{profile.username})
+            </p>
+          </div>
 
-        {summary ?? null}
+          {profile.email ? (
+            <div className="meta-group">
+              <span className="meta-title">Account email</span>
+              <p>{profile.email}</p>
+            </div>
+          ) : null}
+
+          {profile.createdAt ? (
+            <div className="meta-group">
+              <span className="meta-title">Created</span>
+              <p>{formatDate(profile.createdAt)}</p>
+            </div>
+          ) : null}
+
+          {summary ?? null}
 
         <div className="chip-row">
           {verifiedHuman ? <span className="chip">Verified human</span> : null}
@@ -1369,6 +1464,153 @@ export function AdminPage() {
             </article>
           );
         })}
+      </section>
+
+      <section className="content-section">
+        <section className="section-copy">
+          <p className="eyebrow">Starter credits</p>
+          <h2>See who is ready, pick recipients, and send the re-engagement email from here.</h2>
+        </section>
+
+        {starterCreditEligibleUsersQuery.isLoading ? (
+          <p className="status-message">Loading starter-credit eligible users...</p>
+        ) : null}
+
+        <section className="panel">
+          <div className="chip-row">
+            <span className="chip">{starterCreditEligibleUsers.length} eligible users</span>
+            <span className="chip chip-muted">
+              {selectedStarterCreditRecipients.length} selected for email
+            </span>
+          </div>
+
+          <div className="action-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={selectAllStarterCreditRecipients}
+              disabled={!starterCreditEligibleUsers.length}
+            >
+              Select all
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={clearStarterCreditRecipients}
+              disabled={!selectedStarterCreditRecipients.length}
+            >
+              Clear selection
+            </button>
+          </div>
+
+          <div className="meta-group">
+            <span className="meta-title">One-time email copy</span>
+            <label className="field">
+              <span>Subject</span>
+              <input
+                type="text"
+                value={starterCreditEmailSubject}
+                onChange={(event) => setStarterCreditEmailSubject(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Message</span>
+              <textarea
+                rows={14}
+                value={starterCreditEmailMessage}
+                onChange={(event) => setStarterCreditEmailMessage(event.target.value)}
+              />
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={
+                starterCreditEmailMutation.isPending ||
+                selectedStarterCreditRecipients.length === 0 ||
+                starterCreditEmailSubject.trim().length < 4 ||
+                starterCreditEmailMessage.trim().length < 20
+              }
+              onClick={() =>
+                starterCreditEmailMutation.mutate({
+                  profileIds: selectedStarterCreditRecipients.map((user) => user.profileId),
+                  subject: starterCreditEmailSubject.trim(),
+                  message: starterCreditEmailMessage.trim(),
+                })
+              }
+            >
+              {starterCreditEmailMutation.isPending
+                ? "Sending starter-credit email..."
+                : `Send to ${selectedStarterCreditRecipients.length} selected users`}
+            </button>
+            {starterCreditEmailMutation.isSuccess ? (
+              <p className="status-message">
+                Sent {starterCreditEmailMutation.data.sentCount} emails.
+                {starterCreditEmailMutation.data.skippedCount
+                  ? ` Skipped ${starterCreditEmailMutation.data.skippedCount}.`
+                  : null}
+              </p>
+            ) : null}
+            {starterCreditEmailMutation.error ? (
+              <p className="form-error">
+                {starterCreditEmailMutation.error instanceof Error
+                  ? starterCreditEmailMutation.error.message
+                  : "Unable to send starter-credit emails."}
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        {activeAdminKey &&
+        !starterCreditEligibleUsersQuery.isLoading &&
+        starterCreditEligibleUsers.length === 0 ? (
+          <section className="panel empty-state">
+            <h2>No starter-credit candidates right now.</h2>
+            <p>Everyone matching the current rule has either already been granted credits or does not qualify yet.</p>
+          </section>
+        ) : null}
+
+        {starterCreditEligibleUsers.length > 0 ? (
+          <section className="panel">
+            <div className="meta-group">
+              <span className="meta-title">Eligible users</span>
+              <p>Pick exactly who you want to contact. Last emailed helps avoid repeats.</p>
+            </div>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Send</th>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Created</th>
+                    <th>Credits</th>
+                    <th>Last emailed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {starterCreditEligibleUsers.map((user: StarterCreditEligibleUser) => (
+                    <tr key={user.profileId}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selectedStarterCreditProfileIds[user.profileId])}
+                          onChange={() => toggleStarterCreditRecipient(user.profileId)}
+                        />
+                      </td>
+                      <td>
+                        {user.displayName} (@{user.username})
+                      </td>
+                      <td>{user.email}</td>
+                      <td>{formatDateTime(user.userCreatedAt)}</td>
+                      <td>{user.challengeCredits}</td>
+                      <td>{user.lastEmailSentAt ? formatDateTime(user.lastEmailSentAt) : "Never"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
       </section>
 
       <section className="content-section">

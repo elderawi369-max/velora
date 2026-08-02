@@ -10,12 +10,13 @@ import {
   profiles,
   reports,
   supportTickets,
+  users,
 } from "../db/schema";
 import { requireFounderAdmin } from "../lib/admin";
 import { logEvent } from "../lib/analytics";
 import { giftCatalog, createNotification, type GiftType } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
-import { sendSupportReplyEmail } from "../lib/email";
+import { sendFounderAnnouncementEmail, sendSupportReplyEmail } from "../lib/email";
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
 
@@ -137,6 +138,12 @@ const adminSupportReplySchema = z.object({
   message: z.string().trim().min(10).max(4000),
 });
 
+const adminStarterCreditEmailSchema = z.object({
+  profileIds: z.array(z.string().trim().min(1)).min(1).max(100),
+  subject: z.string().trim().min(4).max(160),
+  message: z.string().trim().min(20).max(4000),
+});
+
 adminRoutes.use("*", async (c, next) => {
   await requireFounderAdmin(c);
   await next();
@@ -167,6 +174,51 @@ async function queryFirst<T extends Record<string, unknown>>(
 ) {
   const rows = await queryAll<T>(env, query, bindings);
   return rows[0] ?? null;
+}
+
+async function getStarterCreditEligibleUsers(env: EnvBindings) {
+  const now = Date.now();
+  return queryAll<{
+    profileId: string;
+    userId: string;
+    email: string;
+    username: string;
+    displayName: string;
+    challengeCredits: number;
+    userCreatedAt: number;
+    lastEmailSentAt: number | null;
+  }>(
+    env,
+    `
+      SELECT
+        p.id AS profileId,
+        u.id AS userId,
+        u.email AS email,
+        p.username AS username,
+        p.display_name AS displayName,
+        p.challenge_credits AS challengeCredits,
+        u.created_at AS userCreatedAt,
+        (
+          SELECT MAX(el.created_at)
+          FROM event_logs el
+          WHERE el.profile_id = p.id
+            AND el.event_type = 'starter_credit_reengagement_email_sent'
+        ) AS lastEmailSentAt
+      FROM users u
+      INNER JOIN profiles p ON p.user_id = u.id
+      WHERE p.starter_credits_granted_at IS NULL
+        AND LENGTH(TRIM(p.username)) >= 3
+        AND LENGTH(TRIM(p.display_name)) >= 2
+        AND LENGTH(TRIM(p.personality_type)) >= 1
+        AND LENGTH(TRIM(p.identity)) >= 1
+        AND LENGTH(TRIM(p.looking_for)) >= 1
+        AND LENGTH(TRIM(p.bio)) >= 10
+        AND LENGTH(TRIM(p.avatar_preset)) >= 1
+        AND u.created_at <= ?
+      ORDER BY COALESCE(lastEmailSentAt, 0) ASC, u.created_at DESC
+    `,
+    [now - 1000 * 60 * 60 * 48],
+  );
 }
 
 async function getOverview(env: EnvBindings) {
@@ -1081,6 +1133,56 @@ adminRoutes.get("/support-tickets", async (c) => {
   return c.json({ tickets: rows });
 });
 
+adminRoutes.get("/starter-credit-eligible-users", async (c) => {
+  const users = await getStarterCreditEligibleUsers(c.env);
+  return c.json({ users });
+});
+
+adminRoutes.post("/starter-credit-eligible-users/send-email", async (c) => {
+  const payload = adminStarterCreditEmailSchema.safeParse(await c.req.json());
+
+  if (!payload.success) {
+    return c.json({ error: "Invalid starter credit email payload." }, 400);
+  }
+
+  const eligibleUsers = await getStarterCreditEligibleUsers(c.env);
+  const eligibleByProfileId = new Map(
+    eligibleUsers.map((user) => [user.profileId, user]),
+  );
+  const uniqueProfileIds = [...new Set(payload.data.profileIds)];
+  const recipients = uniqueProfileIds
+    .map((profileId) => eligibleByProfileId.get(profileId) ?? null)
+    .filter((recipient): recipient is NonNullable<typeof recipient> => Boolean(recipient));
+
+  if (recipients.length === 0) {
+    return c.json({ error: "No currently eligible users were selected." }, 400);
+  }
+
+  for (const recipient of recipients) {
+    await sendFounderAnnouncementEmail(c.env, {
+      to: recipient.email,
+      subject: payload.data.subject,
+      message: payload.data.message,
+    });
+
+    await logEvent(c.env, {
+      eventType: "starter_credit_reengagement_email_sent",
+      userId: recipient.userId,
+      profileId: recipient.profileId,
+      eventData: {
+        email: recipient.email,
+        subject: payload.data.subject,
+      },
+    });
+  }
+
+  return c.json({
+    ok: true,
+    sentCount: recipients.length,
+    skippedCount: uniqueProfileIds.length - recipients.length,
+  });
+});
+
 adminRoutes.post("/support-tickets/:ticketId/reply", async (c) => {
   const db = getDb(c.env);
   const ticketId = c.req.param("ticketId");
@@ -1140,8 +1242,11 @@ adminRoutes.get("/profiles/by-username/:username", async (c) => {
       challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
+      createdAt: profiles.createdAt,
+      email: users.email,
     })
     .from(profiles)
+    .innerJoin(users, eq(users.id, profiles.userId))
     .where(eq(profiles.username, username))
     .limit(1);
 
@@ -1318,8 +1423,11 @@ adminRoutes.post("/profiles/:profileId/content", async (c) => {
       challengeCredits: profiles.challengeCredits,
       verifiedHumanAt: profiles.verifiedHumanAt,
       suspendedAt: profiles.suspendedAt,
+      createdAt: profiles.createdAt,
+      email: users.email,
     })
     .from(profiles)
+    .innerJoin(users, eq(users.id, profiles.userId))
     .where(eq(profiles.id, profileId))
     .limit(1);
 

@@ -40,8 +40,9 @@ export const vibeOptions = [
 export const identityOptions = [
   "woman",
   "man",
-  "prefer not to say",
 ] as const;
+
+export const legacyIdentityValue = "prefer not to say" as const;
 
 export const lookingForOptions = [
   "women",
@@ -78,7 +79,7 @@ export const personalityTypeDescriptions: Record<
   "roleplay / fantasy": "Character-driven energy for anime, stranger, CEO, or other imagined dynamics.",
 };
 
-export const personalityTypeAvatarMap: Record<
+export const personalityTypeLegacyAvatarMap: Record<
   (typeof personalityTypeOptions)[number],
   string
 > = {
@@ -113,8 +114,59 @@ export const personalityTypeIcons: Record<
 export const identityFallbackIcons = {
   woman: "👩",
   man: "👨",
-  "prefer not to say": "✨",
+  [legacyIdentityValue]: "✨",
 } as const;
+
+export const personalityIdentityAvatarPresets: Record<
+  (typeof personalityTypeOptions)[number],
+  { woman: string; man: string }
+> = {
+  "clingy / affectionate": { woman: "affectionate_woman", man: "affectionate_man" },
+  "cold / mysterious": { woman: "mysterious_woman", man: "mysterious_man" },
+  "flirty / teasing": { woman: "flirty_woman", man: "flirty_man" },
+  protective: { woman: "protective_woman", man: "protective_man" },
+  "soft / sweet": { woman: "soft_woman", man: "soft_man" },
+  intellectual: { woman: "intellectual_woman", man: "intellectual_man" },
+  "funny / chaotic": { woman: "chaotic_woman", man: "chaotic_man" },
+  "confident / dominant": { woman: "dominant_woman", man: "dominant_man" },
+  "emotionally distant": { woman: "distant_woman", man: "distant_man" },
+  "roleplay / fantasy": { woman: "fantasy_woman", man: "fantasy_man" },
+};
+
+export function isLegacyIdentity(identity: string | null | undefined) {
+  return identity === legacyIdentityValue;
+}
+
+export function getPersonalityAvatarPreset(
+  personalityType: string | null | undefined,
+  identity: string | null | undefined,
+) {
+  if (!personalityType || !identity) {
+    return null;
+  }
+
+  if (!(personalityType in personalityIdentityAvatarPresets)) {
+    return null;
+  }
+
+  if (identity !== "woman" && identity !== "man") {
+    return null;
+  }
+
+  return personalityIdentityAvatarPresets[
+    personalityType as keyof typeof personalityIdentityAvatarPresets
+  ][identity];
+}
+
+export function getLegacyAvatarPreset(personalityType: string | null | undefined) {
+  if (!personalityType || !(personalityType in personalityTypeLegacyAvatarMap)) {
+    return "rose";
+  }
+
+  return personalityTypeLegacyAvatarMap[
+    personalityType as keyof typeof personalityTypeLegacyAvatarMap
+  ];
+}
 
 export function formatIdentityLabel(identity: string) {
   if (identity === "woman") {
@@ -125,7 +177,24 @@ export function formatIdentityLabel(identity: string) {
     return "Man";
   }
 
-  return "Identity private";
+  return "";
+}
+
+export function formatAvatarPreviewLabel(
+  personalityType: string | null | undefined,
+  identity: string | null | undefined,
+) {
+  if (!personalityType || !(personalityType in personalityTypeIcons)) {
+    return "Assigned portrait";
+  }
+
+  const icon =
+    personalityTypeIcons[personalityType as keyof typeof personalityTypeIcons];
+  const identityLabel = formatIdentityLabel(identity ?? "");
+
+  return identityLabel
+    ? `${icon} ${personalityType} · ${identityLabel}`
+    : `${icon} ${personalityType}`;
 }
 
 export function formatLookingForLabel(lookingFor: string) {

@@ -89,6 +89,8 @@ export type AdminProfile = {
   challengeCredits: number;
   verifiedHumanAt: number | null;
   suspendedAt: number | null;
+  createdAt?: number;
+  email?: string;
 };
 
 export type AdminConversation = {
@@ -204,6 +206,17 @@ export type GooglePlayBillingPurchase = {
   isLegacyUntracked: number;
 };
 
+export type StarterCreditEligibleUser = {
+  profileId: string;
+  userId: string;
+  email: string;
+  username: string;
+  displayName: string;
+  challengeCredits: number;
+  userCreatedAt: number;
+  lastEmailSentAt: number | null;
+};
+
 export type AdminAnalytics = {
   overview: {
     totalUsers: number;
@@ -292,6 +305,31 @@ export function unsuspendProfile(adminKey: string, profileId: string) {
 
 export function fetchSupportTickets(adminKey: string) {
   return adminRequest<{ tickets: SupportTicket[] }>("/api/admin/support-tickets", adminKey);
+}
+
+export function fetchStarterCreditEligibleUsers(adminKey: string) {
+  return adminRequest<{ users: StarterCreditEligibleUser[] }>(
+    "/api/admin/starter-credit-eligible-users",
+    adminKey,
+  );
+}
+
+export function sendStarterCreditEmailBatch(
+  adminKey: string,
+  payload: {
+    profileIds: string[];
+    subject: string;
+    message: string;
+  },
+) {
+  return adminRequest<{ ok: true; sentCount: number; skippedCount: number }>(
+    "/api/admin/starter-credit-eligible-users/send-email",
+    adminKey,
+    {
+      method: "POST",
+      body: payload,
+    },
+  );
 }
 
 export function replyToSupportTicket(

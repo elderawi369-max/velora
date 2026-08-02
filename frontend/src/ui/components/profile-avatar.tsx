@@ -1,7 +1,21 @@
 import {
+  getLegacyAvatarPreset,
+  getPersonalityAvatarPreset,
   identityFallbackIcons,
   personalityTypeIcons,
 } from "../../config";
+
+const portraitAssetModules = import.meta.glob("../../assets/avatar-presets/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const portraitAssetMap = Object.fromEntries(
+  Object.entries(portraitAssetModules).map(([filePath, assetUrl]) => {
+    const fileName = filePath.split("/").pop() ?? filePath;
+    return [fileName.replace(".png", ""), assetUrl];
+  }),
+) as Record<string, string>;
 
 type GiftType = "rose" | "starlight" | "crown" | null;
 
@@ -26,6 +40,20 @@ function getAvatarIcon(personalityType?: string | null, identity?: string | null
   return "✨";
 }
 
+function getAvatarImageSource(personalityType?: string | null, identity?: string | null) {
+  const portraitPreset = getPersonalityAvatarPreset(personalityType, identity);
+  if (portraitPreset) {
+    return portraitAssetMap[portraitPreset] ?? null;
+  }
+
+  const legacyPreset = getLegacyAvatarPreset(personalityType);
+  if (identity === "prefer not to say" && legacyPreset) {
+    return null;
+  }
+
+  return null;
+}
+
 export function ProfileAvatar({
   personalityType,
   identity,
@@ -33,9 +61,11 @@ export function ProfileAvatar({
   size = "medium",
 }: ProfileAvatarProps) {
   const icon = getAvatarIcon(personalityType, identity);
+  const imageSource = getAvatarImageSource(personalityType, identity);
   const classes = [
     "profile-avatar",
     `profile-avatar-${size}`,
+    imageSource ? "profile-avatar-portrait" : "",
     personalityType ? "profile-avatar-personality" : "profile-avatar-fallback",
     dominantGiftType ? `profile-avatar-gift-${dominantGiftType}` : "",
   ]
@@ -73,7 +103,17 @@ export function ProfileAvatar({
         </>
       ) : null}
 
-      <span className="profile-avatar-icon">{icon}</span>
+      {imageSource ? (
+        <img
+          className="profile-avatar-image"
+          src={imageSource}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <span className="profile-avatar-icon">{icon}</span>
+      )}
     </div>
   );
 }

@@ -404,6 +404,7 @@ export function ProfileList() {
               .slice(0, 2);
             const bioPreview =
               profile.bio.length > 140 ? `${profile.bio.slice(0, 137)}...` : profile.bio;
+            const identityLabel = formatIdentityLabel(profile.identity);
 
             return (
               <article className="card profile-card profile-preview-card" key={profile.id}>
@@ -415,8 +416,7 @@ export function ProfileList() {
                     size="medium"
                   />
                   <div className="profile-head">
-                    <h2>{profile.displayName}</h2>
-                    <p>@{profile.username}</p>
+                    <h2 className="profile-card-handle">{profile.displayName}</h2>
                   </div>
                 </div>
 
@@ -425,7 +425,7 @@ export function ProfileList() {
                   {profile.activityBadge ? <span className="chip">{profile.activityBadge}</span> : null}
                   <span className="chip chip-muted">{formatTrustLevelLabel(profile.trustLevel)}</span>
                   <span className="chip">{profile.personalityType}</span>
-                  <span className="chip chip-muted">{formatIdentityLabel(profile.identity)}</span>
+                  {identityLabel ? <span className="chip chip-muted">{identityLabel}</span> : null}
                   <span className="chip chip-muted">{formatLookingForLabel(profile.lookingFor)}</span>
                 </div>
 
@@ -438,8 +438,8 @@ export function ProfileList() {
                 </p>
 
                 <p className="profile-bio">{bioPreview}</p>
-                <p className="social-proof-note">
-                  Open the full profile, start with the opener, or send a challenge to improve your odds of a reply.
+                <p className="social-proof-note browse-challenge-callout">
+                  Spark the fun faster with a <strong>Vibe Check</strong> or <strong>Trivia Challenge</strong>. Light pressure, playful energy, and a better chance of getting the conversation moving.
                 </p>
 
                 <div className="chip-row">

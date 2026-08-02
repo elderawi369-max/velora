@@ -146,7 +146,7 @@ function getStrongerGiftType(current: GiftType | null, next: GiftType | null) {
   return priority[next] >= priority[current] ? next : current;
 }
 
-function getAvatarPresetForPersonality(personalityType: PersonalityType) {
+function getLegacyAvatarPresetForPersonality(personalityType: PersonalityType) {
   const avatarMap: Record<PersonalityType, string> = {
     "clingy / affectionate": "rose",
     "cold / mysterious": "luna",
@@ -161,6 +161,57 @@ function getAvatarPresetForPersonality(personalityType: PersonalityType) {
   };
 
   return avatarMap[personalityType];
+}
+
+function getAvatarPresetForProfile(personalityType: PersonalityType, identity: Identity) {
+  if (identity === "woman" || identity === "man") {
+    const avatarMap: Record<PersonalityType, { woman: string; man: string }> = {
+      "clingy / affectionate": {
+        woman: "affectionate_woman",
+        man: "affectionate_man",
+      },
+      "cold / mysterious": {
+        woman: "mysterious_woman",
+        man: "mysterious_man",
+      },
+      "flirty / teasing": {
+        woman: "flirty_woman",
+        man: "flirty_man",
+      },
+      protective: {
+        woman: "protective_woman",
+        man: "protective_man",
+      },
+      "soft / sweet": {
+        woman: "soft_woman",
+        man: "soft_man",
+      },
+      intellectual: {
+        woman: "intellectual_woman",
+        man: "intellectual_man",
+      },
+      "funny / chaotic": {
+        woman: "chaotic_woman",
+        man: "chaotic_man",
+      },
+      "confident / dominant": {
+        woman: "dominant_woman",
+        man: "dominant_man",
+      },
+      "emotionally distant": {
+        woman: "distant_woman",
+        man: "distant_man",
+      },
+      "roleplay / fantasy": {
+        woman: "fantasy_woman",
+        man: "fantasy_man",
+      },
+    };
+
+    return avatarMap[personalityType][identity];
+  }
+
+  return getLegacyAvatarPresetForPersonality(personalityType);
 }
 
 function getStrongerBoostType(current: BoostType | null, next: BoostType | null) {
@@ -600,8 +651,11 @@ async function getProfileById(env: EnvBindings, profileId: string) {
   return {
     ...profile,
     personalityType,
-    avatarPreset: getAvatarPresetForPersonality(personalityType),
     identity: normalizeIdentity(profile.identity),
+    avatarPreset: getAvatarPresetForProfile(
+      personalityType,
+      normalizeIdentity(profile.identity),
+    ),
     lookingFor: normalizeLookingFor(profile.lookingFor),
     promptEntries,
     vibeTags: JSON.parse(profile.vibeTags) as string[],
@@ -1031,8 +1085,11 @@ profileRoutes.get("/", async (c) => {
       return {
         ...profile,
         personalityType,
-        avatarPreset: getAvatarPresetForPersonality(personalityType),
         identity: normalizeIdentity(profile.identity),
+        avatarPreset: getAvatarPresetForProfile(
+          personalityType,
+          normalizeIdentity(profile.identity),
+        ),
         lookingFor: normalizeLookingFor(profile.lookingFor),
         promptEntries,
         vibeTags,
@@ -1217,7 +1274,10 @@ profileRoutes.post("/", async (c) => {
     lookingFor: payload.data.lookingFor,
     bio: payload.data.bio,
     promptEntries: JSON.stringify(payload.data.promptEntries),
-    avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
+    avatarPreset: getAvatarPresetForProfile(
+      payload.data.personalityType,
+      payload.data.identity,
+    ),
     vibeTags: JSON.stringify(payload.data.vibeTags),
     boundaries: JSON.stringify(payload.data.boundaries),
     challengeCredits: 0,
@@ -1356,7 +1416,10 @@ profileRoutes.put("/me", async (c) => {
       lookingFor: payload.data.lookingFor,
       bio: payload.data.bio,
       promptEntries: JSON.stringify(payload.data.promptEntries),
-      avatarPreset: getAvatarPresetForPersonality(payload.data.personalityType),
+      avatarPreset: getAvatarPresetForProfile(
+        payload.data.personalityType,
+        payload.data.identity,
+      ),
       vibeTags: JSON.stringify(payload.data.vibeTags),
       boundaries: JSON.stringify(payload.data.boundaries),
       updatedAt: Date.now(),
