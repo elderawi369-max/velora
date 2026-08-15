@@ -52,6 +52,34 @@ function FounderConsoleRoute() {
   return isFounder ? <AdminPage /> : <Navigate to="/" replace />;
 }
 
+function BrowseRouteGuard({
+  children,
+}: {
+  children: React.ReactElement;
+}) {
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    retry: false,
+  });
+
+  if (sessionQuery.isLoading) {
+    return null;
+  }
+
+  if (sessionQuery.data?.authenticated && !sessionQuery.data?.hasProfile) {
+    return (
+      <Navigate
+        to="/create-profile"
+        replace
+        state={{ browseBlocked: true }}
+      />
+    );
+  }
+
+  return children;
+}
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -95,11 +123,19 @@ const router = createBrowserRouter([
       },
       {
         path: "browse",
-        element: <BrowsePage />,
+        element: (
+          <BrowseRouteGuard>
+            <BrowsePage />
+          </BrowseRouteGuard>
+        ),
       },
       {
         path: "browse/:username",
-        element: <ProfileDetailPage />,
+        element: (
+          <BrowseRouteGuard>
+            <ProfileDetailPage />
+          </BrowseRouteGuard>
+        ),
       },
       {
         path: "conversations",

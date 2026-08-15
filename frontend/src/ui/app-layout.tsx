@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
 import { useEffect, useState } from "react";
@@ -23,6 +23,7 @@ function getAppRatingCompletedKey(userId: string) {
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [starterCreditsNotice, setStarterCreditsNotice] = useState<{
     credits: number;
@@ -39,6 +40,7 @@ export function AppLayout() {
     credits: number;
     source: "starter" | "streak";
   } | null>(null);
+  const [browseBlockedNotice, setBrowseBlockedNotice] = useState(false);
 
   const ownProfileQuery = useQuery({
     queryKey: ["ownProfile"],
@@ -191,6 +193,34 @@ export function AppLayout() {
     }
   }, [sessionQuery.data]);
 
+  useEffect(() => {
+    if (!location.state || typeof location.state !== "object") {
+      return;
+    }
+
+    if (!("browseBlocked" in location.state) || !location.state.browseBlocked) {
+      return;
+    }
+
+    setBrowseBlockedNotice(true);
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!browseBlockedNotice) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setBrowseBlockedNotice(false);
+    }, 5000);
+
+    return () => window.clearTimeout(timeout);
+  }, [browseBlockedNotice]);
+
   const conversationUnreadCount =
     conversationsQuery.data?.conversations.reduce(
       (sum, conversation) =>
@@ -246,6 +276,13 @@ export function AppLayout() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={(event) => {
+                if (item.to === "/browse" && isLoggedIn && !hasProfile) {
+                  event.preventDefault();
+                  setBrowseBlockedNotice(true);
+                  navigate("/create-profile");
+                }
+              }}
               className={({ isActive }) =>
                 isActive ? "nav-link nav-link-active" : "nav-link"
               }
@@ -274,6 +311,22 @@ export function AppLayout() {
           )}
         </nav>
       </header>
+
+      {browseBlockedNotice ? (
+        <section className="starter-credits-banner" aria-live="polite">
+          <div>
+            <p className="eyebrow">Profile required</p>
+            <h2>Please create a profile first.</h2>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setBrowseBlockedNotice(false)}
+          >
+            Dismiss
+          </button>
+        </section>
+      ) : null}
 
       {starterCreditsNotice ? (
         <section className="starter-credits-banner" aria-live="polite">
