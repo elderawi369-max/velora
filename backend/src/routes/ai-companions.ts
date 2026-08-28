@@ -127,6 +127,31 @@ function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: st
   const hasBodyDisclaimer = /\b(no physical body|not capable of physical touch|computer program|just a program|cannot physically|can't physically)\b/i.test(assistantReply);
   return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
 }
+function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
+  if (assistantReply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(assistantReply)) return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  if (seed % 4 === 0) return assistantReply;
+
+  // Prefer hooks that continue the topic already on screen over generic follow-up questions.
+  let hook: string;
+  if (/\b(night|dark|late|lamp|editing)\b/i.test(assistantReply)) hook = "Are you a night owl too, or one of those suspiciously functional morning people? 😄";
+  else if (/\b(critici[sz]m|feedback|tough|hard|sting)\b/i.test(assistantReply)) hook = "What's something that gets under your skin more than it probably should?";
+  else if (/\b(tell me .*yourself|people .*guess)\b/i.test(userMessage)) hook = "Now I want to know yours: what would people not guess about you?";
+  else if (/\b(don't like|dislike|hate)\b/i.test(userMessage)) hook = "What gets under your skin more than it probably should?";
+  else {
+    const personaHooks: Record<string, string[]> = {
+      supportive_partner: ["What's your day been like on your side?", "I want to hear your side of that too."],
+      playful_tease: ["You seem like you have a story behind that 😏", "Okay, now you've made me curious."],
+      sarcastic_best_friend: ["Now I'm curious what your answer would be.", "Don't leave me to do all the talking here 😂"],
+      confident_leader: ["What's your take on it?", "I want your honest answer on that."],
+      quiet_romantic: ["I want to hear your side of that too.", "That makes me curious about you."],
+      personal_growth_companion: ["What do you notice about yourself in moments like that?", "What's been on your mind lately?"],
+    };
+    const hooks = personaHooks[personaKey] ?? personaHooks.supportive_partner;
+    hook = hooks[seed % hooks.length];
+  }
+  return `${assistantReply} ${hook}`;
+}
 function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
   const pet = companion.identity === "woman" ? "Luna" : "Rio";
   return [
@@ -295,7 +320,10 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
   const assistantMessageId = id("aimsg");
-  if (moderationStatus === "allowed") responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
+  if (moderationStatus === "allowed") {
+    responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
+    responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
+  }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
   if (entitlement.plan === "free" && moderationStatus === "allowed") await db.update(aiCompanionConversations).set({ trialRepliesUsed: conversation.trialRepliesUsed + 1, updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
