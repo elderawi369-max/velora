@@ -27,6 +27,7 @@ export type EnvBindings = {
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   AI_COMPANION_ENABLED?: string;
   AI_COMPANION_DAILY_TRIAL_LIMIT?: string;
+  AI_COMPANION_BETA_EMAILS?: string;
 };
 
 export function getDb(env: EnvBindings) {

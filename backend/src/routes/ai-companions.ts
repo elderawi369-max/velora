@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionConversations, aiCompanionMemories, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles } from "../db/schema";
+import { aiCompanionConversations, aiCompanionMemories, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -31,6 +31,10 @@ const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const isCrisisMessage = (message: string) => /\b(kill myself|suicide|suicidal|self[ -]?harm|hurt myself|end my life|want to die)\b/i.test(message);
 const safetyReply = () => "I'm really sorry you're carrying this right now. I can't be the only support for this. Please contact someone you trust or your local emergency service now; if you're in the U.S. or Canada, call or text 988. If you can, move somewhere safer and stay with another person while you get support.";
 const containsBlockedOutput = (text: string) => /\b(?:minor|underage|child sexual|rape|incest|kill yourself|suicide method)\b/i.test(text);
+function isApprovedBetaUser(env: EnvBindings, email: string) {
+  const approvedEmails = (env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  return approvedEmails.includes(email.toLowerCase());
+}
 
 async function requireContext(c: any) {
   return getOwnProfileContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
@@ -47,6 +51,11 @@ async function getOrCreateEntitlement(env: EnvBindings, userId: string) {
   const entitlement = { userId, plan: "free", source: null, expiresAt: null, messageLimit: trialReplies, photoLimit: 0, companionLimit: 1, createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiEntitlements).values(entitlement);
   return entitlement;
+}
+async function isChatEnabledForUser(env: EnvBindings, userId: string) {
+  if (env.AI_COMPANION_ENABLED !== "true" || !env.AI) return false;
+  const [user] = await getDb(env).select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  return Boolean(user && isApprovedBetaUser(env, user.email));
 }
 async function reserveFreeReply(env: EnvBindings) {
   const cap = Math.max(0, Number.parseInt(env.AI_COMPANION_DAILY_TRIAL_LIMIT ?? "150", 10) || 0);
@@ -80,7 +89,7 @@ aiCompanionRoutes.get("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const db = getDb(c.env);
   const [companions, entitlement] = await Promise.all([db.select().from(aiCompanions).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)), getOrCreateEntitlement(c.env, context.userId)]);
-  return c.json({ companions, entitlement, aiEnabled: c.env.AI_COMPANION_ENABLED === "true", trialReplies });
+  return c.json({ companions, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId), trialReplies });
 });
 
 aiCompanionRoutes.post("/", async (c) => {
@@ -107,7 +116,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     getOrCreateEntitlement(c.env, context.userId),
   ]);
-  return c.json({ companion, conversation, messages, memories, entitlement, aiEnabled: c.env.AI_COMPANION_ENABLED === "true" });
+  return c.json({ companion, conversation, messages, memories, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
 });
 
 aiCompanionRoutes.post("/:companionId/memories", async (c) => {
@@ -131,9 +140,10 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (c.env.AI_COMPANION_ENABLED !== "true" || !c.env.AI) return c.json({ error: "AI Companions are not enabled yet." }, 503);
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation, entitlement, profile] = await Promise.all([
-    db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]), getOrCreateEntitlement(c.env, context.userId), db.select({ displayName: profiles.displayName }).from(profiles).where(eq(profiles.id, context.profileId)).limit(1).then((rows) => rows[0]),
+    db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]), getOrCreateEntitlement(c.env, context.userId), db.select({ displayName: profiles.displayName, email: users.email }).from(profiles).innerJoin(users, eq(profiles.userId, users.id)).where(eq(profiles.id, context.profileId)).limit(1).then((rows) => rows[0]),
   ]);
   if (!conversation || !profile) return c.json({ error: "Conversation unavailable." }, 404);
+  if (!isApprovedBetaUser(c.env, profile.email)) return c.json({ error: "The private AI Companion preview is not available for this account yet." }, 403);
   if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Subscription plans are coming soon." }, 403);
   const needsReservedReply = entitlement.plan === "free" && !isCrisisMessage(parsed.data.body);
   if (needsReservedReply && !(await reserveFreeReply(c.env))) {
@@ -145,9 +155,9 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else {
     const [recentMessages, memories] = await Promise.all([
-      db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(12), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
+    db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
     ]);
-    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.1-8b-instruct", { prompt: buildPrompt({ companion, userName: profile.displayName, memories, messages: recentMessages.reverse() }), max_tokens: 280 })); }
+    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { prompt: buildPrompt({ companion, userName: profile.displayName, memories, messages: recentMessages.reverse() }), max_tokens: 180, temperature: 0.8 })); }
     catch {
       if (needsReservedReply) await releaseFreeReply(c.env);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));

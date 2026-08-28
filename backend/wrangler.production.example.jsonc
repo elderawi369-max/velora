@@ -8,7 +8,8 @@
     "APP_ENV": "production",
     "ENABLE_DEV_ENDPOINTS": "false",
     "AI_COMPANION_ENABLED": "false",
-    "AI_COMPANION_DAILY_TRIAL_LIMIT": "150"
+    "AI_COMPANION_DAILY_TRIAL_LIMIT": "40",
+    "AI_COMPANION_BETA_EMAILS": ""
   },
   "ai": {
     "binding": "AI"

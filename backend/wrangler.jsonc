@@ -16,7 +16,8 @@
 		"RESEND_SUPPORT_FROM_EMAIL": "support@velorachat.com",
 		"SUPPORT_REPLY_TO_EMAIL": "support@velorachat.com",
 		"AI_COMPANION_ENABLED": "false",
-		"AI_COMPANION_DAILY_TRIAL_LIMIT": "150"
+		"AI_COMPANION_DAILY_TRIAL_LIMIT": "40",
+		"AI_COMPANION_BETA_EMAILS": ""
 	},
 	"ai": {
 		"binding": "AI"
