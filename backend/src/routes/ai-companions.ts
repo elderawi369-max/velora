@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionConversations, aiCompanionMemories, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -71,12 +71,41 @@ async function releaseFreeReply(env: EnvBindings) {
   const dayNumber = Math.floor(now() / 86_400_000);
   await env.DB.prepare("UPDATE ai_trial_daily_usage SET replies_used = MAX(0, replies_used - 1), updated_at = ? WHERE day_number = ?").bind(now(), dayNumber).run();
 }
-function getCharacterCanon(companion: typeof aiCompanions.$inferSelect) {
-  if (companion.backstory.trim()) return companion.backstory.trim();
+type CharacterCanon = {
+  name: string;
+  age: number;
+  city: string;
+  occupation: string;
+  specialty: string;
+  home: string;
+  petName: string;
+  petSpecies: string;
+  petAge: number;
+  friendName: string;
+  friendOccupation: string;
+  interests: string[];
+  customBackstory: string;
+};
+function createDefaultCanon(companion: typeof aiCompanions.$inferSelect): CharacterCanon {
   if (companion.identity === "woman") {
-    return `${companion.name} is 26, a portrait and lifestyle photographer who lives in Barcelona. She lives alone with her cat Luna. Luna is a cat, never a human friend or artist. Her close human friend is Elena, a designer. She is a night owl who likes strong coffee, travel, and candid photos; late-night editing is the least glamorous part of her work.`;
+    return { name: companion.name, age: 26, city: "Barcelona", occupation: "photographer", specialty: "portrait and lifestyle photography", home: "an apartment in Barcelona", petName: "Luna", petSpecies: "cat", petAge: 3, friendName: "Elena", friendOccupation: "designer", interests: ["strong coffee", "travel", "candid photos", "late-night editing"], customBackstory: companion.backstory.trim() };
   }
-  return `${companion.name} is 28, a travel and street photographer who lives in Barcelona. He lives with his rescue dog Rio. Rio is a dog, never a human friend or designer. His close human friend is Mateo, a designer. He is a night owl who likes strong coffee, late walks, and finding overlooked places in the city; late-night editing is the least glamorous part of his work.`;
+  return { name: companion.name, age: 28, city: "Barcelona", occupation: "photographer", specialty: "travel and street photography", home: "an apartment in Barcelona", petName: "Rio", petSpecies: "dog", petAge: 4, friendName: "Mateo", friendOccupation: "designer", interests: ["strong coffee", "late walks", "overlooked places", "late-night editing"], customBackstory: companion.backstory.trim() };
+}
+function formatCharacterCanon(canon: CharacterCanon) {
+  return `Name: ${canon.name}\nAge: ${canon.age}\nLocation: ${canon.city}\nHome: ${canon.home}\nOccupation: ${canon.occupation}\nSpecialty: ${canon.specialty}\nPet: ${canon.petName}, a ${canon.petAge}-year-old ${canon.petSpecies}\nHuman friend: ${canon.friendName}, a ${canon.friendOccupation}\nInterests: ${canon.interests.join(", ")}${canon.customBackstory ? `\nCustom backstory: ${canon.customBackstory}` : ""}`;
+}
+async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiCompanions.$inferSelect) {
+  const db = getDb(env);
+  const [existing] = await db.select().from(aiCompanionCanons).where(eq(aiCompanionCanons.companionId, companion.id)).limit(1);
+  if (existing) {
+    try { return JSON.parse(existing.factsJson) as CharacterCanon; }
+    catch { /* Rebuild invalid legacy canon data. */ }
+  }
+  const facts = createDefaultCanon(companion);
+  const timestamp = now();
+  await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(facts), createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
+  return facts;
 }
 function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
   const pet = companion.identity === "woman" ? "Luna" : "Rio";
@@ -91,12 +120,13 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
     { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
   ];
 }
-function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
+function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
   const traits = JSON.parse(args.companion.traitsJson) as { warmth: number; playfulness: number; directness: number; replyStyle?: "short" | "natural" | "detailed" };
   const memories = args.memories.map((memory) => `- ${memory.content}`).join("\n") || "- No saved memories yet.";
   const replyStyle = traits.replyStyle ?? "natural";
   const replyGuidance = replyStyle === "short" ? "Usually 10 to 25 words." : replyStyle === "detailed" ? "Usually 45 to 90 words when the topic merits it." : "Usually 20 to 40 words; use a little more only for a serious or detailed user message.";
-  return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nCharacter canon: ${getCharacterCanon(args.companion)}\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. Occasionally use a fitting emoji and ask a follow-up only when it feels genuinely curious. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
+  const repeatedQuestionStyle: Record<(typeof personaKeys)[number], string> = { supportive_partner: "Answer warmly again without guilt-tripping the user.", playful_tease: "You may tease lightly, but still answer clearly.", sarcastic_best_friend: "You may make one dry joke, then answer clearly.", confident_leader: "Answer directly and calmly.", quiet_romantic: "Answer softly and briefly.", personal_growth_companion: "Answer plainly and encouragingly." };
+  return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nRules: ${args.canon.petName} is always a ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is the human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} Occasionally use a fitting emoji and ask a follow-up only when it feels genuinely curious. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
 function extractModelText(result: unknown) {
   const extractContent = (value: unknown): string => {
@@ -137,6 +167,8 @@ aiCompanionRoutes.post("/", async (c) => {
   if (existing.length >= entitlement.companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
   const timestamp = now(); const companion = { id: id("aic"), userId: context.userId, ...parsed.data, traitsJson: JSON.stringify(parsed.data.traits), createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanions).values(companion);
+  const canon = createDefaultCanon(companion);
+  await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(canon), createdAt: timestamp, updatedAt: timestamp });
   const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanionConversations).values(conversation);
   await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey } });
@@ -191,11 +223,12 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   let responseBody: string; let moderationStatus = "allowed";
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else {
-    const [recentMessages, memories] = await Promise.all([
+    const [recentMessages, memories, canon] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
+    getOrCreateCharacterCanon(c.env, companion),
     ]);
     const messages = [
-      { role: "system", content: buildSystemPrompt({ companion, memories }) },
+      { role: "system", content: buildSystemPrompt({ companion, canon, memories }) },
       ...getCharacterExamples(companion),
       ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
     ];

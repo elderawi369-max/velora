@@ -348,6 +348,13 @@ export const aiCompanions = sqliteTable("ai_companions", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionCanons = sqliteTable("ai_companion_canons", {
+  companionId: text("companion_id").primaryKey().references(() => aiCompanions.id),
+  factsJson: text("facts_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionConversations = sqliteTable("ai_companion_conversations", {
   id: text("id").primaryKey(),
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
