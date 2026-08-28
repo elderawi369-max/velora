@@ -199,11 +199,16 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
       ...getCharacterExamples(companion),
       ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
     ];
-    try { responseBody = extractModelText(await c.env.AI.run("@cf/google/gemma-4-26b-a4b-it", { messages, max_tokens: 90, temperature: 0.75 })); }
+    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 90, temperature: 0.75 })); }
     catch {
       if (needsReservedReply) await releaseFreeReply(c.env);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "The companion could not reply just now. Please try again." }, 502);
+    }
+    if (!responseBody) {
+      if (needsReservedReply) await releaseFreeReply(c.env);
+      await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
+      return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
