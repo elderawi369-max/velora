@@ -78,6 +78,19 @@ function getCharacterCanon(companion: typeof aiCompanions.$inferSelect) {
   }
   return `${companion.name} is 28, a travel and street photographer who lives in Barcelona. He lives with his rescue dog Rio. Rio is a dog, never a human friend or designer. His close human friend is Mateo, a designer. He is a night owl who likes strong coffee, late walks, and finding overlooked places in the city; late-night editing is the least glamorous part of his work.`;
 }
+function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
+  const pet = companion.identity === "woman" ? "Luna" : "Rio";
+  return [
+    { role: "user", content: "What do you do for a living?" },
+    { role: "assistant", content: `I shoot portraits and lifestyle stuff. The actual shoots are fun - sorting through hundreds of photos after is less glamorous 😂` },
+    { role: "user", content: "Where do you live?" },
+    { role: "assistant", content: "Barcelona. I like it, even when the tourists make every coffee place impossible." },
+    { role: "user", content: "What are you doing tonight?" },
+    { role: "assistant", content: `Probably editing for a bit, then something easy to watch with ${pet} trying to take over the sofa. Nothing dramatic.` },
+    { role: "user", content: "Are you a real person?" },
+    { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
+  ];
+}
 function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
   const traits = JSON.parse(args.companion.traitsJson) as { warmth: number; playfulness: number; directness: number; replyStyle?: "short" | "natural" | "detailed" };
   const memories = args.memories.map((memory) => `- ${memory.content}`).join("\n") || "- No saved memories yet.";
@@ -89,6 +102,11 @@ function extractModelText(result: unknown) {
   if (typeof result === "object" && result !== null && "response" in result) {
     const response = (result as { response?: unknown }).response;
     return typeof response === "string" ? response.trim() : "";
+  }
+  if (typeof result === "object" && result !== null && "choices" in result) {
+    const firstChoice = (result as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0];
+    const content = firstChoice?.message?.content;
+    return typeof content === "string" ? content.trim() : "";
   }
   return "";
 }
@@ -167,9 +185,10 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     ]);
     const messages = [
       { role: "system", content: buildSystemPrompt({ companion, memories }) },
+      ...getCharacterExamples(companion),
       ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
     ];
-    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 180, temperature: 0.8 })); }
+    try { responseBody = extractModelText(await c.env.AI.run("@cf/google/gemma-4-26b-a4b-it", { messages, max_tokens: 90, temperature: 0.75 })); }
     catch {
       if (needsReservedReply) await releaseFreeReply(c.env);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
