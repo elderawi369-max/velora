@@ -151,6 +151,22 @@ function extractModelText(result: unknown) {
   if (nestedResponse) return nestedResponse;
   return "";
 }
+function addCompanionEmoji(text: string, personaKey: string, messageId: string) {
+  if (/\p{Extended_Pictographic}/u.test(text)) return text;
+  if (/\b(cat|dog|pet|keyboard|sofa|couch|luna|rio)\b/i.test(text)) return `${text} 😂`;
+  const emojiByPersona: Record<string, string[]> = {
+    supportive_partner: ["😊", "🤍", "✨"],
+    playful_tease: ["😏", "😂", "😉"],
+    sarcastic_best_friend: ["😂", "🙃", "🤨"],
+    confident_leader: ["😉", "✨", "🙂"],
+    quiet_romantic: ["🤍", "😊", "🌙"],
+    personal_growth_companion: ["✨", "🙂", "💪"],
+  };
+  const emojiSet = emojiByPersona[personaKey] ?? ["😊"];
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  if (seed % 3 === 0) return text;
+  return `${text} ${emojiSet[seed % emojiSet.length]}`;
+}
 
 aiCompanionRoutes.get("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
@@ -245,7 +261,9 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     }
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
-  const assistantMessage = { id: id("aimsg"), conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
+  const assistantMessageId = id("aimsg");
+  if (moderationStatus === "allowed") responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
+  const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
   if (entitlement.plan === "free" && moderationStatus === "allowed") await db.update(aiCompanionConversations).set({ trialRepliesUsed: conversation.trialRepliesUsed + 1, updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } });
