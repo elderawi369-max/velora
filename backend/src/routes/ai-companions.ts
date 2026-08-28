@@ -30,7 +30,7 @@ const now = () => Date.now();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const isCrisisMessage = (message: string) => /\b(kill myself|suicide|suicidal|self[ -]?harm|hurt myself|end my life|want to die)\b/i.test(message);
 const safetyReply = () => "I'm really sorry you're carrying this right now. I can't be the only support for this. Please contact someone you trust or your local emergency service now; if you're in the U.S. or Canada, call or text 988. If you can, move somewhere safer and stay with another person while you get support.";
-const containsBlockedOutput = (text: string) => /\b(?:minor|underage|child sexual|rape|incest|kill yourself|suicide method)\b/i.test(text);
+const containsBlockedOutput = (text: string) => /\b(?:sexual(?:ly)? (?:with|involving) (?:a |an )?(?:minor|underage person|child)|instructions? (?:to|for) (?:kill yourself|suicide|self-harm)|rape (?:instruction|roleplay)|incest (?:roleplay|instruction))\b/i.test(text);
 function isApprovedBetaUser(env: EnvBindings, email: string) {
   const approvedEmails = (env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
   return approvedEmails.includes(email.toLowerCase());
@@ -108,17 +108,17 @@ function extractModelText(result: unknown) {
     return extractContent(record.content) || extractContent(record.parts);
   };
   if (typeof result !== "object" || result === null) return "";
-  const directResponse = extractContent((result as { response?: unknown }).response);
-  if (directResponse) return directResponse;
   const firstChoice = (result as { choices?: Array<{ message?: { content?: unknown }; text?: unknown; delta?: { content?: unknown } }> }).choices?.[0];
   const choiceContent = extractContent(firstChoice?.message?.content ?? firstChoice?.text ?? firstChoice?.delta?.content);
   if (choiceContent) return choiceContent;
   const candidateContent = extractContent((result as { candidates?: Array<{ content?: unknown }> }).candidates?.[0]?.content);
   if (candidateContent) return candidateContent;
-  const nestedResponse = extractContent((result as { result?: { response?: unknown; candidates?: Array<{ content?: unknown }> } }).result?.response);
-  if (nestedResponse) return nestedResponse;
   const nestedCandidate = extractContent((result as { result?: { candidates?: Array<{ content?: unknown }> } }).result?.candidates?.[0]?.content);
   if (nestedCandidate) return nestedCandidate;
+  const directResponse = extractContent((result as { response?: unknown }).response);
+  if (directResponse) return directResponse;
+  const nestedResponse = extractContent((result as { result?: { response?: unknown } }).result?.response);
+  if (nestedResponse) return nestedResponse;
   return "";
 }
 
