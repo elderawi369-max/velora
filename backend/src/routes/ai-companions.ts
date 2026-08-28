@@ -107,9 +107,8 @@ async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiC
   await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(facts), createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
   return facts;
 }
-function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
-  const pet = companion.identity === "woman" ? "Luna" : "Rio";
-  const virtualAffectionResponse: Record<(typeof personaKeys)[number], string> = {
+function virtualAffectionReply(personaKey: string) {
+  const responseByPersona: Record<(typeof personaKeys)[number], string> = {
     supportive_partner: "That's sweet 😊 I'd probably be smiling like an idiot right now.",
     playful_tease: "Oh really? 😏 And what makes you think I'd make it that easy?",
     sarcastic_best_friend: "Okay, bold 😂 When did you get this brave with me?",
@@ -117,6 +116,16 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
     quiet_romantic: "Okay... that definitely made me blush a little 🤍",
     personal_growth_companion: "That's sweet. I care about our connection, but I want to keep it warm and grounded 😊",
   };
+  return responseByPersona[personaKey as (typeof personaKeys)[number]] ?? responseByPersona.supportive_partner;
+}
+function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: string, personaKey: string) {
+  const isAffectionate = /\b(kiss|hug|cuddl(?:e|ing)|snuggl(?:e|ing)|hold (?:me|you)|miss you|lie next to)\b/i.test(userMessage);
+  const asksForTransparency = /\b(are you (?:actually |really )?(?:real|human)|are you physically|do you have (?:a )?body|are you (?:actually )?there)\b/i.test(userMessage);
+  const hasBodyDisclaimer = /\b(no physical body|not capable of physical touch|computer program|just a program|cannot physically|can't physically)\b/i.test(assistantReply);
+  return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
+}
+function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
+  const pet = companion.identity === "woman" ? "Luna" : "Rio";
   return [
     { role: "user", content: "What do you do for a living?" },
     { role: "assistant", content: `I shoot portraits and lifestyle stuff. The actual shoots are fun - sorting through hundreds of photos after is less glamorous 😂` },
@@ -127,7 +136,7 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
     { role: "user", content: "Are you a real person?" },
     { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
     { role: "user", content: "I want to kiss you right now." },
-    { role: "assistant", content: virtualAffectionResponse[companion.personaKey as (typeof personaKeys)[number]] },
+    { role: "assistant", content: virtualAffectionReply(companion.personaKey) },
   ];
 }
 function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
@@ -275,6 +284,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
+    responseBody = removeUnnecessaryBodyDisclaimer(parsed.data.body, responseBody, companion.personaKey);
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
   const assistantMessageId = id("aimsg");
