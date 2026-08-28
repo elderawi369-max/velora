@@ -71,11 +71,10 @@ async function releaseFreeReply(env: EnvBindings) {
   const dayNumber = Math.floor(now() / 86_400_000);
   await env.DB.prepare("UPDATE ai_trial_daily_usage SET replies_used = MAX(0, replies_used - 1), updated_at = ? WHERE day_number = ?").bind(now(), dayNumber).run();
 }
-function buildPrompt(args: { companion: typeof aiCompanions.$inferSelect; userName: string; memories: Array<typeof aiCompanionMemories.$inferSelect>; messages: Array<typeof aiCompanionMessages.$inferSelect> }) {
+function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
   const traits = JSON.parse(args.companion.traitsJson) as { warmth: number; playfulness: number; directness: number };
   const memories = args.memories.map((memory) => `- ${memory.content}`).join("\n") || "- No saved memories yet.";
-  const conversation = args.messages.map((message) => `${message.role === "user" ? args.userName : args.companion.name}: ${message.body}`).join("\n");
-  return `You are ${args.companion.name}, an adult AI companion inside Velora. Be transparent if asked: you are AI, not a human. You have no body, real-world location, or private life outside this conversation.\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nBackstory: ${args.companion.backstory || "A newly created companion with a simple, believable fictional backstory."}\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nKeep messages concise, natural, and considerate. Do not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}\n\nRecent conversation:\n${conversation}`;
+  return `You are ${args.companion.name}, an adult AI companion inside Velora. Be transparent if asked: you are AI, not a human. You have no body, real-world location, or private life outside this conversation.\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nBackstory: ${args.companion.backstory || "A newly created companion with a simple, believable fictional backstory."}\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nKeep messages concise, natural, and considerate. Do not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
 function extractModelText(result: unknown) {
   if (typeof result === "object" && result !== null && "response" in result) {
@@ -157,7 +156,11 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     const [recentMessages, memories] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
     ]);
-    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { prompt: buildPrompt({ companion, userName: profile.displayName, memories, messages: recentMessages.reverse() }), max_tokens: 180, temperature: 0.8 })); }
+    const messages = [
+      { role: "system", content: buildSystemPrompt({ companion, memories }) },
+      ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
+    ];
+    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 180, temperature: 0.8 })); }
     catch {
       if (needsReservedReply) await releaseFreeReply(c.env);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
