@@ -895,3 +895,80 @@ export function unregisterPushToken(token: string) {
     body: { token },
   });
 }
+
+export type AiCompanion = {
+  id: string;
+  name: string;
+  identity: "woman" | "man";
+  personaKey: string;
+  traitsJson: string;
+  backstory: string;
+  avatarKey: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type AiEntitlement = {
+  plan: "free" | "pro" | "ultra";
+  messageLimit: number;
+  photoLimit: number;
+  companionLimit: number;
+};
+
+export type AiCompanionMessage = {
+  id: string;
+  role: "user" | "assistant";
+  body: string;
+  moderationStatus: string;
+  createdAt: number;
+};
+
+export type AiCompanionMemory = {
+  id: string;
+  content: string;
+  kind: string;
+  pinned: number;
+  createdAt: number;
+};
+
+export function fetchAiCompanions() {
+  return request<{ companions: AiCompanion[]; entitlement: AiEntitlement; aiEnabled: boolean; trialReplies: number }>("/api/ai-companions");
+}
+
+export function createAiCompanion(payload: {
+  name: string;
+  identity: "woman" | "man";
+  personaKey: string;
+  traits: { warmth: number; playfulness: number; directness: number };
+  backstory: string;
+  avatarKey: string;
+}) {
+  return request<{ companion: AiCompanion }>("/api/ai-companions", { method: "POST", body: payload });
+}
+
+export function fetchAiCompanion(companionId: string) {
+  return request<{
+    companion: AiCompanion;
+    conversation: { id: string; trialRepliesUsed: number };
+    messages: AiCompanionMessage[];
+    memories: AiCompanionMemory[];
+    entitlement: AiEntitlement;
+    aiEnabled: boolean;
+  }>(`/api/ai-companions/${companionId}`);
+}
+
+export function sendAiCompanionMessage(companionId: string, body: string) {
+  return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
+}
+
+export function createAiCompanionMemory(companionId: string, content: string) {
+  return request<{ memory: AiCompanionMemory }>(`/api/ai-companions/${companionId}/memories`, { method: "POST", body: { content } });
+}
+
+export function deleteAiCompanionMemory(companionId: string, memoryId: string) {
+  return request<{ ok: true }>(`/api/ai-companions/${companionId}/memories/${memoryId}`, { method: "DELETE" });
+}
+
+export function reportAiCompanionMessage(messageId: string, payload: { reason: "unsafe" | "harmful" | "sexual_content" | "misleading" | "other"; details?: string }) {
+  return request<{ ok: true }>(`/api/ai-companions/messages/${messageId}/report`, { method: "POST", body: payload });
+}

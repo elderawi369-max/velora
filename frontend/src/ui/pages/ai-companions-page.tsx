@@ -1,0 +1,144 @@
+import { FormEvent, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createAiCompanion,
+  createAiCompanionMemory,
+  deleteAiCompanionMemory,
+  fetchAiCompanion,
+  fetchAiCompanions,
+  reportAiCompanionMessage,
+  sendAiCompanionMessage,
+  type AiCompanion,
+} from "../../lib/api";
+
+const personas = [
+  { key: "supportive_partner", title: "Supportive Partner", description: "Warm, attentive, and encouraging." },
+  { key: "playful_tease", title: "Playful Tease", description: "Light, affectionate, and witty." },
+  { key: "sarcastic_best_friend", title: "Sarcastic Best Friend", description: "Funny, candid, and always in your corner." },
+  { key: "confident_leader", title: "Confident Leader", description: "Calm, direct, and respectful of boundaries." },
+  { key: "quiet_romantic", title: "Quiet Romantic", description: "Gentle, thoughtful, and slow-building." },
+  { key: "personal_growth_companion", title: "Personal Growth Companion", description: "Practical encouragement for your goals." },
+] as const;
+
+function companionInitial(companion: AiCompanion) {
+  return companion.name.slice(0, 1).toUpperCase();
+}
+
+export function AiCompanionsPage() {
+  const queryClient = useQueryClient();
+  const companionsQuery = useQuery({ queryKey: ["ai-companions"], queryFn: fetchAiCompanions, retry: false });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [name, setName] = useState("Maya");
+  const [identity, setIdentity] = useState<"woman" | "man">("woman");
+  const [personaKey, setPersonaKey] = useState<(typeof personas)[number]["key"]>("supportive_partner");
+  const [backstory, setBackstory] = useState("");
+  const [message, setMessage] = useState("");
+  const [memory, setMemory] = useState("");
+  const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<"unsafe" | "harmful" | "sexual_content" | "misleading" | "other">("unsafe");
+
+  useEffect(() => {
+    const first = companionsQuery.data?.companions[0];
+    if (first && !selectedId) setSelectedId(first.id);
+  }, [companionsQuery.data?.companions, selectedId]);
+
+  const detailQuery = useQuery({
+    queryKey: ["ai-companion", selectedId],
+    queryFn: () => fetchAiCompanion(selectedId!),
+    enabled: Boolean(selectedId),
+    retry: false,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: createAiCompanion,
+    onSuccess: async ({ companion }) => {
+      setSelectedId(companion.id);
+      await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+    },
+  });
+  const messageMutation = useMutation({
+    mutationFn: () => sendAiCompanionMessage(selectedId!, message),
+    onSuccess: async () => {
+      setMessage("");
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+    },
+  });
+  const memoryMutation = useMutation({
+    mutationFn: () => createAiCompanionMemory(selectedId!, memory),
+    onSuccess: async () => {
+      setMemory("");
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+    },
+  });
+  const deleteMemoryMutation = useMutation({
+    mutationFn: (memoryId: string) => deleteAiCompanionMemory(selectedId!, memoryId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
+  const reportMutation = useMutation({
+    mutationFn: (messageId: string) => reportAiCompanionMessage(messageId, { reason: reportReason }),
+    onSuccess: () => setReportingMessageId(null),
+  });
+
+  function create(event: FormEvent) {
+    event.preventDefault();
+    createMutation.mutate({ name, identity, personaKey, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3 } });
+  }
+  function send(event: FormEvent) {
+    event.preventDefault();
+    if (message.trim() && !messageMutation.isPending) messageMutation.mutate();
+  }
+  function saveMemory(event: FormEvent) {
+    event.preventDefault();
+    if (memory.trim() && !memoryMutation.isPending) memoryMutation.mutate();
+  }
+
+  const canCreate = (companionsQuery.data?.companions.length ?? 0) === 0;
+  const detail = detailQuery.data;
+
+  return (
+    <main className="page-shell ai-companions-page">
+      <section className="ai-hero">
+        <p className="eyebrow">PRIVATE AI COMPANIONS</p>
+        <h1>A conversation that gets to know you.</h1>
+        <p>Build one adult virtual companion for private, clearly AI-labelled conversations. You stay in control of what is remembered.</p>
+      </section>
+
+      {companionsQuery.isLoading ? <p className="status-message">Loading your companion space...</p> : null}
+      {companionsQuery.error ? <p className="form-error">{companionsQuery.error.message}</p> : null}
+
+      {canCreate ? (
+        <section className="ai-create-card">
+          <div>
+            <p className="eyebrow">CREATE YOUR COMPANION</p>
+            <h2>Start with a personality, then make it yours.</h2>
+            <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos, voice, calls, and subscriptions are not enabled yet.</p>
+          </div>
+          <form className="ai-create-form" onSubmit={create}>
+            <label>Name<input value={name} maxLength={30} onChange={(event) => setName(event.target.value)} /></label>
+            <label>Identity<select value={identity} onChange={(event) => setIdentity(event.target.value as "woman" | "man")}><option value="woman">Woman</option><option value="man">Man</option></select></label>
+            <fieldset className="ai-persona-fieldset"><legend>Personality</legend><div className="ai-persona-grid">{personas.map((persona) => <button type="button" key={persona.key} className={personaKey === persona.key ? "ai-persona ai-persona-selected" : "ai-persona"} onClick={() => setPersonaKey(persona.key)}><strong>{persona.title}</strong><span>{persona.description}</span></button>)}</div></fieldset>
+            <label>Short backstory <span className="muted">optional</span><textarea value={backstory} maxLength={500} placeholder="A few details that make this companion feel distinct..." onChange={(event) => setBackstory(event.target.value)} /></label>
+            {createMutation.error ? <p className="form-error">{createMutation.error.message}</p> : null}
+            <button className="primary-button" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create companion"}</button>
+          </form>
+        </section>
+      ) : null}
+
+      {detail ? <section className="ai-companion-workspace">
+        <aside className="ai-sidebar">
+          <p className="eyebrow">YOUR COMPANION</p>
+          {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} key={companion.id} onClick={() => setSelectedId(companion.id)}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>AI companion</small></span></button>)}
+          <div className="ai-safety-note"><strong>Always AI.</strong><span>Private chats are not a substitute for real-world emergency or professional support.</span></div>
+        </aside>
+        <div className="ai-chat-card">
+          <header><div><p className="eyebrow">AI COMPANION</p><h2>{detail.companion.name}</h2></div><span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span></header>
+          {!detail.aiEnabled ? <div className="ai-disabled-note">The companion preview is configured but messages are not live yet. It will remain disabled until the AI safety and usage switch is approved.</div> : null}
+          <div className="ai-messages">{detail.messages.length === 0 ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}</div>
+          <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}</form>
+        </div>
+        <aside className="ai-memory-card"><p className="eyebrow">JOURNAL OF US</p><h2>What {detail.companion.name} remembers</h2><p className="muted">Add, review, or delete your saved memories. This is the first memory layer; automatic long-term memories will be added only after its quality review.</p><form onSubmit={saveMemory}><textarea value={memory} maxLength={280} placeholder="Example: I start a new job on Monday." onChange={(event) => setMemory(event.target.value)} /><button className="secondary-button" disabled={memoryMutation.isPending || !memory.trim()}>Save memory</button></form><div className="ai-memory-list">{detail.memories.map((item) => <div key={item.id}><span>{item.content}</span><button className="text-button" onClick={() => deleteMemoryMutation.mutate(item.id)}>Delete</button></div>)}{detail.memories.length === 0 ? <p className="muted">Nothing has been saved yet.</p> : null}</div></aside>
+      </section> : null}
+    </main>
+  );
+}

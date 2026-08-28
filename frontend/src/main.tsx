@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AdminPage } from "./ui/pages/admin-page";
+import { AiCompanionsPage } from "./ui/pages/ai-companions-page";
 import { fetchSession } from "./lib/api";
 import { AppLayout } from "./ui/app-layout";
 import { BrowsePage } from "./ui/pages/browse-page";
@@ -128,6 +129,10 @@ const router = createBrowserRouter([
             <BrowsePage />
           </BrowseRouteGuard>
         ),
+      },
+      {
+        path: "ai-companions",
+        element: <AiCompanionsPage />,
       },
       {
         path: "browse/:username",

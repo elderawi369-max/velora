@@ -14,7 +14,12 @@
 		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
 		"RESEND_FROM_NAME": "Velora",
 		"RESEND_SUPPORT_FROM_EMAIL": "support@velorachat.com",
-		"SUPPORT_REPLY_TO_EMAIL": "support@velorachat.com"
+		"SUPPORT_REPLY_TO_EMAIL": "support@velorachat.com",
+		"AI_COMPANION_ENABLED": "false",
+		"AI_COMPANION_DAILY_TRIAL_LIMIT": "150"
+	},
+	"ai": {
+		"binding": "AI"
 	},
 	"routes": [
 		{

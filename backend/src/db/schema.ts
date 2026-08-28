@@ -334,3 +334,72 @@ export const paymentWebhookEvents = sqliteTable("payment_webhook_events", {
   processedAt: integer("processed_at"),
   createdAt: integer("created_at").notNull(),
 });
+
+export const aiCompanions = sqliteTable("ai_companions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  identity: text("identity").notNull(),
+  personaKey: text("persona_key").notNull(),
+  traitsJson: text("traits_json").notNull(),
+  backstory: text("backstory").notNull(),
+  avatarKey: text("avatar_key").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionConversations = sqliteTable("ai_companion_conversations", {
+  id: text("id").primaryKey(),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  trialRepliesUsed: integer("trial_replies_used").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionMessages = sqliteTable("ai_companion_messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => aiCompanionConversations.id),
+  role: text("role").notNull(),
+  body: text("body").notNull(),
+  moderationStatus: text("moderation_status").notNull().default("allowed"),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const aiCompanionMemories = sqliteTable("ai_companion_memories", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  kind: text("kind").notNull(),
+  content: text("content").notNull(),
+  pinned: integer("pinned").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionReports = sqliteTable("ai_companion_reports", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  messageId: text("message_id").notNull().references(() => aiCompanionMessages.id),
+  reason: text("reason").notNull(),
+  details: text("details").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const aiEntitlements = sqliteTable("ai_entitlements", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  plan: text("plan").notNull().default("free"),
+  source: text("source"),
+  expiresAt: integer("expires_at"),
+  messageLimit: integer("message_limit").notNull().default(15),
+  photoLimit: integer("photo_limit").notNull().default(0),
+  companionLimit: integer("companion_limit").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiTrialDailyUsage = sqliteTable("ai_trial_daily_usage", {
+  dayNumber: integer("day_number").primaryKey(),
+  repliesUsed: integer("replies_used").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});

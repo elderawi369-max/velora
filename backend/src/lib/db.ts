@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 
 export type EnvBindings = {
   DB: D1Database;
+  AI?: Ai;
   APP_NAME?: string;
   ADMIN_SECRET?: string;
   APP_ENV?: string;
@@ -24,6 +25,8 @@ export type EnvBindings = {
   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
+  AI_COMPANION_ENABLED?: string;
+  AI_COMPANION_DAILY_TRIAL_LIMIT?: string;
 };
 
 export function getDb(env: EnvBindings) {
