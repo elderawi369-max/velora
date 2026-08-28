@@ -153,7 +153,13 @@ function extractModelText(result: unknown) {
 }
 function addCompanionEmoji(text: string, personaKey: string, messageId: string) {
   if (/\p{Extended_Pictographic}/u.test(text)) return text;
-  if (/\b(cat|dog|pet|keyboard|sofa|couch|luna|rio)\b/i.test(text)) return `${text} 😂`;
+  const situationEmoji = ( [
+    [/\b(haha|funny|ridiculous|trouble|mischief|keyboard|sofa|couch|cat|dog|pet)\b/i, "😂"],
+    [/\b(can't wait|excited|amazing|great news|congratulations|congrats|proud of you|celebrate)\b/i, "✨"],
+    [/\b(miss you|love that|so sweet|cute|thinking of you|glad you)\b/i, "🤍"],
+    [/\b(sorry|rough|tough|stressed|worried|hard day|that sucks)\b/i, "🤍"],
+  ] as Array<[RegExp, string]>).find(([pattern]) => pattern.test(text))?.[1];
+  if (situationEmoji) return `${text} ${situationEmoji}`;
   const emojiByPersona: Record<string, string[]> = {
     supportive_partner: ["😊", "🤍", "✨"],
     playful_tease: ["😏", "😂", "😉"],
