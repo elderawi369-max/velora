@@ -57,6 +57,9 @@ async function isChatEnabledForUser(env: EnvBindings, userId: string) {
   const [user] = await getDb(env).select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
   return Boolean(user && isApprovedBetaUser(env, user.email));
 }
+function effectiveCompanionLimit(planLimit: number, isApprovedBeta: boolean) {
+  return isApprovedBeta ? Math.max(planLimit, personaKeys.length) : planLimit;
+}
 async function reserveFreeReply(env: EnvBindings) {
   const cap = Math.max(0, Number.parseInt(env.AI_COMPANION_DAILY_TRIAL_LIMIT ?? "150", 10) || 0);
   if (cap === 0) return false;
@@ -196,8 +199,8 @@ function addCompanionEmoji(text: string, personaKey: string, messageId: string) 
 aiCompanionRoutes.get("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const db = getDb(c.env);
-  const [companions, entitlement] = await Promise.all([db.select().from(aiCompanions).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)), getOrCreateEntitlement(c.env, context.userId)]);
-  return c.json({ companions, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId), trialReplies });
+  const [companions, entitlement, aiEnabled] = await Promise.all([db.select().from(aiCompanions).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)), getOrCreateEntitlement(c.env, context.userId), isChatEnabledForUser(c.env, context.userId)]);
+  return c.json({ companions, entitlement: { ...entitlement, companionLimit: effectiveCompanionLimit(entitlement.companionLimit, aiEnabled) }, aiEnabled, trialReplies });
 });
 
 aiCompanionRoutes.post("/", async (c) => {
@@ -205,7 +208,8 @@ aiCompanionRoutes.post("/", async (c) => {
   const parsed = createCompanionSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Please check your companion details." }, 400);
   const db = getDb(c.env); const entitlement = await getOrCreateEntitlement(c.env, context.userId);
   const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).where(eq(aiCompanions.userId, context.userId));
-  if (existing.length >= entitlement.companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
+  const companionLimit = effectiveCompanionLimit(entitlement.companionLimit, await isChatEnabledForUser(c.env, context.userId));
+  if (existing.length >= companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
   const timestamp = now(); const companion = { id: id("aic"), userId: context.userId, ...parsed.data, traitsJson: JSON.stringify(parsed.data.traits), createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanions).values(companion);
   const canon = createDefaultCanon(companion);

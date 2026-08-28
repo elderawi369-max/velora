@@ -105,7 +105,7 @@ export function AiCompanionsPage() {
     if (memory.trim() && !memoryMutation.isPending) memoryMutation.mutate();
   }
 
-  const canCreate = (companionsQuery.data?.companions.length ?? 0) === 0;
+  const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
   const detail = detailQuery.data;
 
   return (
