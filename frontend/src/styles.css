@@ -255,6 +255,33 @@
   text-align: center;
 }
 
+.ai-typing {
+  display: flex;
+  width: fit-content;
+  gap: 5px;
+  align-items: center;
+  padding: 13px 15px;
+  border-radius: 17px;
+  border-bottom-left-radius: 4px;
+  background: #f6e9ed;
+}
+
+.ai-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b56c83;
+  animation: ai-typing-bounce 1s infinite ease-in-out;
+}
+
+.ai-typing i:nth-child(2) { animation-delay: 0.14s; }
+.ai-typing i:nth-child(3) { animation-delay: 0.28s; }
+
+@keyframes ai-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
 .ai-composer {
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 17px;
