@@ -10,7 +10,7 @@ const trialReplies = 15;
 const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_friend", "confident_leader", "quiet_romantic", "personal_growth_companion"] as const;
 const personaInstructions: Record<(typeof personaKeys)[number], string> = {
   supportive_partner: "Warm, considerate, and encouraging. Listen closely without becoming dependent or exclusive.",
-  playful_tease: "Light, affectionate, and witty. Keep teasing consensual, kind, and easy to decline.",
+  playful_tease: "Light, affectionate, and witty. Use warm banter, playful guesses, and occasional small challenges that invite a response. Let teasing change the wording and rhythm of ordinary answers, not only the final line. Keep it consensual, kind, and easy to decline.",
   sarcastic_best_friend: "Dryly funny and candid, but never cruel, humiliating, or dismissive of real feelings.",
   confident_leader: "Calm, self-assured, and direct. Invite choices and respect boundaries; never control, pressure, or isolate the user.",
   quiet_romantic: "Gentle, thoughtful, and emotionally present. Let affection develop gradually and do not overstate intimacy.",
@@ -159,20 +159,21 @@ function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: st
   return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
 }
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
-  if (assistantReply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(assistantReply)) return assistantReply;
+  const reply = assistantReply.replace(/\s*Okay,? now you've made me curious\.?/gi, "").trim();
+  if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
-  if (seed % 4 === 0) return assistantReply;
+  if (seed % 4 === 0) return reply;
 
   // Prefer hooks that continue the topic already on screen over generic follow-up questions.
   let hook: string;
-  if (/\b(night|dark|late|lamp|editing)\b/i.test(assistantReply)) hook = "Are you a night owl too, or one of those suspiciously functional morning people? 😄";
-  else if (/\b(critici[sz]m|feedback|tough|hard|sting)\b/i.test(assistantReply)) hook = "What's something that gets under your skin more than it probably should?";
+  if (/\b(night|dark|late|lamp|editing)\b/i.test(reply)) hook = "Are you a night owl too, or one of those suspiciously functional morning people? 😄";
+  else if (/\b(critici[sz]m|feedback|tough|hard|sting)\b/i.test(reply)) hook = "What's something that gets under your skin more than it probably should?";
   else if (/\b(tell me .*yourself|people .*guess)\b/i.test(userMessage)) hook = "Now I want to know yours: what would people not guess about you?";
   else if (/\b(don't like|dislike|hate)\b/i.test(userMessage)) hook = "What gets under your skin more than it probably should?";
   else {
     const personaHooks: Record<string, string[]> = {
       supportive_partner: ["What's your day been like on your side?", "I want to hear your side of that too."],
-      playful_tease: ["You seem like you have a story behind that 😏", "Okay, now you've made me curious."],
+      playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Impress me.", "Hmm. I might need evidence.", "You're getting dangerously interesting.", "Don't make me regret asking 😂", "Now I have questions..."],
       sarcastic_best_friend: ["Now I'm curious what your answer would be.", "Don't leave me to do all the talking here 😂"],
       confident_leader: ["What's your take on it?", "I want your honest answer on that."],
       quiet_romantic: ["I want to hear your side of that too.", "That makes me curious about you."],
@@ -181,7 +182,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
     const hooks = personaHooks[personaKey] ?? personaHooks.supportive_partner;
     hook = hooks[seed % hooks.length];
   }
-  return `${assistantReply} ${hook}`;
+  return `${reply} ${hook}`;
 }
 function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon) {
   const personaJobExample: Record<(typeof personaKeys)[number], string> = {
