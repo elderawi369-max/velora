@@ -99,15 +99,26 @@ function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; 
   return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nCharacter canon: ${getCharacterCanon(args.companion)}\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. Occasionally use a fitting emoji and ask a follow-up only when it feels genuinely curious. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
 function extractModelText(result: unknown) {
-  if (typeof result === "object" && result !== null && "response" in result) {
-    const response = (result as { response?: unknown }).response;
-    return typeof response === "string" ? response.trim() : "";
-  }
-  if (typeof result === "object" && result !== null && "choices" in result) {
-    const firstChoice = (result as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0];
-    const content = firstChoice?.message?.content;
-    return typeof content === "string" ? content.trim() : "";
-  }
+  const extractContent = (value: unknown): string => {
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value)) return value.map(extractContent).filter(Boolean).join("\n").trim();
+    if (typeof value !== "object" || value === null) return "";
+    const record = value as { text?: unknown; content?: unknown; parts?: unknown };
+    if (typeof record.text === "string") return record.text.trim();
+    return extractContent(record.content) || extractContent(record.parts);
+  };
+  if (typeof result !== "object" || result === null) return "";
+  const directResponse = extractContent((result as { response?: unknown }).response);
+  if (directResponse) return directResponse;
+  const firstChoice = (result as { choices?: Array<{ message?: { content?: unknown }; text?: unknown; delta?: { content?: unknown } }> }).choices?.[0];
+  const choiceContent = extractContent(firstChoice?.message?.content ?? firstChoice?.text ?? firstChoice?.delta?.content);
+  if (choiceContent) return choiceContent;
+  const candidateContent = extractContent((result as { candidates?: Array<{ content?: unknown }> }).candidates?.[0]?.content);
+  if (candidateContent) return candidateContent;
+  const nestedResponse = extractContent((result as { result?: { response?: unknown; candidates?: Array<{ content?: unknown }> } }).result?.response);
+  if (nestedResponse) return nestedResponse;
+  const nestedCandidate = extractContent((result as { result?: { candidates?: Array<{ content?: unknown }> } }).result?.candidates?.[0]?.content);
+  if (nestedCandidate) return nestedCandidate;
   return "";
 }
 
