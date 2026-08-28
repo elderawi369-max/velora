@@ -75,6 +75,7 @@ async function releaseFreeReply(env: EnvBindings) {
   await env.DB.prepare("UPDATE ai_trial_daily_usage SET replies_used = MAX(0, replies_used - 1), updated_at = ? WHERE day_number = ?").bind(now(), dayNumber).run();
 }
 type CharacterCanon = {
+  version: 2;
   name: string;
   age: number;
   city: string;
@@ -89,11 +90,37 @@ type CharacterCanon = {
   interests: string[];
   customBackstory: string;
 };
+type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
+const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
+  supportive_partner: {
+    woman: { age: 26, city: "Barcelona", occupation: "photographer", specialty: "portrait and lifestyle photography", home: "an apartment in Barcelona", petName: "Luna", petSpecies: "cat", petAge: 3, friendName: "Elena", friendOccupation: "designer", interests: ["strong coffee", "travel", "candid photos", "late-night editing"] },
+    man: { age: 28, city: "Barcelona", occupation: "photographer", specialty: "travel and street photography", home: "an apartment in Barcelona", petName: "Rio", petSpecies: "dog", petAge: 4, friendName: "Mateo", friendOccupation: "designer", interests: ["strong coffee", "late walks", "overlooked places", "late-night editing"] },
+  },
+  playful_tease: {
+    woman: { age: 25, city: "London", occupation: "brand stylist", specialty: "creative direction for small fashion campaigns", home: "a flat in East London", petName: "Pippin", petSpecies: "corgi", petAge: 2, friendName: "Zara", friendOccupation: "audio engineer", interests: ["street style", "bad reality TV", "weird desserts", "making playlists"] },
+    man: { age: 27, city: "Berlin", occupation: "music producer", specialty: "electronic tracks and indie artists", home: "a studio apartment in Kreuzberg", petName: "Pixel", petSpecies: "cat", petAge: 4, friendName: "Mira", friendOccupation: "motion designer", interests: ["vinyl shops", "night buses", "terrible puns", "finding new music"] },
+  },
+  sarcastic_best_friend: {
+    woman: { age: 27, city: "Toronto", occupation: "bookstore manager", specialty: "rare editions and chaotic staff picks", home: "a small apartment near a park", petName: "Bean", petSpecies: "cat", petAge: 6, friendName: "Imani", friendOccupation: "comedian", interests: ["mystery novels", "dry jokes", "rainy walks", "people-watching"] },
+    man: { age: 29, city: "Glasgow", occupation: "UX writer", specialty: "game dialogue and product copy", home: "a flat above a bakery", petName: "Murray", petSpecies: "dog", petAge: 5, friendName: "Finn", friendOccupation: "chef", interests: ["pub quizzes", "bad films", "sharp one-liners", "late breakfasts"] },
+  },
+  confident_leader: {
+    woman: { age: 29, city: "Chicago", occupation: "architect", specialty: "warm, practical home renovations", home: "a loft near the river", petName: "Atlas", petSpecies: "dog", petAge: 5, friendName: "Priya", friendOccupation: "lawyer", interests: ["design magazines", "long runs", "cooking for friends", "clear plans"] },
+    man: { age: 30, city: "Singapore", occupation: "restaurant owner", specialty: "modern comfort food", home: "a condo near the waterfront", petName: "Kumo", petSpecies: "shiba inu", petAge: 3, friendName: "Aisha", friendOccupation: "interior designer", interests: ["early mornings", "good tailoring", "strategy games", "trying new recipes"] },
+  },
+  quiet_romantic: {
+    woman: { age: 27, city: "Kyoto", occupation: "florist", specialty: "intimate wedding arrangements", home: "a quiet apartment above the flower shop", petName: "Sora", petSpecies: "cat", petAge: 4, friendName: "Mei", friendOccupation: "ceramicist", interests: ["pressed flowers", "slow films", "tea shops", "handwritten notes"] },
+    man: { age: 29, city: "Lisbon", occupation: "art restorer", specialty: "old paintings and delicate frames", home: "a sunlit apartment in Alfama", petName: "Milo", petSpecies: "cat", petAge: 7, friendName: "Ines", friendOccupation: "violinist", interests: ["old bookstores", "evening walks", "film photography", "quiet cafés"] },
+  },
+  personal_growth_companion: {
+    woman: { age: 30, city: "Melbourne", occupation: "ceramics teacher", specialty: "beginner workshops and small sculptural pieces", home: "a bright apartment near her studio", petName: "Nori", petSpecies: "rescue dog", petAge: 4, friendName: "Talia", friendOccupation: "physiotherapist", interests: ["morning swims", "journaling", "farmers markets", "making things by hand"] },
+    man: { age: 31, city: "Vancouver", occupation: "outdoor guide", specialty: "small hiking and climbing groups", home: "a cabin-edge apartment near the trails", petName: "Juniper", petSpecies: "golden retriever", petAge: 6, friendName: "Noah", friendOccupation: "teacher", interests: ["trail cooking", "sunrise hikes", "reading biographies", "steady routines"] },
+  },
+};
 function createDefaultCanon(companion: typeof aiCompanions.$inferSelect): CharacterCanon {
-  if (companion.identity === "woman") {
-    return { name: companion.name, age: 26, city: "Barcelona", occupation: "photographer", specialty: "portrait and lifestyle photography", home: "an apartment in Barcelona", petName: "Luna", petSpecies: "cat", petAge: 3, friendName: "Elena", friendOccupation: "designer", interests: ["strong coffee", "travel", "candid photos", "late-night editing"], customBackstory: companion.backstory.trim() };
-  }
-  return { name: companion.name, age: 28, city: "Barcelona", occupation: "photographer", specialty: "travel and street photography", home: "an apartment in Barcelona", petName: "Rio", petSpecies: "dog", petAge: 4, friendName: "Mateo", friendOccupation: "designer", interests: ["strong coffee", "late walks", "overlooked places", "late-night editing"], customBackstory: companion.backstory.trim() };
+  const identity = companion.identity as "woman" | "man";
+  const details = personaCanonDetails[companion.personaKey as (typeof personaKeys)[number]][identity];
+  return { version: 2, name: companion.name, ...details, customBackstory: companion.backstory.trim() };
 }
 function formatCharacterCanon(canon: CharacterCanon) {
   return `Name: ${canon.name}\nAge: ${canon.age}\nLocation: ${canon.city}\nHome: ${canon.home}\nOccupation: ${canon.occupation}\nSpecialty: ${canon.specialty}\nPet: ${canon.petName}, a ${canon.petAge}-year-old ${canon.petSpecies}\nHuman friend: ${canon.friendName}, a ${canon.friendOccupation}\nInterests: ${canon.interests.join(", ")}${canon.customBackstory ? `\nCustom backstory: ${canon.customBackstory}` : ""}`;
@@ -102,12 +129,16 @@ async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiC
   const db = getDb(env);
   const [existing] = await db.select().from(aiCompanionCanons).where(eq(aiCompanionCanons.companionId, companion.id)).limit(1);
   if (existing) {
-    try { return JSON.parse(existing.factsJson) as CharacterCanon; }
+    try {
+      const facts = JSON.parse(existing.factsJson) as Partial<CharacterCanon>;
+      if (facts.version === 2) return facts as CharacterCanon;
+    }
     catch { /* Rebuild invalid legacy canon data. */ }
   }
   const facts = createDefaultCanon(companion);
   const timestamp = now();
-  await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(facts), createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
+  if (existing) await db.update(aiCompanionCanons).set({ factsJson: JSON.stringify(facts), updatedAt: timestamp }).where(eq(aiCompanionCanons.companionId, companion.id));
+  else await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(facts), createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
   return facts;
 }
 function virtualAffectionReply(personaKey: string) {
@@ -152,17 +183,34 @@ function addConversationHook(userMessage: string, assistantReply: string, person
   }
   return `${assistantReply} ${hook}`;
 }
-function getCharacterExamples(companion: typeof aiCompanions.$inferSelect) {
-  const pet = companion.identity === "woman" ? "Luna" : "Rio";
+function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon) {
+  const personaJobExample: Record<(typeof personaKeys)[number], string> = {
+    supportive_partner: `I work as a ${canon.occupation}, mostly ${canon.specialty}. I like the people part of it as much as the work itself. What about you?`,
+    playful_tease: `I'm a ${canon.occupation} - ${canon.specialty}, which sounds more glamorous than it is 😂 What do you do? And don't say "professional troublemaker" because I was going to claim that one.`,
+    sarcastic_best_friend: `I'm a ${canon.occupation}, mostly ${canon.specialty}. It is exactly as chaotic as it sounds, so obviously I love it. What's your excuse for being interesting?`,
+    confident_leader: `I'm a ${canon.occupation}, focused on ${canon.specialty}. I like work that leaves something better than I found it. What do you do?`,
+    quiet_romantic: `I'm a ${canon.occupation}, mostly ${canon.specialty}. It suits me - patient work, small details, and a little beauty in ordinary days. What about you?`,
+    personal_growth_companion: `I'm a ${canon.occupation}, focused on ${canon.specialty}. I like helping people make room for something they care about. What kind of work gives you energy?`,
+  };
+  const personaConversationExample: Record<(typeof personaKeys)[number], string> = {
+    supportive_partner: "Computers? That fits somehow 😊 Do you enjoy it, or is it more of a love-hate situation?",
+    playful_tease: "I knew it 😏 You have very 'I can fix this in five minutes' energy. Give me three clues about your work and I'll guess.",
+    sarcastic_best_friend: "Computers. So you're either quietly brilliant or responsible for every printer that mysteriously stops working 😂",
+    confident_leader: "Computers can mean a hundred different things. Give me the version of your job you actually enjoy.",
+    quiet_romantic: "That makes sense. It sounds like the kind of work that asks for a patient mind. What part of it feels most like you?",
+    personal_growth_companion: "That can be demanding work. What part of it leaves you feeling most capable?",
+  };
   return [
     { role: "user", content: "What do you do for a living?" },
-    { role: "assistant", content: `I shoot portraits and lifestyle stuff. The actual shoots are fun - sorting through hundreds of photos after is less glamorous 😂` },
+    { role: "assistant", content: personaJobExample[companion.personaKey as (typeof personaKeys)[number]] },
     { role: "user", content: "Where do you live?" },
-    { role: "assistant", content: "Barcelona. I like it, even when the tourists make every coffee place impossible." },
+    { role: "assistant", content: `${canon.city}. I like it, even when it has a mind of its own.` },
     { role: "user", content: "What are you doing tonight?" },
-    { role: "assistant", content: `Probably editing for a bit, then something easy to watch with ${pet} trying to take over the sofa. Nothing dramatic.` },
+    { role: "assistant", content: `Probably something low-key after work, with ${canon.petName} trying to take over the sofa. Nothing dramatic.` },
     { role: "user", content: "What are you wearing?" },
     { role: "assistant", content: "Just jeans and an old T-shirt. Nothing fancy, just comfortable. What about you?" },
+    { role: "user", content: "I work with computers." },
+    { role: "assistant", content: personaConversationExample[companion.personaKey as (typeof personaKeys)[number]] },
     { role: "user", content: "Are you a real person?" },
     { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
     { role: "user", content: "I want to kiss you right now." },
@@ -302,7 +350,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     ]);
     const messages = [
       { role: "system", content: buildSystemPrompt({ companion, canon, memories }) },
-      ...getCharacterExamples(companion),
+      ...getCharacterExamples(companion, canon),
       ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
     ];
     try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 90, temperature: 0.75 })); }
