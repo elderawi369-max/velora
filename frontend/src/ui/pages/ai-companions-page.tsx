@@ -31,6 +31,7 @@ export function AiCompanionsPage() {
   const [name, setName] = useState("Maya");
   const [identity, setIdentity] = useState<"woman" | "man">("woman");
   const [personaKey, setPersonaKey] = useState<(typeof personas)[number]["key"]>("supportive_partner");
+  const [replyStyle, setReplyStyle] = useState<"short" | "natural" | "detailed">("natural");
   const [backstory, setBackstory] = useState("");
   const [message, setMessage] = useState("");
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export function AiCompanionsPage() {
 
   function create(event: FormEvent) {
     event.preventDefault();
-    createMutation.mutate({ name, identity, personaKey, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3 } });
+    createMutation.mutate({ name, identity, personaKey, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3, replyStyle } });
   }
   function send(event: FormEvent) {
     event.preventDefault();
@@ -129,6 +130,7 @@ export function AiCompanionsPage() {
             <label>Name<input value={name} maxLength={30} onChange={(event) => setName(event.target.value)} /></label>
             <label>Identity<select value={identity} onChange={(event) => setIdentity(event.target.value as "woman" | "man")}><option value="woman">Woman</option><option value="man">Man</option></select></label>
             <fieldset className="ai-persona-fieldset"><legend>Personality</legend><div className="ai-persona-grid">{personas.map((persona) => <button type="button" key={persona.key} className={personaKey === persona.key ? "ai-persona ai-persona-selected" : "ai-persona"} onClick={() => setPersonaKey(persona.key)}><strong>{persona.title}</strong><span>{persona.description}</span></button>)}</div></fieldset>
+            <label>Reply style<select value={replyStyle} onChange={(event) => setReplyStyle(event.target.value as typeof replyStyle)}><option value="short">Short &amp; texty</option><option value="natural">Natural</option><option value="detailed">Detailed</option></select></label>
             <label>Short backstory <span className="muted">optional</span><textarea value={backstory} maxLength={500} placeholder="A few details that make this companion feel distinct..." onChange={(event) => setBackstory(event.target.value)} /></label>
             {createMutation.error ? <p className="form-error">{createMutation.error.message}</p> : null}
             <button className="primary-button" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create companion"}</button>

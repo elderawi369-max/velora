@@ -939,7 +939,7 @@ export function createAiCompanion(payload: {
   name: string;
   identity: "woman" | "man";
   personaKey: string;
-  traits: { warmth: number; playfulness: number; directness: number };
+  traits: { warmth: number; playfulness: number; directness: number; replyStyle: "short" | "natural" | "detailed" };
   backstory: string;
   avatarKey: string;
 }) {
