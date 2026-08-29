@@ -760,15 +760,17 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
   const db = getDb(c.env);
   const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   if (!visualIdentity || !visualIdentity.canonicalObjectKey || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Prepare the companion visual identity before running a lifestyle test." }, 409);
+  const canonicalObjectKey = visualIdentity.canonicalObjectKey;
+  const imageBucket = c.env.COMPANION_IMAGES;
   const timestamp = now();
   const testId = id("aitest");
   const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
   await db.insert(aiCompanionPhotos).values(entries);
   try {
     await Promise.all(entries.map(async (entry) => {
-      const image = await generateReferenceImage(c.env, entry.prompt, [visualIdentity.canonicalObjectKey]);
+      const image = await generateReferenceImage(c.env, entry.prompt, [canonicalObjectKey]);
       const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
-      await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
+      await imageBucket.put(key, image, { httpMetadata: { contentType: "image/png" } });
       await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
     }));
   } catch (error) {
