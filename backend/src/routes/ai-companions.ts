@@ -248,6 +248,33 @@ function identityTestLooks(identity: "woman" | "man") {
     "close-up casual selfie with warm window light and a relaxed smile",
   ];
 }
+function lifestyleTestLooks(companion: typeof aiCompanions.$inferSelect) {
+  const feminineOutfits = [
+    "a candid fully clothed casual selfie at home in a fitted top and shorts",
+    "an evening date-night photo in a stylish fitted dress or polished casual outfit",
+    "an outdoor daytime candid while walking in a colorful fitted summer look",
+    "a relaxed cozy-at-home photo in a fitted lounge top and tailored shorts",
+  ];
+  const masculineOutfits = [
+    "a candid fully clothed casual selfie at home in a fitted T-shirt and shorts",
+    "an evening date-night photo in a polished casual shirt or knit",
+    "an outdoor daytime candid while walking in a modern summer outfit",
+    "a relaxed cozy-at-home photo in a fitted lounge top and shorts",
+  ];
+  const personalityDetails: Record<(typeof personaKeys)[number], string> = {
+    supportive_partner: "warm and caring, with a lived-in, personal feel",
+    playful_tease: "playful, youthful, and lightly mischievous with a fun color accent or spontaneous expression",
+    sarcastic_best_friend: "casual-cool and slightly edgy, with darker tones or a knowing expression",
+    confident_leader: "sleek, poised, and confident with sophisticated styling",
+    quiet_romantic: "soft, elegant, and intimate with gentle lighting and refined feminine details",
+    personal_growth_companion: "sporty-polished and active, with a healthy routine or creative-lifestyle touch",
+  };
+  const looks = companion.identity === "woman" ? feminineOutfits : masculineOutfits;
+  return looks.map((look) => `${look}; ${personalityDetails[companion.personaKey as (typeof personaKeys)[number]]}`);
+}
+function lifestylePhotoPrompt(companion: typeof aiCompanions.$inferSelect, scene: string) {
+  return `Use the exact same original fictional adult person in reference image 0 as ${companion.name}; face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Keep it adult, fully clothed, non-explicit, and non-sexualized. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, body-part focus, text, watermark, or other people.`;
+}
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
   supportive_partner: {
@@ -652,7 +679,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
     getOrCreateEntitlement(c.env, context.userId),
     db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0] ?? null),
-    db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "ready"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(12),
+    db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(8),
   ]);
   return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, visualIdentity, photos, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
 });
@@ -722,6 +749,44 @@ aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) =>
   if (!objectKey) return c.json({ error: "Visual reference not found." }, 404);
   const object = await c.env.COMPANION_IMAGES.get(objectKey);
   if (!object) return c.json({ error: "Visual reference not found." }, 404);
+  return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
+});
+
+aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!(await isChatEnabledForUser(c.env, context.userId))) return c.json({ error: "Lifestyle photo tests are only available in the private companion beta." }, 403);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity || !visualIdentity.canonicalObjectKey || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Prepare the companion visual identity before running a lifestyle test." }, 409);
+  const timestamp = now();
+  const testId = id("aitest");
+  const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
+  await db.insert(aiCompanionPhotos).values(entries);
+  try {
+    for (const entry of entries) {
+      const image = await generateReferenceImage(c.env, entry.prompt, [visualIdentity.canonicalObjectKey]);
+      const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
+      await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
+      await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
+    }
+  } catch {
+    await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(and(eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "generating")));
+    return c.json({ error: "Lifestyle photo test generation failed. No photos were released." }, 502);
+  }
+  const photos = await db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(4);
+  return c.json({ photos });
+});
+
+aiCompanionRoutes.get("/:companionId/photos/:photoId/preview", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!c.env.COMPANION_IMAGES) return c.json({ error: "Companion image services are not configured." }, 503);
+  const [photo] = await getDb(c.env).select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.id, c.req.param("photoId")), eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).limit(1);
+  if (!photo?.objectKey) return c.json({ error: "Lifestyle test photo not found." }, 404);
+  const object = await c.env.COMPANION_IMAGES.get(photo.objectKey);
+  if (!object) return c.json({ error: "Lifestyle test photo not found." }, 404);
   return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
 });
 

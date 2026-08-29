@@ -996,6 +996,14 @@ export function fetchAiCompanionVisualIdentityPreview(companionId: string, view:
   return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/images/${view}`);
 }
 
+export function runAiCompanionLifestyleTest(companionId: string) {
+  return request<{ photos: Array<{ id: string; status: string; createdAt: number }> }>(`/api/ai-companions/${companionId}/photos/lifestyle-test`, { method: "POST" });
+}
+
+export function fetchAiCompanionPhotoPreview(companionId: string, photoId: string) {
+  return requestImageUrl(`/api/ai-companions/${companionId}/photos/${photoId}/preview`);
+}
+
 export function sendAiCompanionMessage(companionId: string, body: string) {
   return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
 }

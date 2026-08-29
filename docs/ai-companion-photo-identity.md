@@ -35,3 +35,5 @@ Styling must reinforce persona: Playful Tease is playful and youthful; Personal 
 Before a visual identity can be released, review these six reference looks together: casual fitted top and shorts, short skirt and casual top, relaxed fully clothed home outfit, date-night outfit, outdoor daytime look, and close-up selfie. Every look must clearly be the same person at first glance.
 
 The release question is: would a normal user immediately believe every image depicts the same adult synthetic person? If not, keep the identity in review.
+
+After the six-look review, run a second private lifestyle test from the same canonical reference: casual at-home selfie, date-night photo, outdoor candid, and cozy-at-home photo. The results must still look like the same companion, express her persona, and avoid repeating the identity-sheet camera, setting, and pose template.
