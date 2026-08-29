@@ -442,9 +442,11 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]), getOrCreateEntitlement(c.env, context.userId), db.select({ displayName: profiles.displayName, email: users.email }).from(profiles).innerJoin(users, eq(profiles.userId, users.id)).where(eq(profiles.id, context.profileId)).limit(1).then((rows) => rows[0]),
   ]);
   if (!conversation || !profile) return c.json({ error: "Conversation unavailable." }, 404);
-  if (!isApprovedBetaUser(c.env, profile.email)) return c.json({ error: "The private AI Companion preview is not available for this account yet." }, 403);
+  const isApprovedBeta = isApprovedBetaUser(c.env, profile.email);
+  if (!isApprovedBeta) return c.json({ error: "The private AI Companion preview is not available for this account yet." }, 403);
   if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Subscription plans are coming soon." }, 403);
-  const needsReservedReply = entitlement.plan === "free" && !isCrisisMessage(parsed.data.body);
+  // The shared launch cap protects a public preview, not the approved internal beta.
+  const needsReservedReply = entitlement.plan === "free" && !isApprovedBeta && !isCrisisMessage(parsed.data.body);
   if (needsReservedReply && !(await reserveFreeReply(c.env))) {
     return c.json({ error: "Today's companion preview is at capacity. Please try again tomorrow." }, 429);
   }
