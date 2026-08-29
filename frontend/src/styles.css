@@ -338,6 +338,13 @@
 .ai-composer textarea { min-height: 48px; resize: vertical; }
 .ai-composer .form-error { grid-column: 1 / -1; margin: 0; }
 
+.ai-relationship-stage {
+  display: block;
+  color: #8a6774;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
 .ai-memory-card {
   display: grid;
   gap: 12px;

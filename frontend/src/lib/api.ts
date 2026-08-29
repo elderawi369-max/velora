@@ -957,7 +957,7 @@ export function createAiCompanion(payload: {
 export function fetchAiCompanion(companionId: string) {
   return request<{
     companion: AiCompanion;
-    conversation: { id: string; trialRepliesUsed: number };
+    conversation: { id: string; trialRepliesUsed: number; relationshipPoints: number; relationshipStage: "new" | "familiar" | "established" };
     messages: AiCompanionMessage[];
     memories: AiCompanionMemory[];
     memoryCandidates: AiCompanionMemoryCandidate[];

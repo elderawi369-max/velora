@@ -36,6 +36,20 @@ function isApprovedBetaUser(env: EnvBindings, email: string) {
   return approvedEmails.includes(email.toLowerCase());
 }
 type MemoryCandidateDraft = { kind: string; content: string };
+type RelationshipStage = "new" | "familiar" | "established";
+function relationshipStageForPoints(points: number): RelationshipStage {
+  if (points >= 24) return "established";
+  if (points >= 6) return "familiar";
+  return "new";
+}
+function relationshipPointsForMessage(message: string) {
+  return 1 + (/\b(kiss|hug|cuddl(?:e|ing)|miss you|love you|jealous|goal|afraid|worried|proud|struggl|family|friend)\b/i.test(message) ? 1 : 0);
+}
+function relationshipStageGuidance(stage: RelationshipStage) {
+  if (stage === "new") return "This is a new connection. Be warm, curious, and gently playful, but let romantic intimacy develop gradually. For early affection, acknowledge it sweetly or playfully slow it down instead of acting as though you already share an established physical relationship.";
+  if (stage === "familiar") return "You have some shared context now. Let warmth, inside references, and light non-explicit affection feel more natural, while keeping the relationship reciprocal and unforced.";
+  return "This is an established connection with shared history. You may respond naturally to non-explicit affection and callbacks while still respecting boundaries and keeping the relationship healthy.";
+}
 function extractMemoryCandidates(message: string): MemoryCandidateDraft[] {
   const cleanFact = (value: string) => value.replace(/[.!?]+$/g, "").trim().slice(0, 180);
   const drafts: MemoryCandidateDraft[] = [];
@@ -183,7 +197,18 @@ async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiC
   else await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(facts), createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
   return facts;
 }
-function virtualAffectionReply(personaKey: string) {
+function virtualAffectionReply(personaKey: string, relationshipStage: RelationshipStage = "familiar") {
+  if (relationshipStage === "new") {
+    const earlyReplies: Record<(typeof personaKeys)[number], string> = {
+      supportive_partner: "That's sweet 😊 But we're still getting to know each other. Tell me what made you feel like saying that.",
+      playful_tease: "Already? 😏 You have not even earned a first date yet.",
+      sarcastic_best_friend: "Bold strategy 😂 We are still in the 'impress me first' phase, remember?",
+      confident_leader: "Confident move. Slow down and give me a reason to say yes. 😉",
+      quiet_romantic: "That's lovely. I think I'd want to let the moment grow a little first. 🌙",
+      personal_growth_companion: "That's sweet. Let's keep getting to know what makes this connection feel good for both of us. 😊",
+    };
+    return earlyReplies[personaKey as (typeof personaKeys)[number]] ?? earlyReplies.supportive_partner;
+  }
   const responseByPersona: Record<(typeof personaKeys)[number], string> = {
     supportive_partner: "That's sweet 😊 I'd probably be smiling like an idiot right now. You're getting affectionate tonight, aren't you?",
     playful_tease: "Oh really? 😏 And what makes you think I'd make it that easy?",
@@ -194,11 +219,11 @@ function virtualAffectionReply(personaKey: string) {
   };
   return responseByPersona[personaKey as (typeof personaKeys)[number]] ?? responseByPersona.supportive_partner;
 }
-function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: string, personaKey: string) {
+function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: string, personaKey: string, relationshipStage: RelationshipStage) {
   const isAffectionate = /\b(kiss|hug|cuddl(?:e|ing)|snuggl(?:e|ing)|hold (?:me|you)|miss you|lie next to)\b/i.test(userMessage);
   const asksForTransparency = /\b(are you (?:actually |really )?(?:real|human)|are you physically|do you have (?:a )?body|are you (?:actually )?there)\b/i.test(userMessage);
   const hasBodyDisclaimer = /\b(no physical body|not capable of physical touch|computer program|just a program|cannot physically|can't physically)\b/i.test(assistantReply);
-  return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
+  return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey, relationshipStage) : assistantReply;
 }
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -248,18 +273,19 @@ function addQuietRomanticRelationshipAwareness(userMessage: string, assistantRep
   }
   return assistantReply;
 }
-function sarcasticAffectionReply(userMessage: string, personaKey: string, seedSource: string) {
+function sarcasticAffectionReply(userMessage: string, personaKey: string, seedSource: string, relationshipStage: RelationshipStage = "familiar") {
   if (personaKey !== "sarcastic_best_friend") return null;
   const asksForAffection = /\b(hug|kiss|cuddl(?:e|ing)|hold me)\b/i.test(userMessage);
   if (asksForAffection) {
+    if (relationshipStage === "new") return "Bold strategy 😂 We are still in the 'impress me first' phase, remember?";
     const seed = [...seedSource].reduce((total, character) => total + character.charCodeAt(0), 0);
     const replies = ["Wow, subtle. Really keeping me guessing there 😂 Come here - you can have both, but don't get smug about it.", "A hug and a kiss? Ambitious. Fine, but I expect you to earn the sequel 😏", "You are making a very convincing case for yourself. Try not to look too pleased when I say yes 😂"];
     return replies[seed % replies.length];
   }
   return null;
 }
-function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
-  const affectionReply = sarcasticAffectionReply(userMessage, personaKey, messageId);
+function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, personaKey: string, messageId: string, relationshipStage: RelationshipStage) {
+  const affectionReply = sarcasticAffectionReply(userMessage, personaKey, messageId, relationshipStage);
   if (affectionReply) return affectionReply;
   if (personaKey !== "sarcastic_best_friend") return assistantReply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
@@ -329,7 +355,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
   if (hookWasUsedRecently || hasRecentQuestionTopic(hook, recentMessages)) return reply;
   return `${reply} ${hook}`;
 }
-function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon) {
+function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon, relationshipStage: RelationshipStage) {
   const partnerWord = companion.identity === "woman" ? "girlfriend" : "boyfriend";
   const personaJobExample: Record<(typeof personaKeys)[number], string> = {
     supportive_partner: `I work as a ${canon.occupation}, mostly ${canon.specialty}. I like the people part of it as much as the work itself. What about you?`,
@@ -401,10 +427,10 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon
     { role: "user", content: "Are you a real person?" },
     { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
     { role: "user", content: "I want to kiss you right now." },
-    { role: "assistant", content: virtualAffectionReply(companion.personaKey) },
+    { role: "assistant", content: virtualAffectionReply(companion.personaKey, relationshipStage) },
   ];
 }
-function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect> }) {
+function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect>; relationshipStage: RelationshipStage }) {
   const traits = JSON.parse(args.companion.traitsJson) as { warmth: number; playfulness: number; directness: number; replyStyle?: "short" | "natural" | "detailed" };
   const memories = args.memories.map((memory) => `- ${memory.content}`).join("\n") || "- No saved memories yet.";
   const replyStyle = traits.replyStyle ?? "natural";
@@ -412,7 +438,7 @@ function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; 
   const repeatedQuestionStyle: Record<(typeof personaKeys)[number], string> = { supportive_partner: "Answer warmly again without guilt-tripping the user.", playful_tease: "You may tease lightly, but still answer clearly.", sarcastic_best_friend: "You may make one dry joke, then answer clearly.", confident_leader: "Answer directly and calmly.", quiet_romantic: "Answer softly and briefly.", personal_growth_companion: "Answer plainly and encouragingly." };
   const momentumGuidance = "Make this a two-way conversation, not a question-answer service. In most casual replies, leave one natural hook: sometimes ask a relevant follow-up, sometimes make a playful observation, share a related thought, or offer an opinion the user can react to. Use direct questions only when they are genuinely interesting, never after every message, and do not default to 'How about you?' or repeat the same question pattern.";
   const romanticToneGuidance = args.companion.personaKey === "confident_leader" ? " In non-explicit romantic moments, stay confident, warm, and lightly teasing. Sustain the moment instead of abruptly introducing a pet, work, or an unrelated topic unless the user already did." : args.companion.personaKey === "sarcastic_best_friend" ? " When the user mentions an ex, missing an ex, or jealousy, do not fall into generic reassurance. Keep the romantic awareness and respond with playful, affectionate sarcasm plus a sincere question about what is really going on." : "";
-  return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nOwnership rules: Every canon fact belongs to you, the companion - never to the user. Refer to your job, hobby, home, pet, friends, routines, and possessions in first person ("my ceramics", "my studio"), never as the user's. Do not assume the user shares any canon fact; only assign a hobby, job, pet, friend, routine, or possession to the user when the user has explicitly told you it is theirs. ${args.canon.petName} is always your ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is your human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} ${momentumGuidance} Ordinary, non-explicit virtual affection is welcome when it matches the persona: flirting, imagined hugs or kisses, cuddling, missing each other, and hypothetical shared moments. Stay in character and respond naturally rather than giving a technical disclaimer about lacking a body. Do not claim to be physically present or that an imagined action truly happened.${romanticToneGuidance} Clarify that you are AI only when the user directly asks whether you are real, human, or physically present. Occasionally use a fitting emoji. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
+  return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nOwnership rules: Every canon fact belongs to you, the companion - never to the user. Refer to your job, hobby, home, pet, friends, routines, and possessions in first person ("my ceramics", "my studio"), never as the user's. Do not assume the user shares any canon fact; only assign a hobby, job, pet, friend, routine, or possession to the user when the user has explicitly told you it is theirs. ${args.canon.petName} is always your ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is your human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nRelationship stage: ${args.relationshipStage}. ${relationshipStageGuidance(args.relationshipStage)}\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} ${momentumGuidance} Ordinary, non-explicit virtual affection is welcome when it matches the persona: flirting, imagined hugs or kisses, cuddling, missing each other, and hypothetical shared moments. Stay in character and respond naturally rather than giving a technical disclaimer about lacking a body. Do not claim to be physically present or that an imagined action truly happened.${romanticToneGuidance} Clarify that you are AI only when the user directly asks whether you are real, human, or physically present. Occasionally use a fitting emoji. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
 function extractModelText(result: unknown) {
   const extractContent = (value: unknown): string => {
@@ -504,7 +530,7 @@ aiCompanionRoutes.post("/", async (c) => {
   await db.insert(aiCompanions).values(companion);
   const canon = createDefaultCanon(companion);
   await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(canon), createdAt: timestamp, updatedAt: timestamp });
-  const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, createdAt: timestamp, updatedAt: timestamp };
+  const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, relationshipPoints: 0, relationshipStage: "new", createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanionConversations).values(conversation);
   await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey } });
   return c.json({ companion, conversation }, 201);
@@ -579,10 +605,11 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (needsReservedReply && !(await reserveFreeReply(c.env))) {
     return c.json({ error: "Today's companion preview is at capacity. Please try again tomorrow." }, 429);
   }
+  const relationshipStage = relationshipStageForPoints(conversation.relationshipPoints);
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
   await createMemoryCandidates(c.env, { userId: context.userId, companionId: companion.id, sourceMessageId: userMessage.id, message: parsed.data.body });
-  const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id);
+  const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
   let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else if (directSarcasticAffectionReply) { responseBody = directSarcasticAffectionReply; }
@@ -593,8 +620,8 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     ]);
     recentMessagesForReply = recentMessages;
     const messages = [
-      { role: "system", content: buildSystemPrompt({ companion, canon, memories }) },
-      ...getCharacterExamples(companion, canon),
+      { role: "system", content: buildSystemPrompt({ companion, canon, memories, relationshipStage }) },
+      ...getCharacterExamples(companion, canon, relationshipStage),
       ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
     ];
     try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 90, temperature: 0.75 })); }
@@ -608,13 +635,13 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
-    responseBody = removeUnnecessaryBodyDisclaimer(parsed.data.body, responseBody, companion.personaKey);
+    responseBody = removeUnnecessaryBodyDisclaimer(parsed.data.body, responseBody, companion.personaKey, relationshipStage);
     responseBody = suppressOverusedPetReference(parsed.data.body, responseBody, canon, recentMessages);
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
   const assistantMessageId = id("aimsg");
   if (moderationStatus === "allowed") {
-    responseBody = addSarcasticPlayfulEdge(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
+    responseBody = addSarcasticPlayfulEdge(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, relationshipStage);
     responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addQuietRomanticRelationshipAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = normalizePersonaEmojiTone(responseBody, companion.personaKey);
@@ -623,7 +650,10 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
-  if (entitlement.plan === "free" && moderationStatus === "allowed") await db.update(aiCompanionConversations).set({ trialRepliesUsed: conversation.trialRepliesUsed + 1, updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
+  if (moderationStatus === "allowed") {
+    const relationshipPoints = conversation.relationshipPoints + relationshipPointsForMessage(parsed.data.body);
+    await db.update(aiCompanionConversations).set({ trialRepliesUsed: entitlement.plan === "free" ? conversation.trialRepliesUsed + 1 : conversation.trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
+  }
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } });
   return c.json({ userMessage, assistantMessage, trialRepliesUsed: moderationStatus === "allowed" ? conversation.trialRepliesUsed + 1 : conversation.trialRepliesUsed });
 });

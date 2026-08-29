@@ -360,6 +360,8 @@ export const aiCompanionConversations = sqliteTable("ai_companion_conversations"
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
   userId: text("user_id").notNull().references(() => users.id),
   trialRepliesUsed: integer("trial_replies_used").notNull().default(0),
+  relationshipPoints: integer("relationship_points").notNull().default(0),
+  relationshipStage: text("relationship_stage").notNull().default("new"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
