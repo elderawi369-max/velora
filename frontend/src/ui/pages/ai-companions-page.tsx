@@ -14,7 +14,7 @@ import {
 const personas = [
   { key: "supportive_partner", title: "Supportive Partner", description: "Warm, attentive, and encouraging." },
   { key: "playful_tease", title: "Playful Tease", description: "Light, affectionate, and witty." },
-  { key: "sarcastic_best_friend", title: "Sarcastic Best Friend", description: "Funny, candid, and always in your corner." },
+  { key: "sarcastic_best_friend", title: "Sarcastic Best Friend", description: "A romantic companion with funny, candid best-friend energy." },
   { key: "confident_leader", title: "Confident Leader", description: "Calm, direct, and respectful of boundaries." },
   { key: "quiet_romantic", title: "Quiet Romantic", description: "Gentle, thoughtful, and slow-building." },
   { key: "personal_growth_companion", title: "Personal Growth Companion", description: "Practical encouragement for your goals." },
