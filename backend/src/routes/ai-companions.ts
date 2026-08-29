@@ -608,7 +608,6 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const relationshipStage = relationshipStageForPoints(conversation.relationshipPoints);
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
-  await createMemoryCandidates(c.env, { userId: context.userId, companionId: companion.id, sourceMessageId: userMessage.id, message: parsed.data.body });
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
   let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
@@ -650,12 +649,18 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
+  // Suggestions are optional and only follow ordinary conversations.
+  if (moderationStatus === "allowed") {
+    try { await createMemoryCandidates(c.env, { userId: context.userId, companionId: companion.id, sourceMessageId: userMessage.id, message: parsed.data.body }); }
+    catch { /* The conversation itself remains available even if suggestion creation fails. */ }
+  }
+  const trialRepliesUsed = entitlement.plan === "free" && moderationStatus === "allowed" ? conversation.trialRepliesUsed + 1 : conversation.trialRepliesUsed;
   if (moderationStatus === "allowed") {
     const relationshipPoints = conversation.relationshipPoints + relationshipPointsForMessage(parsed.data.body);
-    await db.update(aiCompanionConversations).set({ trialRepliesUsed: entitlement.plan === "free" ? conversation.trialRepliesUsed + 1 : conversation.trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
+    await db.update(aiCompanionConversations).set({ trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
   }
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } });
-  return c.json({ userMessage, assistantMessage, trialRepliesUsed: moderationStatus === "allowed" ? conversation.trialRepliesUsed + 1 : conversation.trialRepliesUsed });
+  return c.json({ userMessage, assistantMessage, trialRepliesUsed });
 });
 
 aiCompanionRoutes.post("/messages/:messageId/report", async (c) => {
