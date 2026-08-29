@@ -172,12 +172,15 @@ function suppressOverusedPetReference(userMessage: string, assistantReply: strin
   return withoutPet || assistantReply;
 }
 function addSarcasticRomanticAwareness(userMessage: string, assistantReply: string, personaKey: string, messageId: string, recentMessages: Array<{ body: string }>) {
+  const mentionsExNow = /\bex(?:[- ]?(?:girlfriend|boyfriend|partner))?\b/i.test(userMessage);
   const exMentionedRecently = recentMessages.some((message) => /\bex(?:[- ]?(?:girlfriend|boyfriend|partner))?\b/i.test(message.body));
-  if (personaKey !== "sarcastic_best_friend" || (!exMentionedRecently && !/\bjealous\b/i.test(userMessage))) return assistantReply;
-  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
-  const exMentioned = exMentionedRecently;
-  const missingEx = /\b(still )?miss(?:ing)?\s+(?:them|her|him|my ex)\b/i.test(userMessage);
+  const missingPastPartner = /\b(still )?miss(?:ing)?\s+(?:them|her|him|my ex)\b/i.test(userMessage);
+  const explicitlyNotAboutEx = /\bnot (?:my )?ex\b|\bnot about (?:my )?ex\b/i.test(userMessage);
   const jealous = /\bjealous\b/i.test(userMessage);
+  if (personaKey !== "sarcastic_best_friend" || explicitlyNotAboutEx || !(mentionsExNow || jealous || (exMentionedRecently && missingPastPartner))) return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const exMentioned = mentionsExNow || (exMentionedRecently && missingPastPartner);
+  const missingEx = missingPastPartner;
   if (jealous) {
     const replies = ["Jealous? Please. I'm just professionally concerned about your terrible decision-making 😌", "Maybe a little. I have standards, and your ex-related ideas are testing them 😂", "I prefer 'deeply skeptical of your plan.' It sounds more accurate, doesn't it?"];
     return replies[seed % replies.length];
