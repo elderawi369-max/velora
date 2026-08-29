@@ -238,17 +238,27 @@ function suppressRepeatedQuestions(reply: string, recentMessages: Array<{ role: 
   }).join(" ").trim();
   return withoutDuplicates || reply;
 }
+function hasRecentQuestionTopic(text: string, recentMessages: Array<{ role: string; body: string }>) {
+  const topic = /\b(settled|at home|peaceful|calm)\b/i.test(text) ? "settled" : /\b(night owl|morning person)\b/i.test(text) ? "daily-rhythm" : null;
+  if (!topic) return false;
+  const topicPattern = topic === "settled" ? /\b(settled|at home|peaceful|calm)\b/i : /\b(night owl|morning person)\b/i;
+  return recentMessages.some((message) => message.role === "assistant" && topicPattern.test(message.body));
+}
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string, recentMessages: Array<{ role: string; body: string }>) {
   const reply = suppressRepeatedQuestions(assistantReply
     .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
     .replace(/\s*Now I'm curious what your answer would be\.?/gi, "")
     .replace(/\s*Pick one: you lead, you compromise, or you walk away from indecision\.?/gi, "")
     .trim(), recentMessages);
+  const isAffectionate = /\b(kiss|hug|cuddl(?:e|ing)|snuggl(?:e|ing)|hold (?:me|you)|miss you|lie next to)\b/i.test(userMessage);
+  if (isAffectionate && personaKey === "quiet_romantic") {
+    const withoutQuestions = (reply.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [reply]).filter((sentence) => !sentence.includes("?")).join(" ").trim();
+    return withoutQuestions || reply;
+  }
   if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
   if (seed % 4 === 0) return reply;
 
-  const isAffectionate = /\b(kiss|hug|cuddl(?:e|ing)|snuggl(?:e|ing)|hold (?:me|you)|miss you|lie next to)\b/i.test(userMessage);
   if (isAffectionate && personaKey === "confident_leader") {
     const romanticHooks = ["But you made dinner, so finish what you started first. Then come here. 😏", "Careful. I like confidence when it knows how to follow through. 😏", "Keep that energy. I have standards, you know. 😉", "Then don't make a promise you won't follow through on. 😏"];
     return `${reply} ${romanticHooks[seed % romanticHooks.length]}`;
@@ -272,6 +282,9 @@ function addConversationHook(userMessage: string, assistantReply: string, person
     const hooks = personaHooks[personaKey] ?? personaHooks.supportive_partner;
     hook = hooks[seed % hooks.length];
   }
+  const normalizedHook = hook.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const hookWasUsedRecently = recentMessages.some((message) => message.role === "assistant" && message.body.toLowerCase().replace(/[^a-z0-9]+/g, " ").includes(normalizedHook));
+  if (hookWasUsedRecently || hasRecentQuestionTopic(hook, recentMessages)) return reply;
   return `${reply} ${hook}`;
 }
 function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon) {
