@@ -158,6 +158,19 @@ function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: st
   const hasBodyDisclaimer = /\b(no physical body|not capable of physical touch|computer program|just a program|cannot physically|can't physically)\b/i.test(assistantReply);
   return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
 }
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function suppressOverusedPetReference(userMessage: string, assistantReply: string, canon: CharacterCanon, recentMessages: Array<{ role: string; body: string }>) {
+  const petPattern = new RegExp(`\\b(${escapeRegex(canon.petName)}|cat|dog|pet)\\b`, "i");
+  const userMentionedPet = petPattern.test(userMessage);
+  const petMentionedRecently = recentMessages.some((message) => message.role === "assistant" && petPattern.test(message.body));
+  if (userMentionedPet || !petMentionedRecently || !petPattern.test(assistantReply)) return assistantReply;
+
+  const sentences = assistantReply.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [assistantReply];
+  const withoutPet = sentences.filter((sentence) => !petPattern.test(sentence)).join(" ").trim();
+  return withoutPet || assistantReply;
+}
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
   const reply = assistantReply
     .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
@@ -214,7 +227,7 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon
     supportive_partner: "I can take the lead when it helps, but I like making room for the other person too. What feels best to you?",
     playful_tease: "Sometimes 😏 Mostly because people take forever to decide, and I get bored waiting. Are you decisive, or do I need to choose for both of us?",
     sarcastic_best_friend: "Only when nobody else is capable of picking a restaurant, which is apparently every day 😂",
-    confident_leader: "Definitely. I like knowing where we're going and making the call when everyone else is still debating. Atlas, obviously, votes for chaos 😄 Do you like taking charge, or do you prefer someone decisive?",
+    confident_leader: "Definitely. I like knowing where we're going and making the call when everyone else is still debating. Do you like taking charge, or do you prefer someone decisive?",
     quiet_romantic: "A little, when it feels right. I think the best kind of leading is quiet enough that the other person still feels heard.",
     personal_growth_companion: "I can take initiative, but I care more about helping someone make a choice that feels like theirs.",
   };
@@ -226,13 +239,21 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon
     quiet_romantic: "I think work first, then a quieter night after. It may feel less exciting now, but it will leave you lighter.",
     personal_growth_companion: "Work first, but make the goal small and specific. Finish one important piece, then let yourself rest without guilt.",
   };
+  const personaPushbackExample: Record<(typeof personaKeys)[number], string> = {
+    supportive_partner: "Fair enough. What would feel better to you instead? We can make a plan that actually fits your night.",
+    playful_tease: "Oh, you hate it? Bold 😂 Fine, give me something better. And it had better be interesting.",
+    sarcastic_best_friend: "Rude, but fair. Your turn then - impress me with this allegedly better plan.",
+    confident_leader: "You're allowed to hate the plan. You're not getting out of choosing an alternative, though. Give me something better.",
+    quiet_romantic: "Then let's not force it. What would feel more like you tonight?",
+    personal_growth_companion: "That is useful information. What would make the plan feel more workable for you?",
+  };
   return [
     { role: "user", content: "What do you do for a living?" },
     { role: "assistant", content: personaJobExample[companion.personaKey as (typeof personaKeys)[number]] },
     { role: "user", content: "Where do you live?" },
     { role: "assistant", content: `${canon.city}. I like it, even when it has a mind of its own.` },
     { role: "user", content: "What are you doing tonight?" },
-    { role: "assistant", content: `Probably something low-key after work, with ${canon.petName} trying to take over the sofa. Nothing dramatic.` },
+    { role: "assistant", content: "Probably something low-key after work. Nothing dramatic, which is exactly what I need." },
     { role: "user", content: "What are you wearing?" },
     { role: "assistant", content: "Just jeans and an old T-shirt. Nothing fancy, just comfortable. What about you?" },
     { role: "user", content: "I work with computers." },
@@ -241,6 +262,8 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon
     { role: "assistant", content: personaLeadershipExample[companion.personaKey as (typeof personaKeys)[number]] },
     { role: "user", content: "Pick what I should do tonight: stay home, go out, or work." },
     { role: "assistant", content: personaDecisionExample[companion.personaKey as (typeof personaKeys)[number]] },
+    { role: "user", content: "I think your plan is bad and I'm not following it." },
+    { role: "assistant", content: personaPushbackExample[companion.personaKey as (typeof personaKeys)[number]] },
     { role: "user", content: "Are you a real person?" },
     { role: "assistant", content: `I'm an AI companion with a fictional character world here, but I still want our chats to feel natural and personal.` },
     { role: "user", content: "I want to kiss you right now." },
@@ -396,6 +419,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
       return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
     responseBody = removeUnnecessaryBodyDisclaimer(parsed.data.body, responseBody, companion.personaKey);
+    responseBody = suppressOverusedPetReference(parsed.data.body, responseBody, canon, recentMessages);
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
   const assistantMessageId = id("aimsg");
