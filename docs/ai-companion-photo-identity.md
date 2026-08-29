@@ -15,6 +15,8 @@ Companion photos are a visual-identity feature, not text-to-image decoration.
 
 Photo requests may use adult, romantic, and polished styling: flattering selfies, fitted date-night clothes, dresses, stylish non-lingerie sleepwear, affectionate non-explicit poses, and cinematic lighting. They must not request or generate nudity, lingerie, underwear, towel/robe-only looks, implied nudity, sexually suggestive bedroom poses, explicit body parts, or sexual activity. This is enforced server-side and applies even when a user asks directly.
 
+Canonical references should look like contemporary dating-profile/model-casting images: youthful adult, warm, stylish, modern, and lifestyle-oriented. Avoid blazers, suits, office shirts, corporate settings, stiff poses, passport framing, and LinkedIn-style headshots. The reference set stays clean enough for identity consistency, but must not make a romantic companion look like a corporate profile.
+
 ## Storage and release flow
 
 1. Create the immutable `ai_companion_visual_identities` record.
