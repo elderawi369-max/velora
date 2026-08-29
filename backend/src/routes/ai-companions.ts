@@ -621,8 +621,13 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
   if (!(await isChatEnabledForUser(c.env, context.userId))) return c.json({ error: "Visual identity setup is only available in the private companion beta." }, 403);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
   const db = getDb(c.env);
-  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
-  if (!visualIdentity) return c.json({ error: "Visual identity record not found." }, 404);
+  let [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity) {
+    const timestamp = now();
+    await db.insert(aiCompanionVisualIdentities).values({ companionId: companion.id, version: 1, status: "pending_storage", lockedTraitsJson: JSON.stringify(createDefaultVisualTraits(companion)), canonicalObjectKey: null, referenceObjectKeysJson: "[]", validationStatus: "pending", validationNotes: null, createdAt: timestamp, updatedAt: timestamp }).onConflictDoNothing();
+    [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  }
+  if (!visualIdentity) return c.json({ error: "Visual identity record could not be prepared." }, 500);
   if (visualIdentity.status === "review" || visualIdentity.status === "ready") return c.json({ visualIdentity });
   const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
   if (!traits) return c.json({ error: "Visual identity traits are invalid." }, 500);
