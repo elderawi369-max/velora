@@ -17,6 +17,8 @@ Photo requests may use adult, romantic, and polished styling: flattering selfies
 
 Canonical references should look like contemporary dating-profile/model-casting images: youthful adult, warm, stylish, modern, and lifestyle-oriented. Avoid blazers, suits, office shirts, corporate settings, stiff poses, passport framing, and LinkedIn-style headshots. The reference set stays clean enough for identity consistency, but must not make a romantic companion look like a corporate profile.
 
+The desired standard is an original, aspirational dating-profile look: conventionally attractive adult faces, expressive eyes, polished hair, healthy youthful skin, flattering warm light, and confident but natural body language. Use that aesthetic direction only; never clone a real person, celebrity, or an individual face from a reference image.
+
 ## Storage and release flow
 
 1. Create the immutable `ai_companion_visual_identities` record.
