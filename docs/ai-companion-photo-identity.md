@@ -19,6 +19,8 @@ Canonical references should look like contemporary dating-profile/model-casting 
 
 The desired standard is an original, aspirational dating-profile look: conventionally attractive adult faces, expressive eyes, polished hair, healthy youthful skin, flattering warm light, and confident but natural body language. Use that aesthetic direction only; never clone a real person, celebrity, or an individual face from a reference image.
 
+Styling must reinforce persona: Playful Tease is playful and youthful; Personal Growth Companion is sporty and polished; Quiet Romantic is soft and elegant; Confident Leader is sleek and sophisticated; Sarcastic Best Friend is casual-cool and slightly edgy. Do not reuse a nearly identical face, hairstyle, or visual template across companions.
+
 ## Storage and release flow
 
 1. Create the immutable `ai_companion_visual_identities` record.

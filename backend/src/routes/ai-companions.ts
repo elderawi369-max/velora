@@ -170,11 +170,17 @@ function createDefaultVisualTraits(companion: typeof aiCompanions.$inferSelect):
     personal_growth_companion: { apparentAge: "late twenties", hair: "warm brown, loose shoulder-length waves", eyes: "hazel", facialStructure: "open oval face", skinAppearance: "light-medium complexion", build: "healthy average build", distinctiveFeatures: ["easy smile", "subtle dimples"] },
   };
   const traits = byPersona[companion.personaKey as (typeof personaKeys)[number]] ?? byPersona.supportive_partner;
-  return {
-    identity: companion.identity as "woman" | "man",
-    ...traits,
-    apparentAge: companion.identity === "woman" ? "24 to 28 years old" : "25 to 30 years old",
+  const identity = companion.identity as "woman" | "man";
+  const feminineLooks: Record<(typeof personaKeys)[number], Partial<VisualIdentityTraits>> = {
+    supportive_partner: { hair: "chestnut brown, long soft waves", eyes: "warm hazel", skinAppearance: "warm medium complexion", distinctiveFeatures: ["gentle smile", "subtle freckles"] },
+    playful_tease: { hair: "dark espresso brown, playful textured bob", eyes: "bright brown", skinAppearance: "light olive complexion", distinctiveFeatures: ["expressive eyebrows", "small beauty mark near the cheek"] },
+    sarcastic_best_friend: { hair: "rich auburn, shoulder-length tousled waves", eyes: "green-brown", skinAppearance: "light warm complexion", distinctiveFeatures: ["knowing half-smile", "faint freckles across the nose"] },
+    confident_leader: { hair: "sleek black, long and glossy", eyes: "deep brown", skinAppearance: "golden medium complexion", distinctiveFeatures: ["strong brows", "defined cheekbones"] },
+    quiet_romantic: { hair: "soft black, long and lightly layered", eyes: "dark brown", skinAppearance: "light warm complexion", distinctiveFeatures: ["gentle eyes", "small beauty mark below one eye"] },
+    personal_growth_companion: { hair: "honey blonde, loose shoulder-length waves", eyes: "blue-green", skinAppearance: "light sun-kissed complexion", distinctiveFeatures: ["easy smile", "subtle dimples"] },
   };
+  const persona = companion.personaKey as (typeof personaKeys)[number];
+  return { identity, ...traits, ...(identity === "woman" ? feminineLooks[persona] : {}), apparentAge: identity === "woman" ? "24 to 28 years old" : "25 to 30 years old" };
 }
 function parseVisualTraits(value: string): VisualIdentityTraits | null {
   try {
@@ -201,26 +207,38 @@ async function generateReferenceImage(env: EnvBindings, prompt: string, referenc
   form.append("height", "512");
   for (const [index, key] of referenceKeys.slice(0, 4).entries()) form.append(`input_image_${index}`, await readR2Image(env.COMPANION_IMAGES, key), `reference-${index}.png`);
   const serialized = new Response(form);
-  const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", { multipart: { body: serialized.body, contentType: serialized.headers.get("content-type") } } as never) as { image?: string };
+  const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-9b", { multipart: { body: serialized.body, contentType: serialized.headers.get("content-type") } } as never) as { image?: string };
   if (!result.image) throw new Error("The image model did not return an image.");
   return base64ToBytes(result.image);
+}
+function personaVisualStyle(personaKey: string, identity: "woman" | "man") {
+  if (identity !== "woman") return "handsome, modern, confident, and casually stylish";
+  const styles: Record<(typeof personaKeys)[number], string> = {
+    supportive_partner: "warm, polished, affectionate, effortlessly feminine",
+    playful_tease: "playful, youthful, flirty, colorful, and fashion-forward",
+    sarcastic_best_friend: "casual-cool, slightly edgy, fashionable, and self-assured",
+    confident_leader: "sleek, confident, sophisticated, and sharply styled",
+    quiet_romantic: "soft, elegant, feminine, and quietly glamorous",
+    personal_growth_companion: "sporty-polished, active, attractive, and put-together",
+  };
+  return styles[personaKey as (typeof personaKeys)[number]] ?? styles.supportive_partner;
 }
 function canonicalPortraitPrompt(companion: typeof aiCompanions.$inferSelect, traits: VisualIdentityTraits) {
   const outfit = traits.identity === "woman"
     ? "a fashionable fitted scoop-neck T-shirt or cropped knit with high-waisted shorts or jeans, showing normal shoulders, arms, and a tasteful neckline; no bra or lingerie"
     : "a fitted premium T-shirt, a textured knit, or an open casual overshirt over a T-shirt, with a relaxed athletic silhouette";
-  return `Photorealistic lifestyle portrait of an exceptionally attractive, original fictional adult ${traits.identity}, ${traits.apparentAge}, for a romantic AI companion. Aspirational contemporary dating-profile and fashion-editorial casting aesthetic: striking yet natural facial features, expressive eyes, healthy youthful skin, polished hair, warm confident presence, and effortless modern style. Do not resemble or copy a real person or celebrity. Preserve: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Wear ${outfit}. Use flattering warm daylight, a subtle natural makeup look or clean grooming, genuine relaxed expression, and soft eye contact with the camera. Frame a three-quarter waist-up lifestyle photo in a softly blurred modern cafe, sunlit apartment living area, rooftop, street, or beach promenade. Fully clothed and non-explicit. Never generate a blazer, suit, office, corporate setting, collared office shirt, cardigan hiding the outfit, stiff professional pose, passport photo, headshot backdrop, or LinkedIn style. No text or watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
+  return `Photorealistic lifestyle portrait of an exceptionally attractive, original fictional adult ${traits.identity}, ${traits.apparentAge}, for a romantic AI companion. Visual vibe: ${personaVisualStyle(companion.personaKey, traits.identity)}. Aspirational contemporary dating-profile and beauty-model casting aesthetic: striking natural facial features, expressive eyes, healthy youthful skin, polished hair, warm confident presence, and effortless modern style. Do not resemble or copy a real person or celebrity. Preserve: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Wear ${outfit}. Use flattering warm daylight, a subtle natural makeup look or clean grooming, genuine relaxed expression, and soft eye contact with the camera. Frame a three-quarter waist-up lifestyle photo in a softly blurred modern cafe, sunlit apartment living area, rooftop, street, or beach promenade. Fully clothed and non-explicit. Never generate a blazer, suit, office, corporate setting, collared office shirt, baggy sweater, stiff professional pose, passport photo, headshot backdrop, plain white or gray T-shirt with jeans, or LinkedIn style. No text or watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
 }
 function referencePortraitPrompt(companion: typeof aiCompanions.$inferSelect, view: string) {
-  return `Use the exact same original fictional adult person in reference image 0 as ${companion.name}. Preserve the face, youthful adult appearance, skin appearance, eye color, facial proportions, hair color, hair length, build, stylish dating-profile outfit direction, and distinctive features exactly. Create a realistic ${view} aspirational lifestyle/fashion reference with relaxed confident body language, flattering warm daylight, and a softly blurred modern lifestyle background. Keep it fully clothed and non-explicit. Never use a blazer, suit, office, corporate styling, stiff professional pose, white office shirt, cardigan hiding the outfit, passport-photo framing, or LinkedIn headshot. No text, no watermark, no other people.`;
+  return `Use the exact same original fictional adult person in reference image 0 as ${companion.name}; face identity takes priority over every other instruction. Preserve the face, youthful adult appearance, skin appearance, eye color, facial proportions, hair color, hair length, build, and distinctive features exactly. Visual vibe: ${personaVisualStyle(companion.personaKey, companion.identity as "woman" | "man")}. Create a realistic ${view} aspirational romantic-partner lifestyle photo with relaxed confident body language, flattering warm daylight, and a softly blurred modern lifestyle background. Keep it fully clothed and non-explicit. Never use a blazer, suit, office, corporate styling, stiff professional pose, white office shirt, baggy sweater, passport-photo framing, plain white or gray T-shirt with jeans, or LinkedIn headshot. No text, no watermark, no other people.`;
 }
 function identityTestLooks(identity: "woman" | "man") {
   if (identity === "woman") return [
-    "short skirt with a fitted casual top at a sunlit cafe",
-    "relaxed fully clothed home outfit in a bright apartment living area",
-    "stylish fitted date-night dress at a warm rooftop or restaurant",
-    "outdoor daytime look with a fitted T-shirt and denim shorts in a park or beach promenade",
-    "close-up casual selfie with warm window light and a relaxed smile",
+    "fitted crop top with a high-waisted short skirt at a sunlit cafe",
+    "attractive relaxed home look: fitted lounge top with tailored shorts in a bright apartment living area",
+    "sleek fitted date-night dress at a warm rooftop or restaurant",
+    "outdoor summer look: stylish fitted top and denim shorts in a park or beach promenade",
+    "close-up casual selfie with styled hair, flattering makeup, warm window light, and a relaxed confident smile",
   ];
   return [
     "smart casual trousers with a fitted casual top at a sunlit cafe",
