@@ -11,6 +11,10 @@ Companion photos are a visual-identity feature, not text-to-image decoration.
 - Seeds are optional reproducibility controls only. They are not identity controls.
 - Generated photos stay private in R2 and are not returned until identity validation passes.
 
+## Android-safe scene boundary
+
+Photo requests may use adult, romantic, and polished styling: flattering selfies, fitted date-night clothes, dresses, stylish non-lingerie sleepwear, affectionate non-explicit poses, and cinematic lighting. They must not request or generate nudity, lingerie, underwear, towel/robe-only looks, implied nudity, sexually suggestive bedroom poses, explicit body parts, or sexual activity. This is enforced server-side and applies even when a user asks directly.
+
 ## Storage and release flow
 
 1. Create the immutable `ai_companion_visual_identities` record.

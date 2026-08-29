@@ -25,6 +25,7 @@ const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000) })
 const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280) });
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
 const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie") });
+const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|topless|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|bed(?:room)?(?: selfie| pose| seduct)|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
 
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
@@ -684,6 +685,7 @@ aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) =>
 aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const parsed = photoSceneSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Describe the photo in 3 to 360 characters." }, 400);
+  if (disallowedCompanionPhotoRequest.test(parsed.data.prompt)) return c.json({ error: "Companion photos can be romantic and stylish, but cannot include nudity, lingerie, sexually suggestive poses, or explicit content." }, 400);
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion photos are not enabled until private identity storage is configured." }, 503);
   const [visualIdentity] = await getDb(c.env).select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
