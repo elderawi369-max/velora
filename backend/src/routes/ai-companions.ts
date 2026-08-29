@@ -171,6 +171,24 @@ function suppressOverusedPetReference(userMessage: string, assistantReply: strin
   const withoutPet = sentences.filter((sentence) => !petPattern.test(sentence)).join(" ").trim();
   return withoutPet || assistantReply;
 }
+function addSarcasticRomanticAwareness(userMessage: string, assistantReply: string, personaKey: string, messageId: string, recentMessages: Array<{ body: string }>) {
+  const exMentionedRecently = recentMessages.some((message) => /\bex(?:[- ]?(?:girlfriend|boyfriend|partner))?\b/i.test(message.body));
+  if (personaKey !== "sarcastic_best_friend" || (!exMentionedRecently && !/\bjealous\b/i.test(userMessage))) return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const exMentioned = exMentionedRecently;
+  const missingEx = /\b(still )?miss(?:ing)?\s+(?:them|her|him|my ex)\b/i.test(userMessage);
+  const jealous = /\bjealous\b/i.test(userMessage);
+  if (jealous) {
+    const replies = ["Jealous? Please. I'm just professionally concerned about your terrible decision-making 😌", "Maybe a little. I have standards, and your ex-related ideas are testing them 😂", "I prefer 'deeply skeptical of your plan.' It sounds more accurate, doesn't it?"];
+    return replies[seed % replies.length];
+  }
+  if (exMentioned && missingEx) {
+    const replies = ["You still miss them a little? Fine, I'll allow one dramatic sigh. But don't start romanticizing the past on me - what do you actually miss?", "Missing them is allowed. Turning them into a flawless memory is not 😂 What part of it is really pulling at you?", "Okay, one sentimental moment. Then be honest with me: do you miss them, or do you miss not feeling alone?"];
+    return replies[seed % replies.length];
+  }
+  const replies = ["Texting your ex? Bold choice when your current girlfriend is already judging you 😂 What is going on - do you actually miss them, or are you just trying to create problems for yourself?", "Your ex? Sure, why make your evening simple? 😂 Tell me, what are you hoping that message gives you?", "Ah yes, texting the ex. A classic way to invite chaos. Do you actually miss them, or just the idea of them?"];
+  return replies[seed % replies.length];
+}
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
   const reply = assistantReply
     .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
@@ -288,7 +306,7 @@ function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; 
   const replyGuidance = replyStyle === "short" ? "Usually 10 to 25 words." : replyStyle === "detailed" ? "Usually 45 to 90 words when the topic merits it." : "Usually 20 to 40 words; use a little more only for a serious or detailed user message.";
   const repeatedQuestionStyle: Record<(typeof personaKeys)[number], string> = { supportive_partner: "Answer warmly again without guilt-tripping the user.", playful_tease: "You may tease lightly, but still answer clearly.", sarcastic_best_friend: "You may make one dry joke, then answer clearly.", confident_leader: "Answer directly and calmly.", quiet_romantic: "Answer softly and briefly.", personal_growth_companion: "Answer plainly and encouragingly." };
   const momentumGuidance = "Make this a two-way conversation, not a question-answer service. In most casual replies, leave one natural hook: sometimes ask a relevant follow-up, sometimes make a playful observation, share a related thought, or offer an opinion the user can react to. Use direct questions only when they are genuinely interesting, never after every message, and do not default to 'How about you?' or repeat the same question pattern.";
-  const romanticToneGuidance = args.companion.personaKey === "confident_leader" ? " In non-explicit romantic moments, stay confident, warm, and lightly teasing. Sustain the moment instead of abruptly introducing a pet, work, or an unrelated topic unless the user already did." : "";
+  const romanticToneGuidance = args.companion.personaKey === "confident_leader" ? " In non-explicit romantic moments, stay confident, warm, and lightly teasing. Sustain the moment instead of abruptly introducing a pet, work, or an unrelated topic unless the user already did." : args.companion.personaKey === "sarcastic_best_friend" ? " When the user mentions an ex, missing an ex, or jealousy, do not fall into generic reassurance. Keep the romantic awareness and respond with playful, affectionate sarcasm plus a sincere question about what is really going on." : "";
   return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nRules: ${args.canon.petName} is always a ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is the human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} ${momentumGuidance} Ordinary, non-explicit virtual affection is welcome when it matches the persona: flirting, imagined hugs or kisses, cuddling, missing each other, and hypothetical shared moments. Stay in character and respond naturally rather than giving a technical disclaimer about lacking a body. Do not claim to be physically present or that an imagined action truly happened.${romanticToneGuidance} Clarify that you are AI only when the user directly asks whether you are real, human, or physically present. Occasionally use a fitting emoji. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
 function extractModelText(result: unknown) {
@@ -406,13 +424,14 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
-  let responseBody: string; let moderationStatus = "allowed";
+  let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else {
     const [recentMessages, memories, canon] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
     getOrCreateCharacterCanon(c.env, companion),
     ]);
+    recentMessagesForReply = recentMessages;
     const messages = [
       { role: "system", content: buildSystemPrompt({ companion, canon, memories }) },
       ...getCharacterExamples(companion, canon),
@@ -435,6 +454,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const assistantMessageId = id("aimsg");
   if (moderationStatus === "allowed") {
+    responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
   }
