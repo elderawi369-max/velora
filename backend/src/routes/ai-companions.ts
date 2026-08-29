@@ -192,15 +192,22 @@ function addSarcasticRomanticAwareness(userMessage: string, assistantReply: stri
   const replies = ["Texting your ex? Bold choice when your current girlfriend is already judging you 😂 What is going on - do you actually miss them, or are you just trying to create problems for yourself?", "Your ex? Sure, why make your evening simple? 😂 Tell me, what are you hoping that message gives you?", "Ah yes, texting the ex. A classic way to invite chaos. Do you actually miss them, or just the idea of them?"];
   return replies[seed % replies.length];
 }
-function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
-  if (personaKey !== "sarcastic_best_friend") return assistantReply;
-  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
-  const asksAboutTonight = /\b(what are you doing|plans?|doing).{0,20}\btonight\b/i.test(userMessage);
+function sarcasticAffectionReply(userMessage: string, personaKey: string, seedSource: string) {
+  if (personaKey !== "sarcastic_best_friend") return null;
   const asksForAffection = /\b(hug|kiss|cuddl(?:e|ing)|hold me)\b/i.test(userMessage);
   if (asksForAffection) {
+    const seed = [...seedSource].reduce((total, character) => total + character.charCodeAt(0), 0);
     const replies = ["Wow, subtle. Really keeping me guessing there 😂 Come here - you can have both, but don't get smug about it.", "A hug and a kiss? Ambitious. Fine, but I expect you to earn the sequel 😏", "You are making a very convincing case for yourself. Try not to look too pleased when I say yes 😂"];
     return replies[seed % replies.length];
   }
+  return null;
+}
+function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
+  const affectionReply = sarcasticAffectionReply(userMessage, personaKey, messageId);
+  if (affectionReply) return affectionReply;
+  if (personaKey !== "sarcastic_best_friend") return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const asksAboutTonight = /\b(what are you doing|plans?|doing).{0,20}\btonight\b/i.test(userMessage);
   if (asksAboutTonight && !/\b(subtle|bold|ambitious|trouble|judg|sarcasm)\b/i.test(assistantReply)) {
     const hooks = ["You can join me if you promise not to judge my movie choices.", "You are welcome, but my movie choice is non-negotiable.", "Just don't pretend you are above a rainy night in when the snacks arrive."];
     return `${assistantReply} ${hooks[seed % hooks.length]}`;
@@ -210,6 +217,7 @@ function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, pe
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
   const reply = assistantReply
     .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
+    .replace(/\s*Now I'm curious what your answer would be\.?/gi, "")
     .replace(/\s*Pick one: you lead, you compromise, or you walk away from indecision\.?/gi, "")
     .trim();
   if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
@@ -232,7 +240,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
     const personaHooks: Record<string, string[]> = {
       supportive_partner: ["What's your day been like on your side?", "I want to hear your side of that too."],
       playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Impress me.", "Hmm. I might need evidence.", "You're getting dangerously interesting.", "Don't make me regret asking 😂", "Now I have questions..."],
-      sarcastic_best_friend: ["Now I'm curious what your answer would be.", "Don't leave me to do all the talking here 😂"],
+      sarcastic_best_friend: ["Don't leave me to do all the talking here 😂", "All right, your turn - say something worth reacting to.", "That is not getting you out of telling me more.", "I can already tell there is a story here."],
       confident_leader: ["You strike me as someone who has an opinion on that. Am I right?", "All right, captain. Your move.", "Then prove it. Make the call.", "Good. Take charge - I want to see if you hesitate.", "I'll hand you the reins this time. Don't waste the opportunity. 😏", "You'd make this call how?", "Make the choice. I'll tell you if it holds up."],
       quiet_romantic: ["I want to hear your side of that too.", "That makes me curious about you."],
       personal_growth_companion: ["What do you notice about yourself in moments like that?", "What's been on your mind lately?"],
@@ -442,8 +450,10 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
+  const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id);
   let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
+  else if (directSarcasticAffectionReply) { responseBody = directSarcasticAffectionReply; }
   else {
     const [recentMessages, memories, canon] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
