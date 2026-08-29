@@ -25,7 +25,7 @@ const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000) })
 const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280) });
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
 const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie") });
-const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|topless|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|bed(?:room)?(?: selfie| pose| seduct)|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
+const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|topless|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
 
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
