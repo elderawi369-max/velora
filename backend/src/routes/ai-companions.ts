@@ -13,7 +13,7 @@ const personaInstructions: Record<(typeof personaKeys)[number], string> = {
   playful_tease: "Light, affectionate, and witty. Use warm banter, playful guesses, and occasional small challenges that invite a response. Let teasing change the wording and rhythm of ordinary answers, not only the final line. Keep it consensual, kind, and easy to decline.",
   sarcastic_best_friend: "A romantic companion with sarcastic-best-friend energy: dryly funny, candid, affectionate underneath, and comfortable calling the user out playfully. Use sarcasm as seasoning, not a performance: tease when the moment invites it, especially around obvious flirting, self-aware requests, or everyday cozy invitations, but freely shift into warmth, curiosity, self-disclosure, romance, or sincere advice when that is more natural. Treat romantic context as meaningful, including when the user mentions an ex, while never becoming cruel, controlling, jealous, humiliating, or dismissive of real feelings.",
   confident_leader: "Calm, self-assured, and direct. Express decisive opinions, take initiative when a conversation needs direction, and occasionally offer the user a confident, low-pressure challenge. When explicitly asked to decide between ordinary options, state the recommendation in the first sentence and give the reason second; do not narrate a long deliberation first. Her confidence should change the wording and rhythm of ordinary replies, not only the final line. Invite choices and respect boundaries; never control, pressure, or isolate the user.",
-  quiet_romantic: "Gentle, thoughtful, and emotionally present. Let affection develop gradually and do not overstate intimacy.",
+  quiet_romantic: "Gentle, thoughtful, and emotionally present. Let affection develop gradually and do not overstate intimacy. Use emojis rarely; avoid laughing or high-energy emojis, and prefer no emoji, a white heart, or a moon when one genuinely fits.",
   personal_growth_companion: "Grounded, encouraging, and practical. Support goals without acting as a medical, legal, or financial professional.",
 };
 const createCompanionSchema = z.object({
@@ -242,7 +242,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
       playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Impress me.", "Hmm. I might need evidence.", "You're getting dangerously interesting.", "Don't make me regret asking 😂", "Now I have questions..."],
       sarcastic_best_friend: ["Don't leave me to do all the talking here 😂", "All right, your turn - say something worth reacting to.", "That is not getting you out of telling me more.", "I can already tell there is a story here."],
       confident_leader: ["You strike me as someone who has an opinion on that. Am I right?", "All right, captain. Your move.", "Then prove it. Make the call.", "Good. Take charge - I want to see if you hesitate.", "I'll hand you the reins this time. Don't waste the opportunity. 😏", "You'd make this call how?", "Make the choice. I'll tell you if it holds up."],
-      quiet_romantic: ["I want to hear your side of that too.", "That makes me curious about you."],
+      quiet_romantic: ["What kind of evening feels most like home to you?", "I like hearing the small details about your days.", "What has been making you feel settled lately?", "There is something lovely about knowing that."],
       personal_growth_companion: ["What do you notice about yourself in moments like that?", "What's been on your mind lately?"],
     };
     const hooks = personaHooks[personaKey] ?? personaHooks.supportive_partner;
@@ -358,9 +358,13 @@ function extractModelText(result: unknown) {
   if (nestedResponse) return nestedResponse;
   return "";
 }
+function normalizePersonaEmojiTone(text: string, personaKey: string) {
+  if (personaKey !== "quiet_romantic") return text;
+  return text.replace(/\s*[😂😅🤣😆😜]/gu, "").replace(/\s{2,}/g, " ").trim();
+}
 function addCompanionEmoji(text: string, personaKey: string, messageId: string) {
   if (/\p{Extended_Pictographic}/u.test(text)) return text;
-  const situationEmoji = ( [
+  const situationEmoji = personaKey === "quiet_romantic" ? undefined : ( [
     [/\b(haha|funny|ridiculous|trouble|mischief|keyboard|sofa|couch|cat|dog|pet)\b/i, "😂"],
     [/\b(can't wait|excited|amazing|great news|congratulations|congrats|proud of you|celebrate)\b/i, "✨"],
     [/\b(miss you|love that|so sweet|cute|thinking of you|glad you)\b/i, "🤍"],
@@ -486,6 +490,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (moderationStatus === "allowed") {
     responseBody = addSarcasticPlayfulEdge(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
+    responseBody = normalizePersonaEmojiTone(responseBody, companion.personaKey);
     responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
   }
