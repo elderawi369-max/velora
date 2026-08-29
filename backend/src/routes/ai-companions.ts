@@ -413,6 +413,16 @@ function addCompanionEmoji(text: string, userMessage: string, personaKey: string
     };
     return `${text} ${kissEmojiByPersona[personaKey] ?? "😘"}`;
   }
+  const isHugMoment = /\b(hug|hugs|hugged|hugging|cuddl(?:e|es|ed|ing)|hold me|hold you|hold us)\b/i.test(userMessage);
+  const isAffectionateMoment = /\b(miss you|thinking of you|love you|care about you|so sweet)\b/i.test(userMessage);
+  const isCelebrationMoment = /\b(got the job|good news|promotion|passed|graduat|birthday|congratulations|congrats|proud of me|celebrat)\b/i.test(userMessage);
+  const isComfortMoment = /\b(rough day|hard day|stressed|anxious|sad|upset|bad day|need comfort|need support)\b/i.test(userMessage);
+  const contextualEmoji = isHugMoment
+    ? ({ supportive_partner: "🫂", playful_tease: "🤗", sarcastic_best_friend: "🤗", confident_leader: "🫂", quiet_romantic: "🫂", personal_growth_companion: "🫂" }[personaKey] ?? "🫂")
+    : isAffectionateMoment || isComfortMoment ? "🤍"
+      : isCelebrationMoment ? "✨"
+        : null;
+  if (contextualEmoji && !text.includes(contextualEmoji) && seed % 3 !== 0) return `${text} ${contextualEmoji}`;
   if (/\p{Extended_Pictographic}/u.test(text)) return text;
   const situationEmoji = personaKey === "quiet_romantic" ? undefined : ( [
     [/\b(haha|funny|ridiculous|trouble|mischief|keyboard|sofa|couch|cat|dog|pet)\b/i, "😂"],
