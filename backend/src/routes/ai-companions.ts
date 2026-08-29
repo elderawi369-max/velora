@@ -165,7 +165,8 @@ function suppressOverusedPetReference(userMessage: string, assistantReply: strin
   const petPattern = new RegExp(`\\b(${escapeRegex(canon.petName)}|cat|dog|pet)\\b`, "i");
   const userMentionedPet = petPattern.test(userMessage);
   const petMentionedRecently = recentMessages.some((message) => message.role === "assistant" && petPattern.test(message.body));
-  if (userMentionedPet || !petMentionedRecently || !petPattern.test(assistantReply)) return assistantReply;
+  const isIntimateMoment = /\b(kiss|kissing|hug|cuddl(?:e|ing)|hold me|hold you|intimate|alone together)\b/i.test(userMessage);
+  if (userMentionedPet || (!petMentionedRecently && !isIntimateMoment) || !petPattern.test(assistantReply)) return assistantReply;
 
   const sentences = assistantReply.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [assistantReply];
   const withoutPet = sentences.filter((sentence) => !petPattern.test(sentence)).join(" ").trim();
@@ -192,6 +193,19 @@ function addSarcasticRomanticAwareness(userMessage: string, assistantReply: stri
   const replies = ["Texting your ex? Bold choice when your current girlfriend is already judging you 😂 What is going on - do you actually miss them, or are you just trying to create problems for yourself?", "Your ex? Sure, why make your evening simple? 😂 Tell me, what are you hoping that message gives you?", "Ah yes, texting the ex. A classic way to invite chaos. Do you actually miss them, or just the idea of them?"];
   return replies[seed % replies.length];
 }
+function addQuietRomanticRelationshipAwareness(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
+  if (personaKey !== "quiet_romantic") return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  if (/\bjealous\b/i.test(userMessage)) {
+    const replies = ["A little, maybe. Not the dramatic kind. I think I'd just get quieter than usual and hope you noticed. 🌙", "Perhaps a little. I'd try to be graceful about it, but I would want to know where your heart was. 🤍", "I think I could be, softly. Not angry - just a little more aware of how much you mean to me."];
+    return replies[seed % replies.length];
+  }
+  if (/\b(?:say|tell)\b.{0,50}\bromantic\b/i.test(userMessage) && /\b(?:without|not)\b.{0,30}\b(?:love|i love you)\b/i.test(userMessage)) {
+    const replies = ["I think my favorite part of the day would be the moment I realize I get to tell you about it.", "If the whole world went quiet tonight, I think I'd still want your voice to be the last thing I heard.", "There are ordinary moments that feel softer simply because I imagine sharing them with you."];
+    return replies[seed % replies.length];
+  }
+  return assistantReply;
+}
 function sarcasticAffectionReply(userMessage: string, personaKey: string, seedSource: string) {
   if (personaKey !== "sarcastic_best_friend") return null;
   const asksForAffection = /\b(hug|kiss|cuddl(?:e|ing)|hold me)\b/i.test(userMessage);
@@ -214,12 +228,22 @@ function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, pe
   }
   return assistantReply;
 }
-function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
-  const reply = assistantReply
+function suppressRepeatedQuestions(reply: string, recentMessages: Array<{ role: string; body: string }>) {
+  const recentAssistantText = recentMessages.filter((message) => message.role === "assistant").map((message) => message.body.toLowerCase().replace(/[^a-z0-9]+/g, " "));
+  const sentences = reply.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [reply];
+  const withoutDuplicates = sentences.filter((sentence) => {
+    if (!sentence.includes("?")) return true;
+    const normalized = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return !recentAssistantText.some((previous) => previous.includes(normalized));
+  }).join(" ").trim();
+  return withoutDuplicates || reply;
+}
+function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string, recentMessages: Array<{ role: string; body: string }>) {
+  const reply = suppressRepeatedQuestions(assistantReply
     .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
     .replace(/\s*Now I'm curious what your answer would be\.?/gi, "")
     .replace(/\s*Pick one: you lead, you compromise, or you walk away from indecision\.?/gi, "")
-    .trim();
+    .trim(), recentMessages);
   if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
   if (seed % 4 === 0) return reply;
@@ -457,7 +481,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id);
-  let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ body: string }> = [];
+  let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else if (directSarcasticAffectionReply) { responseBody = directSarcasticAffectionReply; }
   else {
@@ -490,8 +514,9 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (moderationStatus === "allowed") {
     responseBody = addSarcasticPlayfulEdge(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
+    responseBody = addQuietRomanticRelationshipAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = normalizePersonaEmojiTone(responseBody, companion.personaKey);
-    responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
+    responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
