@@ -30,6 +30,6 @@ The desired standard is an original, aspirational dating-profile look: conventio
 
 ## Required identity test grid
 
-Before a visual identity can be released, review these images together: indoor selfie, daytime outdoors, evening restaurant, pajamas at home, altered hairstyle, smiling, serious, full body, three-quarter/side angle, and different lighting.
+Before a visual identity can be released, review these six reference looks together: casual fitted top and shorts, short skirt and casual top, relaxed fully clothed home outfit, date-night outfit, outdoor daytime look, and close-up selfie. Every look must clearly be the same person at first glance.
 
 The release question is: would a normal user immediately believe every image depicts the same adult synthetic person? If not, keep the identity in review.

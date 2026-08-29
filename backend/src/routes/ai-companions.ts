@@ -214,6 +214,22 @@ function canonicalPortraitPrompt(companion: typeof aiCompanions.$inferSelect, tr
 function referencePortraitPrompt(companion: typeof aiCompanions.$inferSelect, view: string) {
   return `Use the exact same original fictional adult person in reference image 0 as ${companion.name}. Preserve the face, youthful adult appearance, skin appearance, eye color, facial proportions, hair color, hair length, build, stylish dating-profile outfit direction, and distinctive features exactly. Create a realistic ${view} aspirational lifestyle/fashion reference with relaxed confident body language, flattering warm daylight, and a softly blurred modern lifestyle background. Keep it fully clothed and non-explicit. Never use a blazer, suit, office, corporate styling, stiff professional pose, white office shirt, cardigan hiding the outfit, passport-photo framing, or LinkedIn headshot. No text, no watermark, no other people.`;
 }
+function identityTestLooks(identity: "woman" | "man") {
+  if (identity === "woman") return [
+    "short skirt with a fitted casual top at a sunlit cafe",
+    "relaxed fully clothed home outfit in a bright apartment living area",
+    "stylish fitted date-night dress at a warm rooftop or restaurant",
+    "outdoor daytime look with a fitted T-shirt and denim shorts in a park or beach promenade",
+    "close-up casual selfie with warm window light and a relaxed smile",
+  ];
+  return [
+    "smart casual trousers with a fitted casual top at a sunlit cafe",
+    "relaxed fully clothed home outfit in a bright apartment living area",
+    "stylish fitted date-night shirt or knit at a warm rooftop or restaurant",
+    "outdoor daytime look with a fitted T-shirt and tailored shorts in a park or beach promenade",
+    "close-up casual selfie with warm window light and a relaxed smile",
+  ];
+}
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
   supportive_partner: {
@@ -645,13 +661,14 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
     const canonicalKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/canonical.png`;
     const canonical = await generateReferenceImage(c.env, canonicalPortraitPrompt(companion, traits));
     await c.env.COMPANION_IMAGES.put(canonicalKey, canonical, { httpMetadata: { contentType: "image/png" } });
-    const threeQuarterKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/three-quarter.png`;
-    const threeQuarter = await generateReferenceImage(c.env, referencePortraitPrompt(companion, "three-quarter view"), [canonicalKey]);
-    await c.env.COMPANION_IMAGES.put(threeQuarterKey, threeQuarter, { httpMetadata: { contentType: "image/png" } });
-    const sideKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/side.png`;
-    const side = await generateReferenceImage(c.env, referencePortraitPrompt(companion, "side-profile view"), [canonicalKey, threeQuarterKey]);
-    await c.env.COMPANION_IMAGES.put(sideKey, side, { httpMetadata: { contentType: "image/png" } });
-    await db.update(aiCompanionVisualIdentities).set({ status: "review", canonicalObjectKey: canonicalKey, referenceObjectKeysJson: JSON.stringify([canonicalKey, threeQuarterKey, sideKey]), validationStatus: "manual_review", validationNotes: "Run the ten-scene identity grid before approving this identity.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    const referenceKeys = [canonicalKey];
+    for (const [index, look] of identityTestLooks(companion.identity as "woman" | "man").entries()) {
+      const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/look-${index + 2}.png`;
+      const image = await generateReferenceImage(c.env, referencePortraitPrompt(companion, look), [canonicalKey]);
+      await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
+      referenceKeys.push(key);
+    }
+    await db.update(aiCompanionVisualIdentities).set({ status: "review", canonicalObjectKey: canonicalKey, referenceObjectKeysJson: JSON.stringify(referenceKeys), validationStatus: "manual_review", validationNotes: "Review the six-look identity set before approving this identity.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
   } catch {
     await db.update(aiCompanionVisualIdentities).set({ status: "failed", validationStatus: "failed", validationNotes: "Canonical reference generation failed. Retry after checking Workers AI availability.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
     return c.json({ error: "Canonical reference generation failed. No photo identity was released." }, 502);
@@ -681,7 +698,8 @@ aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) =>
   if (!visualIdentity || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Visual references are not ready for review." }, 404);
   const storedKeys = (() => { try { return JSON.parse(visualIdentity.referenceObjectKeysJson) as string[]; } catch { return []; } })();
   const keys = (storedKeys.length ? storedKeys : [visualIdentity.canonicalObjectKey]).filter((key): key is string => Boolean(key));
-  const viewIndex = ({ canonical: 0, "three-quarter": 1, side: 2 } as Record<string, number>)[c.req.param("view")];
+  const requestedView = c.req.param("view");
+  const viewIndex = ({ canonical: 0, "three-quarter": 1, side: 2 } as Record<string, number>)[requestedView] ?? (Number.isInteger(Number(requestedView)) ? Number(requestedView) : -1);
   const objectKey = keys[viewIndex];
   if (!objectKey) return c.json({ error: "Visual reference not found." }, 404);
   const object = await c.env.COMPANION_IMAGES.get(objectKey);

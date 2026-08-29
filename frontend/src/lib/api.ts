@@ -992,7 +992,7 @@ export function regenerateAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/regenerate`, { method: "POST" });
 }
 
-export function fetchAiCompanionVisualIdentityPreview(companionId: string, view: "canonical" | "three-quarter" | "side") {
+export function fetchAiCompanionVisualIdentityPreview(companionId: string, view: string) {
   return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/images/${view}`);
 }
 
