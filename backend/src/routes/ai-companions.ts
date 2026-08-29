@@ -51,7 +51,7 @@ function relationshipStageGuidance(stage: RelationshipStage) {
   return "This is an established connection with shared history. You may respond naturally to non-explicit affection and callbacks while still respecting boundaries and keeping the relationship healthy.";
 }
 function extractMemoryCandidates(message: string): MemoryCandidateDraft[] {
-  const cleanFact = (value: string) => value.replace(/[.!?]+$/g, "").trim().slice(0, 180);
+  const cleanFact = (value: string) => value.replace(/\s*,\s*(?:but|and|so|because)\b.*$/i, "").replace(/[.!?]+$/g, "").trim().slice(0, 180);
   const drafts: MemoryCandidateDraft[] = [];
   const add = (kind: string, content: string) => {
     const normalized = cleanFact(content);
@@ -69,6 +69,8 @@ function extractMemoryCandidates(message: string): MemoryCandidateDraft[] {
   if (enjoys && !/\b(?:you|kiss|hug|cuddle|love you)\b/i.test(enjoys[1])) add("preference", `You enjoy ${cleanFact(enjoys[1])}.`);
   const goal = message.match(/\bi(?:'m| am) (?:starting|training for|working toward)\s+([^.!?]{4,140})/i);
   if (goal) add("goal", `You are ${cleanFact(goal[0].replace(/^i(?:'m| am)\s+/i, "").toLowerCase())}.`);
+  const starts = message.match(/\bi start\s+([^.!?]{4,140})/i);
+  if (starts) add("goal", `You start ${cleanFact(starts[1])}.`);
   return drafts.slice(0, 2);
 }
 function normalizeMemoryContent(content: string) {
@@ -572,11 +574,16 @@ aiCompanionRoutes.post("/:companionId/memory-candidates/:candidateId/approve", a
   const [candidate] = await db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.id, c.req.param("candidateId")), eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).limit(1);
   if (!candidate) return c.json({ error: "Memory suggestion not found." }, 404);
   const timestamp = now();
-  const memory = { id: id("aimem"), userId: context.userId, companionId: companion.id, kind: "auto_approved", content: candidate.content, pinned: 0, createdAt: timestamp, updatedAt: timestamp };
-  await db.batch([
-    db.insert(aiCompanionMemories).values(memory),
-    db.update(aiCompanionMemoryCandidates).set({ status: "approved", reviewedAt: timestamp }).where(eq(aiCompanionMemoryCandidates.id, candidate.id)),
-  ]);
+  const memory = { id: id("aimem"), userId: context.userId, companionId: companion.id, kind: candidate.kind, content: candidate.content, pinned: 0, createdAt: timestamp, updatedAt: timestamp };
+  const approve = db.update(aiCompanionMemoryCandidates).set({ status: "approved", reviewedAt: timestamp }).where(eq(aiCompanionMemoryCandidates.id, candidate.id));
+  if (["identity", "location", "work"].includes(candidate.kind)) {
+    await db.batch([
+      db.delete(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id), eq(aiCompanionMemories.kind, candidate.kind))),
+      db.insert(aiCompanionMemories).values(memory),
+      approve,
+    ]);
+  }
+  else await db.batch([db.insert(aiCompanionMemories).values(memory), approve]);
   return c.json({ memory });
 });
 
