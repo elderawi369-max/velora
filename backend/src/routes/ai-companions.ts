@@ -399,7 +399,20 @@ function normalizePersonaEmojiTone(text: string, personaKey: string) {
   if (personaKey !== "quiet_romantic") return text;
   return text.replace(/\s*[😂😅🤣😆😜]/gu, "").replace(/\s{2,}/g, " ").trim();
 }
-function addCompanionEmoji(text: string, personaKey: string, messageId: string) {
+function addCompanionEmoji(text: string, userMessage: string, personaKey: string, messageId: string) {
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const isKissMoment = /\b(kiss|kisses|kissed|kissing)\b/i.test(userMessage);
+  if (isKissMoment && !/[😘💋]/u.test(text) && seed % 3 !== 0) {
+    const kissEmojiByPersona: Record<string, string> = {
+      supportive_partner: "😘",
+      playful_tease: "😘",
+      sarcastic_best_friend: "😘",
+      confident_leader: "💋",
+      quiet_romantic: "💋",
+      personal_growth_companion: "😘",
+    };
+    return `${text} ${kissEmojiByPersona[personaKey] ?? "😘"}`;
+  }
   if (/\p{Extended_Pictographic}/u.test(text)) return text;
   const situationEmoji = personaKey === "quiet_romantic" ? undefined : ( [
     [/\b(haha|funny|ridiculous|trouble|mischief|keyboard|sofa|couch|cat|dog|pet)\b/i, "😂"],
@@ -417,7 +430,6 @@ function addCompanionEmoji(text: string, personaKey: string, messageId: string) 
     personal_growth_companion: ["✨", "🙂", "💪"],
   };
   const emojiSet = emojiByPersona[personaKey] ?? ["😊"];
-  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
   if (seed % 3 === 0) return text;
   return `${text} ${emojiSet[seed % emojiSet.length]}`;
 }
@@ -530,7 +542,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     responseBody = addQuietRomanticRelationshipAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = normalizePersonaEmojiTone(responseBody, companion.personaKey);
     responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
-    responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
+    responseBody = addCompanionEmoji(responseBody, parsed.data.body, companion.personaKey, assistantMessageId);
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
