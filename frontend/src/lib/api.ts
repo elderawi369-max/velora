@@ -422,6 +422,15 @@ export function login(payload: LoginPayload) {
   });
 }
 
+async function requestImageUrl(path: string): Promise<string> {
+  const headers: Record<string, string> = getClientPlatformHeaders();
+  const authToken = getAuthToken();
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", headers });
+  if (!response.ok) throw new Error("Could not load the private visual reference.");
+  return URL.createObjectURL(await response.blob());
+}
+
 export function requestPasswordReset(payload: ForgotPasswordPayload) {
   return request<{ ok: true; delivery: string; message: string }>("/api/auth/forgot-password", {
     method: "POST",
@@ -977,6 +986,10 @@ export function fetchAiCompanion(companionId: string) {
 
 export function prepareAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity`, { method: "POST" });
+}
+
+export function fetchAiCompanionVisualIdentityPreview(companionId: string, view: "canonical" | "three-quarter" | "side") {
+  return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/images/${view}`);
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {

@@ -647,6 +647,22 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
   return c.json({ visualIdentity: updated });
 });
 
+aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!c.env.COMPANION_IMAGES) return c.json({ error: "Companion image services are not configured." }, 503);
+  const [visualIdentity] = await getDb(c.env).select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Visual references are not ready for review." }, 404);
+  const storedKeys = (() => { try { return JSON.parse(visualIdentity.referenceObjectKeysJson) as string[]; } catch { return []; } })();
+  const keys = (storedKeys.length ? storedKeys : [visualIdentity.canonicalObjectKey]).filter((key): key is string => Boolean(key));
+  const viewIndex = ({ canonical: 0, "three-quarter": 1, side: 2 } as Record<string, number>)[c.req.param("view")];
+  const objectKey = keys[viewIndex];
+  if (!objectKey) return c.json({ error: "Visual reference not found." }, 404);
+  const object = await c.env.COMPANION_IMAGES.get(objectKey);
+  if (!object) return c.json({ error: "Visual reference not found." }, 404);
+  return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
+});
+
 aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const parsed = photoSceneSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Describe the photo in 3 to 360 characters." }, 400);
