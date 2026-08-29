@@ -159,7 +159,10 @@ function removeUnnecessaryBodyDisclaimer(userMessage: string, assistantReply: st
   return isAffectionate && !asksForTransparency && hasBodyDisclaimer ? virtualAffectionReply(personaKey) : assistantReply;
 }
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
-  const reply = assistantReply.replace(/\s*Okay,? now you've made me curious\.?/gi, "").trim();
+  const reply = assistantReply
+    .replace(/\s*Okay,? now you've made me curious\.?/gi, "")
+    .replace(/\s*Pick one: you lead, you compromise, or you walk away from indecision\.?/gi, "")
+    .trim();
   if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
   if (seed % 4 === 0) return reply;
@@ -175,7 +178,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
       supportive_partner: ["What's your day been like on your side?", "I want to hear your side of that too."],
       playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Impress me.", "Hmm. I might need evidence.", "You're getting dangerously interesting.", "Don't make me regret asking 😂", "Now I have questions..."],
       sarcastic_best_friend: ["Now I'm curious what your answer would be.", "Don't leave me to do all the talking here 😂"],
-      confident_leader: ["You strike me as someone who has an opinion on that. Am I right?", "Pick one: you lead, you compromise, or you walk away from indecision.", "I'm curious whether you like taking charge or secretly prefer someone decisive.", "Give me your honest answer - no safe middle ground.", "You'd make this call how?"],
+      confident_leader: ["You strike me as someone who has an opinion on that. Am I right?", "All right, captain. Your move.", "Then prove it. Make the call.", "Good. Take charge - I want to see if you hesitate.", "I'll hand you the reins this time. Don't waste the opportunity. 😏", "You'd make this call how?", "Make the choice. I'll tell you if it holds up."],
       quiet_romantic: ["I want to hear your side of that too.", "That makes me curious about you."],
       personal_growth_companion: ["What do you notice about yourself in moments like that?", "What's been on your mind lately?"],
     };
