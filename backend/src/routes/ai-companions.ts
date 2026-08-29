@@ -170,7 +170,11 @@ function createDefaultVisualTraits(companion: typeof aiCompanions.$inferSelect):
     personal_growth_companion: { apparentAge: "late twenties", hair: "warm brown, loose shoulder-length waves", eyes: "hazel", facialStructure: "open oval face", skinAppearance: "light-medium complexion", build: "healthy average build", distinctiveFeatures: ["easy smile", "subtle dimples"] },
   };
   const traits = byPersona[companion.personaKey as (typeof personaKeys)[number]] ?? byPersona.supportive_partner;
-  return { identity: companion.identity as "woman" | "man", ...traits };
+  return {
+    identity: companion.identity as "woman" | "man",
+    ...traits,
+    apparentAge: companion.identity === "woman" ? "24 to 28 years old" : "25 to 30 years old",
+  };
 }
 function parseVisualTraits(value: string): VisualIdentityTraits | null {
   try {
@@ -202,8 +206,8 @@ async function generateReferenceImage(env: EnvBindings, prompt: string, referenc
   return base64ToBytes(result.image);
 }
 function canonicalPortraitPrompt(companion: typeof aiCompanions.$inferSelect, traits: VisualIdentityTraits) {
-  const outfit = traits.identity === "woman" ? "a modern fitted knit top, stylish casual blouse, or relaxed date-night dress" : "a modern fitted knit, open-collar casual shirt, or relaxed date-night jacket";
-  return `Create a photorealistic, non-celebrity model-casting reference of a beautiful, stylish fictional adult ${traits.identity} for an AI romantic companion. The person must read as a youthful adult in the stated age range: warm, modern, conventionally attractive, approachable, and date-ready, fully clothed and non-explicit. Apparent age: ${traits.apparentAge}. Locked appearance: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Wear ${outfit}; use a soft friendly expression, contemporary hairstyle, and subtle natural makeup or grooming. Frame waist-up with relaxed, natural body language, flattering daylight, and a softly blurred cafe, apartment living area, rooftop, or street background. This is a clean contemporary dating-profile reference, not a business portrait: absolutely no blazer, suit, office, corporate styling, stiff pose, white collared office shirt, passport-photo framing, or LinkedIn headshot. No text or watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
+  const outfit = traits.identity === "woman" ? "a fitted ribbed scoop-neck top, a stylish summer dress, or a relaxed off-shoulder knit that would be appropriate for a cafe or date" : "a fitted premium T-shirt, a textured knit, or an open casual overshirt over a T-shirt";
+  return `Photorealistic lifestyle portrait of a very attractive fictional adult ${traits.identity}, ${traits.apparentAge}, for a romantic AI companion. Contemporary dating-profile and fashion-editorial aesthetic, not corporate. The person is warm, youthful, stylish, naturally confident, and approachable, with contemporary hair, flattering soft natural makeup or grooming, and ${outfit}. Preserve: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Waist-up framing, relaxed pose, friendly flirty eye contact, golden-hour or soft window light, softly blurred modern cafe, apartment living area, rooftop, or street setting. Fully clothed and non-explicit. Never generate a blazer, suit, office, corporate setting, collared office shirt, stiff professional pose, passport photo, headshot backdrop, or LinkedIn style. No text or watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
 }
 function referencePortraitPrompt(companion: typeof aiCompanions.$inferSelect, view: string) {
   return `Use the exact same fictional adult person in reference image 0 as ${companion.name}. Preserve the face, youthful adult appearance, skin appearance, eye color, facial proportions, hair color, hair length, build, outfit direction, and distinctive features exactly. Create a realistic ${view} contemporary dating-profile/model reference with relaxed natural body language, flattering daylight, and a softly blurred lifestyle background. Keep it fully clothed and non-explicit. Never use a blazer, suit, office, corporate styling, stiff professional pose, white office shirt, passport-photo framing, or LinkedIn headshot. No text, no watermark, no other people.`;
