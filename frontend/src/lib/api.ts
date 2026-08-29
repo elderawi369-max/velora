@@ -931,6 +931,14 @@ export type AiCompanionMemory = {
   createdAt: number;
 };
 
+export type AiCompanionMemoryCandidate = {
+  id: string;
+  kind: string;
+  content: string;
+  status: "pending" | "approved" | "dismissed";
+  createdAt: number;
+};
+
 export function fetchAiCompanions() {
   return request<{ companions: AiCompanion[]; entitlement: AiEntitlement; aiEnabled: boolean; trialReplies: number }>("/api/ai-companions");
 }
@@ -952,6 +960,7 @@ export function fetchAiCompanion(companionId: string) {
     conversation: { id: string; trialRepliesUsed: number };
     messages: AiCompanionMessage[];
     memories: AiCompanionMemory[];
+    memoryCandidates: AiCompanionMemoryCandidate[];
     entitlement: AiEntitlement;
     aiEnabled: boolean;
   }>(`/api/ai-companions/${companionId}`);
@@ -967,6 +976,14 @@ export function createAiCompanionMemory(companionId: string, content: string) {
 
 export function deleteAiCompanionMemory(companionId: string, memoryId: string) {
   return request<{ ok: true }>(`/api/ai-companions/${companionId}/memories/${memoryId}`, { method: "DELETE" });
+}
+
+export function approveAiCompanionMemoryCandidate(companionId: string, candidateId: string) {
+  return request<{ memory: AiCompanionMemory }>(`/api/ai-companions/${companionId}/memory-candidates/${candidateId}/approve`, { method: "POST" });
+}
+
+export function dismissAiCompanionMemoryCandidate(companionId: string, candidateId: string) {
+  return request<{ ok: true }>(`/api/ai-companions/${companionId}/memory-candidates/${candidateId}/dismiss`, { method: "POST" });
 }
 
 export function reportAiCompanionMessage(messageId: string, payload: { reason: "unsafe" | "harmful" | "sexual_content" | "misleading" | "other"; details?: string }) {

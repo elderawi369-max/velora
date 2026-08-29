@@ -384,6 +384,18 @@ export const aiCompanionMemories = sqliteTable("ai_companion_memories", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionMemoryCandidates = sqliteTable("ai_companion_memory_candidates", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  sourceMessageId: text("source_message_id").notNull().references(() => aiCompanionMessages.id),
+  kind: text("kind").notNull(),
+  content: text("content").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: integer("created_at").notNull(),
+  reviewedAt: integer("reviewed_at"),
+});
+
 export const aiCompanionReports = sqliteTable("ai_companion_reports", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id),

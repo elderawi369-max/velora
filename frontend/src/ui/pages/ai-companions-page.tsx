@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  approveAiCompanionMemoryCandidate,
   createAiCompanion,
   createAiCompanionMemory,
   deleteAiCompanionMemory,
+  dismissAiCompanionMemoryCandidate,
   fetchAiCompanion,
   fetchAiCompanions,
   reportAiCompanionMessage,
@@ -88,6 +90,14 @@ export function AiCompanionsPage() {
     mutationFn: (memoryId: string) => deleteAiCompanionMemory(selectedId!, memoryId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
   });
+  const approveMemoryCandidateMutation = useMutation({
+    mutationFn: (candidateId: string) => approveAiCompanionMemoryCandidate(selectedId!, candidateId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
+  const dismissMemoryCandidateMutation = useMutation({
+    mutationFn: (candidateId: string) => dismissAiCompanionMemoryCandidate(selectedId!, candidateId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
   const reportMutation = useMutation({
     mutationFn: (messageId: string) => reportAiCompanionMessage(messageId, { reason: reportReason }),
     onSuccess: () => setReportingMessageId(null),
@@ -160,7 +170,14 @@ export function AiCompanionsPage() {
           <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>
           <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}</form>
         </div>
-        <aside className="ai-memory-card"><p className="eyebrow">JOURNAL OF US</p><h2>What {detail.companion.name} remembers</h2><p className="muted">Add, review, or delete your saved memories. This is the first memory layer; automatic long-term memories will be added only after its quality review.</p><form onSubmit={saveMemory}><textarea value={memory} maxLength={280} placeholder="Example: I start a new job on Monday." onChange={(event) => setMemory(event.target.value)} /><button className="secondary-button" disabled={memoryMutation.isPending || !memory.trim()}>Save memory</button></form><div className="ai-memory-list">{detail.memories.map((item) => <div key={item.id}><span>{item.content}</span><button className="text-button" onClick={() => deleteMemoryMutation.mutate(item.id)}>Delete</button></div>)}{detail.memories.length === 0 ? <p className="muted">Nothing has been saved yet.</p> : null}</div></aside>
+        <aside className="ai-memory-card">
+          <p className="eyebrow">JOURNAL OF US</p>
+          <h2>What {detail.companion.name} remembers</h2>
+          <p className="muted">You control every long-term memory. Review suggestions before they are saved.</p>
+          {detail.memoryCandidates.length > 0 ? <section className="ai-memory-candidates"><strong>Suggested memories</strong>{detail.memoryCandidates.map((candidate) => <div key={candidate.id}><span>{candidate.content}</span><div><button className="secondary-button" onClick={() => approveMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Keep</button><button className="text-button" onClick={() => dismissMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Dismiss</button></div></div>)}</section> : null}
+          <form onSubmit={saveMemory}><textarea value={memory} maxLength={280} placeholder="Example: I start a new job on Monday." onChange={(event) => setMemory(event.target.value)} /><button className="secondary-button" disabled={memoryMutation.isPending || !memory.trim()}>Save memory</button></form>
+          <div className="ai-memory-list">{detail.memories.map((item) => <div key={item.id}><span>{item.content}</span><button className="text-button" onClick={() => deleteMemoryMutation.mutate(item.id)}>Delete</button></div>)}{detail.memories.length === 0 ? <p className="muted">Nothing has been saved yet.</p> : null}</div>
+        </aside>
       </section> : null}
     </main>
   );

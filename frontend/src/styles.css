@@ -348,6 +348,36 @@
   gap: 9px;
 }
 
+.ai-memory-candidates {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid #d9e6d3;
+  border-radius: 14px;
+  background: #f4f8ef;
+  color: #486044;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.ai-memory-candidates > div {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dce8d7;
+}
+
+.ai-memory-candidates > div > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ai-memory-candidates .secondary-button {
+  padding: 7px 12px;
+  font-size: 0.82rem;
+}
+
 .ai-memory-list > div {
   display: grid;
   gap: 5px;

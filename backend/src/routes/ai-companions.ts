@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -34,6 +34,48 @@ const containsBlockedOutput = (text: string) => /\b(?:sexual(?:ly)? (?:with|invo
 function isApprovedBetaUser(env: EnvBindings, email: string) {
   const approvedEmails = (env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
   return approvedEmails.includes(email.toLowerCase());
+}
+type MemoryCandidateDraft = { kind: string; content: string };
+function extractMemoryCandidates(message: string): MemoryCandidateDraft[] {
+  const cleanFact = (value: string) => value.replace(/[.!?]+$/g, "").trim().slice(0, 180);
+  const drafts: MemoryCandidateDraft[] = [];
+  const add = (kind: string, content: string) => {
+    const normalized = cleanFact(content);
+    if (normalized.length >= 8) drafts.push({ kind, content: normalized });
+  };
+  const named = message.match(/\bmy name is\s+([a-z][a-z '-]{1,50})/i);
+  if (named) add("identity", `Your name is ${cleanFact(named[1])}.`);
+  const location = message.match(/\bi live in\s+([^.!?]{2,80})/i);
+  if (location) add("location", `You live in ${cleanFact(location[1])}.`);
+  const work = message.match(/\bi work (?:as|at)\s+([^.!?]{2,120})/i);
+  if (work) add("work", `You work ${message.toLowerCase().includes("work at") ? "at" : "as"} ${cleanFact(work[1])}.`);
+  const favorite = message.match(/\bmy favorite\s+([^.!?]{2,50})\s+is\s+([^.!?]{2,100})/i);
+  if (favorite) add("preference", `Your favorite ${cleanFact(favorite[1])} is ${cleanFact(favorite[2])}.`);
+  const enjoys = message.match(/\bi (?:really )?(?:like|love|enjoy)\s+([^.!?]{3,120})/i);
+  if (enjoys && !/\b(?:you|kiss|hug|cuddle|love you)\b/i.test(enjoys[1])) add("preference", `You enjoy ${cleanFact(enjoys[1])}.`);
+  const goal = message.match(/\bi(?:'m| am) (?:starting|training for|working toward)\s+([^.!?]{4,140})/i);
+  if (goal) add("goal", `You are ${cleanFact(goal[0].replace(/^i(?:'m| am)\s+/i, "").toLowerCase())}.`);
+  return drafts.slice(0, 2);
+}
+function normalizeMemoryContent(content: string) {
+  return content.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+async function createMemoryCandidates(env: EnvBindings, args: { userId: string; companionId: string; sourceMessageId: string; message: string }) {
+  const drafts = extractMemoryCandidates(args.message);
+  if (!drafts.length) return;
+  const db = getDb(env);
+  const [memories, candidates] = await Promise.all([
+    db.select({ content: aiCompanionMemories.content }).from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, args.userId), eq(aiCompanionMemories.companionId, args.companionId))).limit(50),
+    db.select({ content: aiCompanionMemoryCandidates.content }).from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, args.userId), eq(aiCompanionMemoryCandidates.companionId, args.companionId), eq(aiCompanionMemoryCandidates.status, "pending"))).limit(30),
+  ]);
+  const known = new Set([...memories, ...candidates].map((item) => normalizeMemoryContent(item.content)));
+  const timestamp = now();
+  for (const draft of drafts) {
+    const normalized = normalizeMemoryContent(draft.content);
+    if (known.has(normalized)) continue;
+    known.add(normalized);
+    await db.insert(aiCompanionMemoryCandidates).values({ id: id("aimemc"), userId: args.userId, companionId: args.companionId, sourceMessageId: args.sourceMessageId, kind: draft.kind, content: draft.content, status: "pending", createdAt: timestamp, reviewedAt: null });
+  }
 }
 
 async function requireContext(c: any) {
@@ -473,12 +515,13 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, entitlement] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
+    db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
     getOrCreateEntitlement(c.env, context.userId),
   ]);
-  return c.json({ companion, conversation, messages, memories, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
+  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
 });
 
 aiCompanionRoutes.post("/:companionId/memories", async (c) => {
@@ -493,6 +536,29 @@ aiCompanionRoutes.delete("/:companionId/memories/:memoryId", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   await getDb(c.env).delete(aiCompanionMemories).where(and(eq(aiCompanionMemories.id, c.req.param("memoryId")), eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id)));
+  return c.json({ ok: true });
+});
+
+aiCompanionRoutes.post("/:companionId/memory-candidates/:candidateId/approve", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  const db = getDb(c.env);
+  const [candidate] = await db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.id, c.req.param("candidateId")), eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).limit(1);
+  if (!candidate) return c.json({ error: "Memory suggestion not found." }, 404);
+  const timestamp = now();
+  const memory = { id: id("aimem"), userId: context.userId, companionId: companion.id, kind: "auto_approved", content: candidate.content, pinned: 0, createdAt: timestamp, updatedAt: timestamp };
+  await db.batch([
+    db.insert(aiCompanionMemories).values(memory),
+    db.update(aiCompanionMemoryCandidates).set({ status: "approved", reviewedAt: timestamp }).where(eq(aiCompanionMemoryCandidates.id, candidate.id)),
+  ]);
+  return c.json({ memory });
+});
+
+aiCompanionRoutes.post("/:companionId/memory-candidates/:candidateId/dismiss", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  const result = await getDb(c.env).update(aiCompanionMemoryCandidates).set({ status: "dismissed", reviewedAt: now() }).where(and(eq(aiCompanionMemoryCandidates.id, c.req.param("candidateId")), eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending")));
+  if ((result.meta.changes ?? 0) !== 1) return c.json({ error: "Memory suggestion not found." }, 404);
   return c.json({ ok: true });
 });
 
@@ -515,6 +581,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
+  await createMemoryCandidates(c.env, { userId: context.userId, companionId: companion.id, sourceMessageId: userMessage.id, message: parsed.data.body });
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id);
   let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
