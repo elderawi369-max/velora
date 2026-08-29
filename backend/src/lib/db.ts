@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 export type EnvBindings = {
   DB: D1Database;
   AI?: Ai;
+  COMPANION_IMAGES?: R2Bucket;
   APP_NAME?: string;
   ADMIN_SECRET?: string;
   APP_ENV?: string;

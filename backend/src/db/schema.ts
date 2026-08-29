@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -355,6 +355,19 @@ export const aiCompanionCanons = sqliteTable("ai_companion_canons", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionVisualIdentities = sqliteTable("ai_companion_visual_identities", {
+  companionId: text("companion_id").primaryKey().references(() => aiCompanions.id),
+  version: integer("version").notNull().default(1),
+  status: text("status").notNull().default("pending_storage"),
+  lockedTraitsJson: text("locked_traits_json").notNull(),
+  canonicalObjectKey: text("canonical_object_key"),
+  referenceObjectKeysJson: text("reference_object_keys_json").notNull().default("[]"),
+  validationStatus: text("validation_status").notNull().default("pending"),
+  validationNotes: text("validation_notes"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionConversations = sqliteTable("ai_companion_conversations", {
   id: text("id").primaryKey(),
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
@@ -373,6 +386,23 @@ export const aiCompanionMessages = sqliteTable("ai_companion_messages", {
   body: text("body").notNull(),
   moderationStatus: text("moderation_status").notNull().default("allowed"),
   createdAt: integer("created_at").notNull(),
+});
+
+export const aiCompanionPhotos = sqliteTable("ai_companion_photos", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  visualIdentityVersion: integer("visual_identity_version").notNull(),
+  requestMessageId: text("request_message_id").references(() => aiCompanionMessages.id),
+  sceneJson: text("scene_json").notNull(),
+  prompt: text("prompt").notNull(),
+  objectKey: text("object_key"),
+  status: text("status").notNull().default("queued"),
+  identityScore: real("identity_score"),
+  validationStatus: text("validation_status").notNull().default("pending"),
+  generationAttempt: integer("generation_attempt").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 export const aiCompanionMemories = sqliteTable("ai_companion_memories", {

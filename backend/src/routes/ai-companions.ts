@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionReports, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualIdentities, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -24,6 +24,7 @@ const createCompanionSchema = z.object({
 const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000) });
 const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280) });
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
+const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie") });
 
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
@@ -148,6 +149,28 @@ type CharacterCanon = {
   interests: string[];
   customBackstory: string;
 };
+type VisualIdentityTraits = {
+  identity: "woman" | "man";
+  apparentAge: string;
+  hair: string;
+  eyes: string;
+  facialStructure: string;
+  skinAppearance: string;
+  build: string;
+  distinctiveFeatures: string[];
+};
+function createDefaultVisualTraits(companion: typeof aiCompanions.$inferSelect): VisualIdentityTraits {
+  const byPersona: Record<(typeof personaKeys)[number], Omit<VisualIdentityTraits, "identity">> = {
+    supportive_partner: { apparentAge: "mid-to-late twenties", hair: "soft chestnut brown, shoulder length", eyes: "warm hazel", facialStructure: "soft oval face", skinAppearance: "warm medium complexion", build: "average build", distinctiveFeatures: ["gentle smile", "subtle freckles"] },
+    playful_tease: { apparentAge: "mid twenties", hair: "dark brown, textured bob", eyes: "bright brown", facialStructure: "heart-shaped face", skinAppearance: "light olive complexion", build: "slim build", distinctiveFeatures: ["expressive eyebrows", "small beauty mark near the cheek"] },
+    sarcastic_best_friend: { apparentAge: "late twenties", hair: "deep brown, shoulder-length waves", eyes: "green-brown", facialStructure: "angular oval face", skinAppearance: "light-medium complexion", build: "average build", distinctiveFeatures: ["knowing half-smile", "faint freckles across the nose"] },
+    confident_leader: { apparentAge: "late twenties", hair: "dark brown, long and polished", eyes: "deep brown", facialStructure: "defined oval face", skinAppearance: "medium complexion", build: "athletic build", distinctiveFeatures: ["strong brows", "composed expression"] },
+    quiet_romantic: { apparentAge: "late twenties", hair: "black, long and softly layered", eyes: "dark brown", facialStructure: "delicate oval face", skinAppearance: "light warm complexion", build: "slender build", distinctiveFeatures: ["gentle eyes", "small beauty mark below one eye"] },
+    personal_growth_companion: { apparentAge: "around thirty", hair: "warm brown, loose shoulder-length waves", eyes: "hazel", facialStructure: "open oval face", skinAppearance: "light-medium complexion", build: "healthy average build", distinctiveFeatures: ["easy smile", "subtle dimples"] },
+  };
+  const traits = byPersona[companion.personaKey as (typeof personaKeys)[number]] ?? byPersona.supportive_partner;
+  return { identity: companion.identity as "woman" | "man", ...traits };
+}
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
   supportive_partner: {
@@ -532,6 +555,9 @@ aiCompanionRoutes.post("/", async (c) => {
   await db.insert(aiCompanions).values(companion);
   const canon = createDefaultCanon(companion);
   await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(canon), createdAt: timestamp, updatedAt: timestamp });
+  // Conversational memory cannot mutate this record. It only becomes photo-ready
+  // after canonical references and a consistency review have been stored.
+  await db.insert(aiCompanionVisualIdentities).values({ companionId: companion.id, version: 1, status: "pending_storage", lockedTraitsJson: JSON.stringify(createDefaultVisualTraits(companion)), canonicalObjectKey: null, referenceObjectKeysJson: "[]", validationStatus: "pending", validationNotes: null, createdAt: timestamp, updatedAt: timestamp });
   const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, relationshipPoints: 0, relationshipStage: "new", createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanionConversations).values(conversation);
   await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey } });
@@ -543,13 +569,26 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, memoryCandidates, entitlement] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photos] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
     getOrCreateEntitlement(c.env, context.userId),
+    db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0] ?? null),
+    db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "ready"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(12),
   ]);
-  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
+  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, visualIdentity, photos, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
+});
+
+aiCompanionRoutes.post("/:companionId/photos", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const parsed = photoSceneSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Describe the photo in 3 to 360 characters." }, 400);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion photos are not enabled until private identity storage is configured." }, 503);
+  const [visualIdentity] = await getDb(c.env).select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  // Do not replace missing references with text traits: that would create a different person.
+  if (!visualIdentity || visualIdentity.status !== "ready" || visualIdentity.validationStatus !== "approved" || !visualIdentity.canonicalObjectKey) return c.json({ error: "This companion's visual identity is still being verified. Photos remain unavailable until its canonical references pass review." }, 409);
+  return c.json({ error: "Companion photo generation is not released until the identity consistency evaluator is configured." }, 503);
 });
 
 aiCompanionRoutes.post("/:companionId/memories", async (c) => {
