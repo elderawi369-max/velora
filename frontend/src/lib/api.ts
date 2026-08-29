@@ -988,6 +988,10 @@ export function prepareAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity`, { method: "POST" });
 }
 
+export function regenerateAiCompanionVisualIdentity(companionId: string) {
+  return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/regenerate`, { method: "POST" });
+}
+
 export function fetchAiCompanionVisualIdentityPreview(companionId: string, view: "canonical" | "three-quarter" | "side") {
   return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/images/${view}`);
 }

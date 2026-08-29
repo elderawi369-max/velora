@@ -201,7 +201,7 @@ async function generateReferenceImage(env: EnvBindings, prompt: string, referenc
   return base64ToBytes(result.image);
 }
 function canonicalPortraitPrompt(companion: typeof aiCompanions.$inferSelect, traits: VisualIdentityTraits) {
-  return `Create one realistic, non-celebrity portrait of a fictional adult ${traits.identity} for an AI companion. Apparent age: ${traits.apparentAge}. Locked appearance: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Straight-on head-and-shoulders portrait, neutral studio daylight, simple background, natural skin texture, no text, no watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
+  return `Create a photorealistic, non-celebrity portrait of a beautiful, stylish fictional adult ${traits.identity} for an AI companion. She or he must look clearly like a youthful adult in the stated age range, with a polished, date-ready, fashion-editorial appearance and warm confident expression; fully clothed, elegant, and non-explicit. Apparent age: ${traits.apparentAge}. Locked appearance: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Straight-on head-and-shoulders portrait, flattering soft studio daylight, simple background, refined hair and makeup or grooming, no text, no watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
 }
 function referencePortraitPrompt(companion: typeof aiCompanions.$inferSelect, view: string) {
   return `Use the exact same fictional adult person in reference image 0 as ${companion.name}. Preserve the face, apparent age, skin appearance, eye color, facial proportions, hair color, hair length, build, and distinctive features exactly. Create a realistic ${view} reference portrait with natural daylight and a simple background. No text, no watermark, no other people.`;
@@ -650,6 +650,19 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
   }
   const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   return c.json({ visualIdentity: updated });
+});
+
+aiCompanionRoutes.post("/:companionId/visual-identity/regenerate", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!(await isChatEnabledForUser(c.env, context.userId))) return c.json({ error: "Visual identity setup is only available in the private companion beta." }, 403);
+  const db = getDb(c.env); const timestamp = now();
+  const [existing] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!existing) return c.json({ error: "Prepare a visual identity before regenerating it." }, 409);
+  // A regeneration is an explicit new identity version, never a silent change to prior references.
+  await db.update(aiCompanionVisualIdentities).set({ version: existing.version + 1, status: "pending_storage", lockedTraitsJson: JSON.stringify(createDefaultVisualTraits(companion)), canonicalObjectKey: null, referenceObjectKeysJson: "[]", validationStatus: "pending", validationNotes: "Regenerated appearance awaiting review.", updatedAt: timestamp }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  return c.json({ visualIdentity });
 });
 
 aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) => {
