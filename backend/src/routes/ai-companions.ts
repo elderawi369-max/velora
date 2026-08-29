@@ -765,13 +765,14 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
   const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
   await db.insert(aiCompanionPhotos).values(entries);
   try {
-    for (const entry of entries) {
+    await Promise.all(entries.map(async (entry) => {
       const image = await generateReferenceImage(c.env, entry.prompt, [visualIdentity.canonicalObjectKey]);
       const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
       await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
       await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
-    }
-  } catch {
+    }));
+  } catch (error) {
+    console.error("Companion lifestyle photo test generation failed", { companionId: companion.id, testId, error: error instanceof Error ? error.message : String(error) });
     await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(and(eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "generating")));
     return c.json({ error: "Lifestyle photo test generation failed. No photos were released." }, 502);
   }
