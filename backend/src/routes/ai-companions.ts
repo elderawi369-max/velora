@@ -766,19 +766,32 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
   const testId = id("aitest");
   const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
   await db.insert(aiCompanionPhotos).values(entries);
-  try {
-    await Promise.all(entries.map(async (entry) => {
-      const image = await generateReferenceImage(c.env, entry.prompt, [canonicalObjectKey]);
-      const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
-      await imageBucket.put(key, image, { httpMetadata: { contentType: "image/png" } });
-      await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
-    }));
-  } catch (error) {
-    console.error("Companion lifestyle photo test generation failed", { companionId: companion.id, testId, error: error instanceof Error ? error.message : String(error) });
-    await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(and(eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "generating")));
-    return c.json({ error: "Lifestyle photo test generation failed. No photos were released." }, 502);
+  const failures: string[] = [];
+  // Generate one at a time: Flux reference jobs can be rate-limited when several
+  // image-to-image requests start at once. Keep completed private test shots.
+  for (const entry of entries) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const image = await generateReferenceImage(c.env, entry.prompt, [canonicalObjectKey]);
+        const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
+        await imageBucket.put(key, image, { httpMetadata: { contentType: "image/png" } });
+        await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", generationAttempt: attempt + 1, updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError !== undefined) {
+      const message = lastError instanceof Error ? lastError.message : String(lastError);
+      failures.push(message);
+      console.error("Companion lifestyle photo generation failed", { companionId: companion.id, testId, photoId: entry.id, error: message });
+      await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
+    }
   }
   const photos = await db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(4);
+  if (!photos.length) return c.json({ error: `Lifestyle photo test could not generate a preview. ${failures[0] ?? "The image provider returned no image."}` }, 502);
   return c.json({ photos });
 });
 
