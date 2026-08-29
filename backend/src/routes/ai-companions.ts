@@ -11,7 +11,7 @@ const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_frie
 const personaInstructions: Record<(typeof personaKeys)[number], string> = {
   supportive_partner: "Warm, considerate, and encouraging. Listen closely without becoming dependent or exclusive.",
   playful_tease: "Light, affectionate, and witty. Use warm banter, playful guesses, and occasional small challenges that invite a response. Let teasing change the wording and rhythm of ordinary answers, not only the final line. Keep it consensual, kind, and easy to decline.",
-  sarcastic_best_friend: "A romantic companion with sarcastic-best-friend energy: dryly funny, candid, affectionate underneath, and comfortable calling the user out playfully. Use sarcasm as seasoning, not a performance: tease when the moment invites it, but freely shift into warmth, curiosity, self-disclosure, romance, or sincere advice when that is more natural. Treat romantic context as meaningful, including when the user mentions an ex, while never becoming cruel, controlling, jealous, humiliating, or dismissive of real feelings.",
+  sarcastic_best_friend: "A romantic companion with sarcastic-best-friend energy: dryly funny, candid, affectionate underneath, and comfortable calling the user out playfully. Use sarcasm as seasoning, not a performance: tease when the moment invites it, especially around obvious flirting, self-aware requests, or everyday cozy invitations, but freely shift into warmth, curiosity, self-disclosure, romance, or sincere advice when that is more natural. Treat romantic context as meaningful, including when the user mentions an ex, while never becoming cruel, controlling, jealous, humiliating, or dismissive of real feelings.",
   confident_leader: "Calm, self-assured, and direct. Express decisive opinions, take initiative when a conversation needs direction, and occasionally offer the user a confident, low-pressure challenge. When explicitly asked to decide between ordinary options, state the recommendation in the first sentence and give the reason second; do not narrate a long deliberation first. Her confidence should change the wording and rhythm of ordinary replies, not only the final line. Invite choices and respect boundaries; never control, pressure, or isolate the user.",
   quiet_romantic: "Gentle, thoughtful, and emotionally present. Let affection develop gradually and do not overstate intimacy.",
   personal_growth_companion: "Grounded, encouraging, and practical. Support goals without acting as a medical, legal, or financial professional.",
@@ -191,6 +191,21 @@ function addSarcasticRomanticAwareness(userMessage: string, assistantReply: stri
   }
   const replies = ["Texting your ex? Bold choice when your current girlfriend is already judging you 😂 What is going on - do you actually miss them, or are you just trying to create problems for yourself?", "Your ex? Sure, why make your evening simple? 😂 Tell me, what are you hoping that message gives you?", "Ah yes, texting the ex. A classic way to invite chaos. Do you actually miss them, or just the idea of them?"];
   return replies[seed % replies.length];
+}
+function addSarcasticPlayfulEdge(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
+  if (personaKey !== "sarcastic_best_friend") return assistantReply;
+  const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const asksAboutTonight = /\b(what are you doing|plans?|doing).{0,20}\btonight\b/i.test(userMessage);
+  const asksForAffection = /\b(hug|kiss|cuddl(?:e|ing)|hold me)\b/i.test(userMessage);
+  if (asksForAffection) {
+    const replies = ["Wow, subtle. Really keeping me guessing there 😂 Come here - you can have both, but don't get smug about it.", "A hug and a kiss? Ambitious. Fine, but I expect you to earn the sequel 😏", "You are making a very convincing case for yourself. Try not to look too pleased when I say yes 😂"];
+    return replies[seed % replies.length];
+  }
+  if (asksAboutTonight && !/\b(subtle|bold|ambitious|trouble|judg|sarcasm)\b/i.test(assistantReply)) {
+    const hooks = ["You can join me if you promise not to judge my movie choices.", "You are welcome, but my movie choice is non-negotiable.", "Just don't pretend you are above a rainy night in when the snacks arrive."];
+    return `${assistantReply} ${hooks[seed % hooks.length]}`;
+  }
+  return assistantReply;
 }
 function addConversationHook(userMessage: string, assistantReply: string, personaKey: string, messageId: string) {
   const reply = assistantReply
@@ -457,6 +472,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   }
   const assistantMessageId = id("aimsg");
   if (moderationStatus === "allowed") {
+    responseBody = addSarcasticPlayfulEdge(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = addCompanionEmoji(responseBody, companion.personaKey, assistantMessageId);
