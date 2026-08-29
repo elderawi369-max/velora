@@ -8,6 +8,7 @@ import {
   dismissAiCompanionMemoryCandidate,
   fetchAiCompanion,
   fetchAiCompanions,
+  prepareAiCompanionVisualIdentity,
   reportAiCompanionMessage,
   sendAiCompanionMessage,
   type AiCompanion,
@@ -104,6 +105,10 @@ export function AiCompanionsPage() {
     mutationFn: (messageId: string) => reportAiCompanionMessage(messageId, { reason: reportReason }),
     onSuccess: () => setReportingMessageId(null),
   });
+  const visualIdentityMutation = useMutation({
+    mutationFn: () => prepareAiCompanionVisualIdentity(selectedId!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
 
   function create(event: FormEvent) {
     event.preventDefault();
@@ -146,7 +151,7 @@ export function AiCompanionsPage() {
           <div>
             <p className="eyebrow">CREATE YOUR COMPANION</p>
             <h2>Start with a personality, then make it yours.</h2>
-            <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos, voice, calls, and subscriptions are not enabled yet.</p>
+            <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos are identity-verified before release; voice, calls, and subscriptions are not enabled yet.</p>
           </div>
           <form className="ai-create-form" onSubmit={create}>
             <label>Name<input value={name} maxLength={30} onChange={(event) => setName(event.target.value)} /></label>
@@ -169,6 +174,10 @@ export function AiCompanionsPage() {
         <div className="ai-chat-card">
           <header><div><p className="eyebrow">AI COMPANION</p><h2>{detail.companion.name}</h2><small className="ai-relationship-stage">{relationshipStageLabel[detail.conversation.relationshipStage]}</small></div><span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span></header>
           {!detail.aiEnabled ? <div className="ai-disabled-note">This private companion preview is not available for this account yet. We are opening it gradually while we review safety and usage.</div> : null}
+          {detail.aiEnabled && detail.visualIdentity?.status === "pending_storage" ? <div className="ai-disabled-note"><strong>Photos are not ready yet.</strong> Prepare {detail.companion.name}'s canonical visual identity before testing photo consistency. <button className="text-button" onClick={() => visualIdentityMutation.mutate()} disabled={visualIdentityMutation.isPending}>{visualIdentityMutation.isPending ? "Preparing identity..." : "Prepare identity"}</button>{visualIdentityMutation.error ? <p className="form-error">{visualIdentityMutation.error.message}</p> : null}</div> : null}
+          {detail.visualIdentity?.status === "generating" ? <div className="ai-disabled-note">Preparing {detail.companion.name}'s canonical visual identity...</div> : null}
+          {detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note">{detail.companion.name}'s visual identity is awaiting the required consistency review. Photos will stay private until it passes.</div> : null}
+          {detail.visualIdentity?.status === "failed" ? <div className="ai-disabled-note">{detail.visualIdentity.validationNotes ?? "Visual identity preparation failed."} <button className="text-button" onClick={() => visualIdentityMutation.mutate()} disabled={visualIdentityMutation.isPending}>Retry</button></div> : null}
           <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>
           <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}</form>
         </div>

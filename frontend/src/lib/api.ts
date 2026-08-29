@@ -939,6 +939,13 @@ export type AiCompanionMemoryCandidate = {
   createdAt: number;
 };
 
+export type AiCompanionVisualIdentity = {
+  version: number;
+  status: "pending_storage" | "generating" | "review" | "ready" | "failed";
+  validationStatus: "pending" | "manual_review" | "approved" | "failed";
+  validationNotes: string | null;
+};
+
 export function fetchAiCompanions() {
   return request<{ companions: AiCompanion[]; entitlement: AiEntitlement; aiEnabled: boolean; trialReplies: number }>("/api/ai-companions");
 }
@@ -961,9 +968,15 @@ export function fetchAiCompanion(companionId: string) {
     messages: AiCompanionMessage[];
     memories: AiCompanionMemory[];
     memoryCandidates: AiCompanionMemoryCandidate[];
+    visualIdentity: AiCompanionVisualIdentity | null;
+    photos: Array<{ id: string; status: string; createdAt: number }>;
     entitlement: AiEntitlement;
     aiEnabled: boolean;
   }>(`/api/ai-companions/${companionId}`);
+}
+
+export function prepareAiCompanionVisualIdentity(companionId: string) {
+  return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity`, { method: "POST" });
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {

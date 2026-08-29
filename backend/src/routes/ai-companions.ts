@@ -171,6 +171,41 @@ function createDefaultVisualTraits(companion: typeof aiCompanions.$inferSelect):
   const traits = byPersona[companion.personaKey as (typeof personaKeys)[number]] ?? byPersona.supportive_partner;
   return { identity: companion.identity as "woman" | "man", ...traits };
 }
+function parseVisualTraits(value: string): VisualIdentityTraits | null {
+  try {
+    const parsed = JSON.parse(value) as VisualIdentityTraits;
+    return parsed.identity && parsed.apparentAge && parsed.hair && parsed.eyes && parsed.facialStructure && parsed.skinAppearance && parsed.build ? parsed : null;
+  } catch { return null; }
+}
+function base64ToBytes(base64: string) {
+  const raw = atob(base64.replace(/^data:image\/\w+;base64,/, ""));
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return bytes;
+}
+async function readR2Image(bucket: R2Bucket, key: string) {
+  const object = await bucket.get(key);
+  if (!object) throw new Error("Companion reference image was not found.");
+  return new Blob([await object.arrayBuffer()], { type: object.httpMetadata?.contentType ?? "image/png" });
+}
+async function generateReferenceImage(env: EnvBindings, prompt: string, referenceKeys: string[] = []) {
+  if (!env.AI || !env.COMPANION_IMAGES) throw new Error("Companion image services are unavailable.");
+  const form = new FormData();
+  form.append("prompt", prompt);
+  form.append("width", "512");
+  form.append("height", "512");
+  for (const [index, key] of referenceKeys.slice(0, 4).entries()) form.append(`input_image_${index}`, await readR2Image(env.COMPANION_IMAGES, key), `reference-${index}.png`);
+  const serialized = new Response(form);
+  const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", { multipart: { body: serialized.body, contentType: serialized.headers.get("content-type") } } as never) as { image?: string };
+  if (!result.image) throw new Error("The image model did not return an image.");
+  return base64ToBytes(result.image);
+}
+function canonicalPortraitPrompt(companion: typeof aiCompanions.$inferSelect, traits: VisualIdentityTraits) {
+  return `Create one realistic, non-celebrity portrait of a fictional adult ${traits.identity} for an AI companion. Apparent age: ${traits.apparentAge}. Locked appearance: ${traits.hair} hair, ${traits.eyes} eyes, ${traits.facialStructure}, ${traits.skinAppearance}, ${traits.build}, and ${traits.distinctiveFeatures.join(", ")}. Straight-on head-and-shoulders portrait, neutral studio daylight, simple background, natural skin texture, no text, no watermark. This is the canonical identity for ${companion.name}; keep the person visually distinct and consistent.`;
+}
+function referencePortraitPrompt(companion: typeof aiCompanions.$inferSelect, view: string) {
+  return `Use the exact same fictional adult person in reference image 0 as ${companion.name}. Preserve the face, apparent age, skin appearance, eye color, facial proportions, hair color, hair length, build, and distinctive features exactly. Create a realistic ${view} reference portrait with natural daylight and a simple background. No text, no watermark, no other people.`;
+}
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
   supportive_partner: {
@@ -578,6 +613,38 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "ready"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(12),
   ]);
   return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, visualIdentity, photos, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
+});
+
+aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!(await isChatEnabledForUser(c.env, context.userId))) return c.json({ error: "Visual identity setup is only available in the private companion beta." }, 403);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity) return c.json({ error: "Visual identity record not found." }, 404);
+  if (visualIdentity.status === "review" || visualIdentity.status === "ready") return c.json({ visualIdentity });
+  const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
+  if (!traits) return c.json({ error: "Visual identity traits are invalid." }, 500);
+  const timestamp = now();
+  await db.update(aiCompanionVisualIdentities).set({ status: "generating", validationStatus: "pending", updatedAt: timestamp }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  try {
+    const canonicalKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/canonical.png`;
+    const canonical = await generateReferenceImage(c.env, canonicalPortraitPrompt(companion, traits));
+    await c.env.COMPANION_IMAGES.put(canonicalKey, canonical, { httpMetadata: { contentType: "image/png" } });
+    const threeQuarterKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/three-quarter.png`;
+    const threeQuarter = await generateReferenceImage(c.env, referencePortraitPrompt(companion, "three-quarter view"), [canonicalKey]);
+    await c.env.COMPANION_IMAGES.put(threeQuarterKey, threeQuarter, { httpMetadata: { contentType: "image/png" } });
+    const sideKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/side.png`;
+    const side = await generateReferenceImage(c.env, referencePortraitPrompt(companion, "side-profile view"), [canonicalKey, threeQuarterKey]);
+    await c.env.COMPANION_IMAGES.put(sideKey, side, { httpMetadata: { contentType: "image/png" } });
+    await db.update(aiCompanionVisualIdentities).set({ status: "review", canonicalObjectKey: canonicalKey, referenceObjectKeysJson: JSON.stringify([canonicalKey, threeQuarterKey, sideKey]), validationStatus: "manual_review", validationNotes: "Run the ten-scene identity grid before approving this identity.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  } catch {
+    await db.update(aiCompanionVisualIdentities).set({ status: "failed", validationStatus: "failed", validationNotes: "Canonical reference generation failed. Retry after checking Workers AI availability.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    return c.json({ error: "Canonical reference generation failed. No photo identity was released." }, 502);
+  }
+  const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  return c.json({ visualIdentity: updated });
 });
 
 aiCompanionRoutes.post("/:companionId/photos", async (c) => {

@@ -22,6 +22,12 @@
 	"ai": {
 		"binding": "AI"
 	},
+	"r2_buckets": [
+		{
+			"binding": "COMPANION_IMAGES",
+			"bucket_name": "velora-companion-images"
+		}
+	],
 	"routes": [
 		{
 			"pattern": "api.velorachat.com",
