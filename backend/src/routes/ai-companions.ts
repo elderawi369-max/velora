@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
@@ -734,7 +734,7 @@ aiCompanionRoutes.get("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const db = getDb(c.env);
   const [companionRows, entitlement, aiEnabled] = await Promise.all([
-    db.select({ companion: aiCompanions }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"))).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)),
+    db.select({ companion: aiCompanions }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"), isNotNull(aiCompanionVisualIdentities.appearanceCatalogId))).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)),
     getOrCreateEntitlement(c.env, context.userId),
     isChatEnabledForUser(c.env, context.userId),
   ]);
@@ -762,7 +762,7 @@ aiCompanionRoutes.post("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const parsed = createCompanionSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Please check your companion details." }, 400);
   const db = getDb(c.env); const entitlement = await getOrCreateEntitlement(c.env, context.userId);
-  const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"))).where(eq(aiCompanions.userId, context.userId));
+  const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"), isNotNull(aiCompanionVisualIdentities.appearanceCatalogId))).where(eq(aiCompanions.userId, context.userId));
   const companionLimit = effectiveCompanionLimit(entitlement.companionLimit, await isChatEnabledForUser(c.env, context.userId));
   if (existing.length >= companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
   const { appearanceId, ...companionInput } = parsed.data;
