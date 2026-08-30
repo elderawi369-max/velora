@@ -9,6 +9,8 @@ import {
   deleteAiCompanionMemory,
   dismissAiCompanionMemoryCandidate,
   fetchAiCompanion,
+  fetchAiCompanionAppearances,
+  fetchAiCompanionAppearancePreview,
   fetchAiCompanions,
   fetchAiCompanionPhotoPreview,
   fetchAiCompanionVisualCandidatePreview,
@@ -41,9 +43,10 @@ export function AiCompanionsPage() {
   const queryClient = useQueryClient();
   const companionsQuery = useQuery({ queryKey: ["ai-companions"], queryFn: fetchAiCompanions, retry: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [name, setName] = useState("Maya");
-  const [identity, setIdentity] = useState<"woman" | "man">("woman");
+  const [name, setName] = useState("");
   const [personaKey, setPersonaKey] = useState<(typeof personas)[number]["key"]>("supportive_partner");
+  const [appearanceId, setAppearanceId] = useState<string | null>(null);
+  const [appearanceUrls, setAppearanceUrls] = useState<Record<string, string>>({});
   const [replyStyle, setReplyStyle] = useState<"short" | "natural" | "detailed">("natural");
   const [backstory, setBackstory] = useState("");
   const [message, setMessage] = useState("");
@@ -67,6 +70,7 @@ export function AiCompanionsPage() {
     enabled: Boolean(selectedId),
     retry: false,
   });
+  const appearancesQuery = useQuery({ queryKey: ["ai-companion-appearances"], queryFn: fetchAiCompanionAppearances, retry: false });
 
   const createMutation = useMutation({
     mutationFn: createAiCompanion,
@@ -143,7 +147,8 @@ export function AiCompanionsPage() {
 
   function create(event: FormEvent) {
     event.preventDefault();
-    createMutation.mutate({ name, identity, personaKey, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3, replyStyle } });
+    if (!appearanceId) return;
+    createMutation.mutate({ name, identity: "woman", personaKey, appearanceId, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3, replyStyle } });
   }
   function send(event: FormEvent) {
     event.preventDefault();
@@ -159,6 +164,18 @@ export function AiCompanionsPage() {
   // Casting and visual-identity review are an internal development workflow.
   // Public companion conversations must never expose these controls or states.
   const showInternalVisualIdentityControls = false;
+
+  const appearanceIds = appearancesQuery.data?.appearances.map((appearance) => appearance.id).join(",") ?? "";
+  useEffect(() => {
+    if (!appearanceIds) { setAppearanceUrls({}); return; }
+    let cancelled = false;
+    const urls: string[] = [];
+    Promise.all(appearanceIds.split(",").map(async (id) => [id, await fetchAiCompanionAppearancePreview(id)] as const)).then((entries) => {
+      if (cancelled) { entries.forEach(([, url]) => URL.revokeObjectURL(url)); return; }
+      entries.forEach(([, url]) => urls.push(url)); setAppearanceUrls(Object.fromEntries(entries));
+    }).catch(() => { if (!cancelled) setAppearanceUrls({}); });
+    return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [appearanceIds]);
 
   useEffect(() => {
     if (!detail) return;
@@ -227,13 +244,13 @@ export function AiCompanionsPage() {
             <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos are identity-verified before release; voice, calls, and subscriptions are not enabled yet.</p>
           </div>
           <form className="ai-create-form" onSubmit={create}>
-            <label>Name<input value={name} maxLength={30} onChange={(event) => setName(event.target.value)} /></label>
-            <label>Identity<select value={identity} onChange={(event) => setIdentity(event.target.value as "woman" | "man")}><option value="woman">Woman</option><option value="man">Man</option></select></label>
             <fieldset className="ai-persona-fieldset"><legend>Personality</legend><div className="ai-persona-grid">{personas.map((persona) => <button type="button" key={persona.key} className={personaKey === persona.key ? "ai-persona ai-persona-selected" : "ai-persona"} onClick={() => setPersonaKey(persona.key)}><strong>{persona.title}</strong><span>{persona.description}</span></button>)}</div></fieldset>
+            <fieldset className="ai-persona-fieldset"><legend>Appearance</legend><p className="muted">Choose one approved fictional adult appearance. This identity stays fixed regardless of personality or the private name you choose.</p><div className="ai-appearance-grid">{appearancesQuery.data?.appearances.map((appearance) => <button type="button" key={appearance.id} className={appearanceId === appearance.id ? "ai-appearance ai-appearance-selected" : "ai-appearance"} onClick={() => setAppearanceId(appearance.id)}>{appearanceUrls[appearance.id] ? <img src={appearanceUrls[appearance.id]} alt={`${appearance.name} appearance option`} /> : <span className="ai-appearance-loading">Loading appearance...</span>}<strong>{appearance.name}</strong></button>)}</div>{appearancesQuery.error ? <p className="form-error">Unable to load appearance options.</p> : null}</fieldset>
+            <label>Private name<input value={name} maxLength={30} placeholder="What would you like to call her?" onChange={(event) => setName(event.target.value)} /><span className="muted">This is only your label for the companion; it never changes her appearance.</span></label>
             <label>Reply style<select value={replyStyle} onChange={(event) => setReplyStyle(event.target.value as typeof replyStyle)}><option value="short">Short &amp; texty</option><option value="natural">Natural</option><option value="detailed">Detailed</option></select></label>
             <label>Short backstory <span className="muted">optional</span><textarea value={backstory} maxLength={500} placeholder="A few details that make this companion feel distinct..." onChange={(event) => setBackstory(event.target.value)} /></label>
             {createMutation.error ? <p className="form-error">{createMutation.error.message}</p> : null}
-            <button className="primary-button" disabled={createMutation.isPending}>{createMutation.isPending ? "Creating..." : "Create companion"}</button>
+            <button className="primary-button" disabled={createMutation.isPending || !appearanceId || name.trim().length < 2}>{createMutation.isPending ? "Creating..." : "Create companion"}</button>
           </form>
         </section>
       ) : null}

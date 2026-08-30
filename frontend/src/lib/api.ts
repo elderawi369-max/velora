@@ -972,8 +972,19 @@ export function createAiCompanion(payload: {
   traits: { warmth: number; playfulness: number; directness: number; replyStyle: "short" | "natural" | "detailed" };
   backstory: string;
   avatarKey: string;
+  appearanceId: string;
 }) {
   return request<{ companion: AiCompanion }>("/api/ai-companions", { method: "POST", body: payload });
+}
+
+export type AiCompanionAppearance = { id: string; name: string };
+
+export function fetchAiCompanionAppearances() {
+  return request<{ appearances: AiCompanionAppearance[] }>("/api/ai-companions/appearance-options");
+}
+
+export function fetchAiCompanionAppearancePreview(appearanceId: string) {
+  return requestImageUrl(`/api/ai-companions/appearance-options/${appearanceId}/preview`);
 }
 
 export function fetchAiCompanion(companionId: string) {
@@ -1025,6 +1036,14 @@ export function runAiCompanionLifestyleTest(companionId: string) {
 
 export function fetchAiCompanionPhotoPreview(companionId: string, photoId: string) {
   return requestImageUrl(`/api/ai-companions/${companionId}/photos/${photoId}/preview`);
+}
+
+export function requestAiCompanionPhoto(companionId: string, payload: { prompt: string; style?: "selfie" | "portrait" | "moment"; requestMessageId?: string }) {
+  return request<{ photo: { id: string; status: "ready"; source: "bank" | "generated" } }>(`/api/ai-companions/${companionId}/photos`, { method: "POST", body: payload });
+}
+
+export function fetchAiCompanionDeliveredPhoto(companionId: string, photoId: string) {
+  return requestImageUrl(`/api/ai-companions/${companionId}/photos/${photoId}`);
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {

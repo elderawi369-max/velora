@@ -165,6 +165,43 @@
   box-shadow: 0 4px 16px rgba(65, 127, 192, 0.14);
 }
 
+.ai-appearance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-appearance {
+  display: grid;
+  gap: 7px;
+  padding: 7px;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid #ead5da;
+  border-radius: 14px;
+  background: #fffaf9;
+}
+
+.ai-appearance img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border-radius: 9px;
+}
+
+.ai-appearance-selected {
+  border: 2px solid #4f88c1;
+  background: #edf7ff;
+}
+
+.ai-appearance-loading {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  color: #7f6873;
+  font-size: 0.8rem;
+}
+
 .ai-companion-workspace {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr) 270px;
@@ -460,6 +497,7 @@
   .ai-hero { padding: 30px 0 24px; }
   .ai-create-card { grid-template-columns: 1fr; padding: 22px; }
   .ai-persona-grid { grid-template-columns: 1fr; }
+  .ai-appearance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ai-chat-card header { align-items: flex-start; flex-direction: column; }
   .ai-composer { grid-template-columns: 1fr; }
   .ai-message { max-width: 92%; }

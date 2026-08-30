@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -19,12 +19,13 @@ const personaInstructions: Record<(typeof personaKeys)[number], string> = {
 const createCompanionSchema = z.object({
   name: z.string().trim().min(2).max(30), identity: z.enum(["woman", "man"]), personaKey: z.enum(personaKeys),
   traits: z.object({ warmth: z.number().int().min(1).max(5), playfulness: z.number().int().min(1).max(5), directness: z.number().int().min(1).max(5), replyStyle: z.enum(["short", "natural", "detailed"]).default("natural") }),
-  backstory: z.string().trim().max(500).default(""), avatarKey: z.string().trim().min(1).max(80).default("companion-default"),
+  backstory: z.string().trim().max(500).default(""), avatarKey: z.string().trim().min(1).max(80).default("companion-default"), appearanceId: z.string().trim().min(1),
 });
 const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000) });
 const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280) });
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
-const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie") });
+const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie"), requestMessageId: z.string().trim().min(1).optional() });
+const identityEvaluationSchema = z.object({ identityMatch: z.boolean(), score: z.number().min(0).max(1), adult: z.boolean(), nonExplicit: z.boolean() });
 const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|topless|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
 
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -248,6 +249,23 @@ async function generateReferenceImage(env: EnvBindings, prompt: string, referenc
   if (!result.image) throw new Error("The image model did not return an image.");
   return base64ToBytes(result.image);
 }
+async function sceneFingerprint(appearanceId: string, style: string, prompt: string, visualState: CurrentVisualState | null) {
+  const normalized = JSON.stringify({ appearanceId, style, prompt: prompt.toLowerCase().replace(/\s+/g, " ").trim(), visualState: visualState ?? {} });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function evaluatePhotoIdentity(env: EnvBindings, candidate: Uint8Array, referenceKeys: string[]) {
+  if (!env.COMPANION_IDENTITY_EVALUATOR_URL || !env.COMPANION_IDENTITY_EVALUATOR_TOKEN || !env.COMPANION_IMAGES) throw new Error("Companion identity evaluation is not configured.");
+  const form = new FormData();
+  form.append("candidate", new Blob([candidate], { type: "image/png" }), "candidate.png");
+  for (const [index, key] of referenceKeys.slice(0, 4).entries()) form.append(`reference_${index}`, await readR2Image(env.COMPANION_IMAGES, key), `reference-${index}.png`);
+  const response = await fetch(env.COMPANION_IDENTITY_EVALUATOR_URL, { method: "POST", headers: { Authorization: `Bearer ${env.COMPANION_IDENTITY_EVALUATOR_TOKEN}` }, body: form });
+  if (!response.ok) throw new Error(`Companion identity evaluator returned ${response.status}.`);
+  const parsed = identityEvaluationSchema.safeParse(await response.json());
+  if (!parsed.success) throw new Error("Companion identity evaluator returned an invalid result.");
+  const threshold = Math.min(1, Math.max(0, Number.parseFloat(env.COMPANION_IDENTITY_MIN_SCORE ?? "0.82") || 0.82));
+  return { ...parsed.data, passed: parsed.data.identityMatch && parsed.data.adult && parsed.data.nonExplicit && parsed.data.score >= threshold, threshold };
+}
 function personaVisualStyle(personaKey: string, identity: "woman" | "man") {
   if (identity !== "woman") return "handsome, modern, confident, and casually stylish";
   const styles: Record<(typeof personaKeys)[number], string> = {
@@ -312,8 +330,39 @@ function lifestyleTestLooks(companion: typeof aiCompanions.$inferSelect) {
   const looks = companion.identity === "woman" ? feminineOutfits : masculineOutfits;
   return looks.map((look) => `${look}; ${personalityDetails[companion.personaKey as (typeof personaKeys)[number]]}`);
 }
-function lifestylePhotoPrompt(companion: typeof aiCompanions.$inferSelect, scene: string, traits: VisualIdentityTraits) {
-  return `All supplied reference images depict the exact same original fictional adult person, ${companion.name}. Use all of them together as a hard identity lock; face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Preserve the same natural adult body identity too: ${traits.build}, consistent height impression, shoulder-to-waist proportions, silhouette, and overall body shape. Clothing, hairstyle, pose, camera distance, and lighting may vary, but do not make the person noticeably slimmer, curvier, taller, shorter, or otherwise differently built. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, feminine or masculine, confident, date-ready, and flattering, with natural visible legs, shoulders, midriff, upper chest, or tasteful cleavage where appropriate to the outfit. Keep it non-explicit and non-erotic: no exposed nipples, genitals, lingerie, sexual acts, or body-part focus. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
+function lifestylePhotoPrompt(scene: string, traits: VisualIdentityTraits) {
+  return `All supplied reference images depict the exact same original fictional adult person. Use all of them together as a hard identity lock; the private user label is not an identity instruction and face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Preserve the same natural adult body identity too: ${traits.build}, consistent height impression, shoulder-to-waist proportions, silhouette, and overall body shape. Clothing, hairstyle, pose, camera distance, and lighting may vary, but do not make the person noticeably slimmer, curvier, taller, shorter, or otherwise differently built. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, confident, date-ready, and flattering. Keep it fully clothed, non-explicit, and non-erotic: no exposed nipples, genitals, lingerie, sexual acts, sexually suggestive pose, or body-part focus. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
+}
+function productionPhotoScene(request: z.infer<typeof photoSceneSchema>, state: CurrentVisualState | null) {
+  const continuity = state ? ` Maintain conversational continuity where it does not conflict with the request: ${JSON.stringify(state)}.` : "";
+  return `a ${request.style} photo requested as: ${request.prompt}.${continuity}`;
+}
+function currentBillingPeriod(timestamp = now()) {
+  return new Date(timestamp).toISOString().slice(0, 7);
+}
+async function registerSuccessfulPhotoDelivery(env: EnvBindings, args: { userId: string; companionId: string; photoId: string; photoAssetId: string; requestMessageId: string | null; photoLimit: number }) {
+  const existing = await env.DB.prepare("SELECT id FROM ai_companion_photo_deliveries WHERE photo_id = ? LIMIT 1").bind(args.photoId).first<{ id: string }>();
+  if (existing) return { allowed: true, alreadyDelivered: true } as const;
+  if (args.photoLimit <= 0) return { allowed: false, alreadyDelivered: false } as const;
+  const timestamp = now();
+  const period = currentBillingPeriod(timestamp);
+  const reservation = await env.DB.prepare(
+    "INSERT INTO ai_companion_photo_usage (user_id, billing_period, delivered_count, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(user_id, billing_period) DO UPDATE SET delivered_count = delivered_count + 1, updated_at = excluded.updated_at WHERE delivered_count < ?",
+  ).bind(args.userId, period, timestamp, args.photoLimit).run();
+  if ((reservation.meta.changes ?? 0) !== 1) {
+    const concurrent = await env.DB.prepare("SELECT id FROM ai_companion_photo_deliveries WHERE photo_id = ? LIMIT 1").bind(args.photoId).first<{ id: string }>();
+    return { allowed: Boolean(concurrent), alreadyDelivered: Boolean(concurrent) } as const;
+  }
+  try {
+    await env.DB.prepare("INSERT INTO ai_companion_photo_deliveries (id, user_id, companion_id, photo_asset_id, photo_id, request_message_id, billing_period, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id("aiphoto_delivery"), args.userId, args.companionId, args.photoAssetId, args.photoId, args.requestMessageId, period, timestamp).run();
+    return { allowed: true, alreadyDelivered: false } as const;
+  } catch (error) {
+    await env.DB.prepare("UPDATE ai_companion_photo_usage SET delivered_count = MAX(0, delivered_count - 1), updated_at = ? WHERE user_id = ? AND billing_period = ?").bind(now(), args.userId, period).run();
+    const concurrent = await env.DB.prepare("SELECT id FROM ai_companion_photo_deliveries WHERE photo_id = ? LIMIT 1").bind(args.photoId).first<{ id: string }>();
+    if (concurrent) return { allowed: true, alreadyDelivered: true } as const;
+    throw error;
+  }
 }
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
@@ -684,27 +733,55 @@ function addCompanionEmoji(text: string, userMessage: string, personaKey: string
 aiCompanionRoutes.get("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const db = getDb(c.env);
-  const [companions, entitlement, aiEnabled] = await Promise.all([db.select().from(aiCompanions).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)), getOrCreateEntitlement(c.env, context.userId), isChatEnabledForUser(c.env, context.userId)]);
+  const [companionRows, entitlement, aiEnabled] = await Promise.all([
+    db.select({ companion: aiCompanions }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"))).where(eq(aiCompanions.userId, context.userId)).orderBy(desc(aiCompanions.updatedAt)),
+    getOrCreateEntitlement(c.env, context.userId),
+    isChatEnabledForUser(c.env, context.userId),
+  ]);
+  const companions = companionRows.map((row) => row.companion);
   return c.json({ companions, entitlement: { ...entitlement, companionLimit: effectiveCompanionLimit(entitlement.companionLimit, aiEnabled) }, aiEnabled, trialReplies });
+});
+
+aiCompanionRoutes.get("/appearance-options", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const appearances = await getDb(c.env).select({ id: aiCompanionAppearanceCatalog.id, name: aiCompanionAppearanceCatalog.displayName }).from(aiCompanionAppearanceCatalog).orderBy(asc(aiCompanionAppearanceCatalog.createdAt));
+  return c.json({ appearances });
+});
+
+aiCompanionRoutes.get("/appearance-options/:appearanceId/preview", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  if (!c.env.COMPANION_IMAGES) return c.json({ error: "Appearance images are unavailable." }, 503);
+  const [appearance] = await getDb(c.env).select({ objectKey: aiCompanionAppearanceCatalog.canonicalObjectKey }).from(aiCompanionAppearanceCatalog).where(eq(aiCompanionAppearanceCatalog.id, c.req.param("appearanceId"))).limit(1);
+  if (!appearance) return c.json({ error: "Appearance not found." }, 404);
+  const image = await c.env.COMPANION_IMAGES.get(appearance.objectKey);
+  if (!image) return c.json({ error: "Appearance image not found." }, 404);
+  return new Response(image.body, { headers: { "Content-Type": image.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, max-age=3600" } });
 });
 
 aiCompanionRoutes.post("/", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const parsed = createCompanionSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Please check your companion details." }, 400);
   const db = getDb(c.env); const entitlement = await getOrCreateEntitlement(c.env, context.userId);
-  const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).where(eq(aiCompanions.userId, context.userId));
+  const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"))).where(eq(aiCompanions.userId, context.userId));
   const companionLimit = effectiveCompanionLimit(entitlement.companionLimit, await isChatEnabledForUser(c.env, context.userId));
   if (existing.length >= companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
-  const timestamp = now(); const companion = { id: id("aic"), userId: context.userId, ...parsed.data, traitsJson: JSON.stringify(parsed.data.traits), createdAt: timestamp, updatedAt: timestamp };
+  const { appearanceId, ...companionInput } = parsed.data;
+  if (companionInput.identity !== "woman") return c.json({ error: "Only approved women appearances are available in this preview." }, 400);
+  const [appearance] = await db.select().from(aiCompanionAppearanceCatalog).where(eq(aiCompanionAppearanceCatalog.id, appearanceId)).limit(1);
+  const appearanceTraits = appearance ? parseVisualTraits(appearance.lockedTraitsJson) : null;
+  if (!appearance || appearanceTraits?.identity !== "woman") return c.json({ error: "Choose one approved appearance for your companion." }, 400);
+  const referenceKeys = (() => { try { return JSON.parse(appearance.referenceObjectKeysJson) as string[]; } catch { return []; } })();
+  if (!appearance.canonicalObjectKey || referenceKeys.length !== 6 || referenceKeys[0] !== appearance.canonicalObjectKey) return c.json({ error: "That appearance is not available right now." }, 409);
+  const timestamp = now(); const companion = { id: id("aic"), userId: context.userId, ...companionInput, traitsJson: JSON.stringify(companionInput.traits), createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanions).values(companion);
   const canon = createDefaultCanon(companion);
   await db.insert(aiCompanionCanons).values({ companionId: companion.id, factsJson: JSON.stringify(canon), createdAt: timestamp, updatedAt: timestamp });
-  // Conversational memory cannot mutate this record. It only becomes photo-ready
-  // after canonical references and a consistency review have been stored.
-  await db.insert(aiCompanionVisualIdentities).values({ companionId: companion.id, version: 1, status: "pending_storage", lockedTraitsJson: JSON.stringify(createDefaultVisualTraits(companion)), canonicalObjectKey: null, referenceObjectKeysJson: "[]", validationStatus: "pending", validationNotes: null, createdAt: timestamp, updatedAt: timestamp });
+  // The user's name is only a private conversational label. Visual identity is
+  // copied exclusively from the independently approved catalog record.
+  await db.insert(aiCompanionVisualIdentities).values({ companionId: companion.id, appearanceCatalogId: appearance.id, version: 1, status: "ready", lockedTraitsJson: appearance.lockedTraitsJson, canonicalObjectKey: appearance.canonicalObjectKey, referenceObjectKeysJson: appearance.referenceObjectKeysJson, validationStatus: "approved", validationNotes: `Approved appearance catalog identity ${appearance.id}.`, createdAt: timestamp, updatedAt: timestamp });
   const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, relationshipPoints: 0, relationshipStage: "new", createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanionConversations).values(conversation);
-  await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey } });
+  await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey, appearanceId: appearance.id } });
   return c.json({ companion, conversation }, 201);
 });
 
@@ -805,6 +882,41 @@ aiCompanionRoutes.post("/:companionId/visual-identity/complete", async (c) => {
 
 // Deliberately separate from the public UI: this route is for an authenticated
 // development operator to build a pack only after the base image was approved.
+aiCompanionRoutes.post("/internal/visual-identities/:companionId/generate-candidates", async (c) => {
+  if (!hasVisualIdentityOperatorToken(c)) return c.json({ error: "Not found." }, 404);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [companion] = await db.select().from(aiCompanions).where(eq(aiCompanions.id, c.req.param("companionId"))).limit(1);
+  if (!companion) return c.json({ error: "Companion not found." }, 404);
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity || !["pending_storage", "failed"].includes(visualIdentity.status)) return c.json({ error: "This identity is not ready for a new casting round." }, 409);
+  const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
+  if (!traits) return c.json({ error: "Visual identity traits are invalid." }, 500);
+  const timestamp = now();
+  await db.update(aiCompanionVisualIdentities).set({ status: "generating", validationStatus: "pending", updatedAt: timestamp }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  try {
+    const candidates: Array<typeof aiCompanionVisualCandidates.$inferInsert> = [];
+    for (let index = 0; index < 3; index += 1) {
+      const candidateId = id("aicandidate");
+      const prompt = canonicalPortraitPrompt(companion, traits, index + 1);
+      const key = `companions/${companion.userId}/${companion.id}/identity/v${visualIdentity.version}/candidates/${candidateId}.png`;
+      const seed = [...`${companion.id}:${visualIdentity.version}:${index}`].reduce((total, character) => (total * 31 + character.charCodeAt(0)) % 2_000_000_000, 17);
+      const image = await generateReferenceImage(c.env, prompt, [], seed);
+      await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
+      candidates.push({ id: candidateId, userId: companion.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, objectKey: key, prompt, sortOrder: index, status: "candidate", createdAt: timestamp + index, updatedAt: now() });
+    }
+    await db.batch([
+      db.insert(aiCompanionVisualCandidates).values(candidates),
+      db.update(aiCompanionVisualIdentities).set({ status: "casting_review", canonicalObjectKey: null, referenceObjectKeysJson: "[]", validationStatus: "manual_review", validationNotes: "Private operator casting round ready for review.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id)),
+    ]);
+  } catch {
+    await db.update(aiCompanionVisualIdentities).set({ status: "failed", validationStatus: "failed", validationNotes: "Private casting generation failed. Retry after checking Workers AI availability.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    return c.json({ error: "Casting option generation failed. No photo identity was released." }, 502);
+  }
+  const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  return c.json({ visualIdentity: updated });
+});
+
 aiCompanionRoutes.post("/internal/visual-identities/:companionId/build-pack", async (c) => {
   if (!hasVisualIdentityOperatorToken(c)) return c.json({ error: "Not found." }, 404);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
@@ -934,7 +1046,7 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
   const imageBucket = c.env.COMPANION_IMAGES;
   const timestamp = now();
   const testId = id("aitest");
-  const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene, traits), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
+  const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(scene, traits), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
   await db.insert(aiCompanionPhotos).values(entries);
   const failures: string[] = [];
   // Generate one at a time: Flux reference jobs can be rate-limited when several
@@ -982,10 +1094,82 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   if (disallowedCompanionPhotoRequest.test(parsed.data.prompt)) return c.json({ error: "Companion photos can be romantic and stylish, but cannot include nudity, lingerie, sexually suggestive poses, or explicit content." }, 400);
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion photos are not enabled until private identity storage is configured." }, 503);
-  const [visualIdentity] = await getDb(c.env).select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  const db = getDb(c.env);
+  const [visualIdentity, conversation, entitlement] = await Promise.all([
+    db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0]),
+    db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]),
+    getOrCreateEntitlement(c.env, context.userId),
+  ]);
   // Do not replace missing references with text traits: that would create a different person.
-  if (!visualIdentity || visualIdentity.status !== "ready" || visualIdentity.validationStatus !== "approved" || !visualIdentity.canonicalObjectKey) return c.json({ error: "This companion's visual identity is still being verified. Photos remain unavailable until its canonical references pass review." }, 409);
-  return c.json({ error: "Companion photo generation is not released until the identity consistency evaluator is configured." }, 503);
+  if (!visualIdentity?.appearanceCatalogId || visualIdentity.status !== "ready" || visualIdentity.validationStatus !== "approved" || !visualIdentity.canonicalObjectKey) return c.json({ error: "This companion's visual identity is still being verified. Photos remain unavailable until its canonical references pass review." }, 409);
+  if (!conversation) return c.json({ error: "Conversation unavailable." }, 404);
+  if (entitlement.photoLimit <= 0) return c.json({ error: "Your current plan does not include companion photos." }, 403);
+  const usage = await c.env.DB.prepare("SELECT delivered_count FROM ai_companion_photo_usage WHERE user_id = ? AND billing_period = ?").bind(context.userId, currentBillingPeriod()).first<{ delivered_count: number }>();
+  if ((usage?.delivered_count ?? 0) >= entitlement.photoLimit) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
+  if (parsed.data.requestMessageId) {
+    const [requestMessage] = await db.select({ id: aiCompanionMessages.id }).from(aiCompanionMessages).where(and(eq(aiCompanionMessages.id, parsed.data.requestMessageId), eq(aiCompanionMessages.conversationId, conversation.id), eq(aiCompanionMessages.role, "user"))).limit(1);
+    if (!requestMessage) return c.json({ error: "Photo request message not found." }, 404);
+  }
+  const referenceKeys = (() => { try { return JSON.parse(visualIdentity.referenceObjectKeysJson) as string[]; } catch { return []; } })();
+  if (referenceKeys.length !== 6 || referenceKeys[0] !== visualIdentity.canonicalObjectKey) return c.json({ error: "The approved canonical reference pack is incomplete." }, 409);
+  const [visualStateRow] = await db.select().from(aiCompanionVisualStates).where(and(eq(aiCompanionVisualStates.userId, context.userId), eq(aiCompanionVisualStates.companionId, companion.id), eq(aiCompanionVisualStates.conversationId, conversation.id))).limit(1);
+  const visualState = (() => { try { return visualStateRow ? JSON.parse(visualStateRow.stateJson) as CurrentVisualState : null; } catch { return null; } })();
+  const fingerprint = await sceneFingerprint(visualIdentity.appearanceCatalogId, parsed.data.style, parsed.data.prompt, visualState);
+  const scene = productionPhotoScene(parsed.data, visualState);
+  const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
+  if (!traits) return c.json({ error: "The companion visual identity is invalid." }, 500);
+  const prompt = lifestylePhotoPrompt(scene, traits);
+  const [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.sceneFingerprint, fingerprint), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
+  const timestamp = now();
+  const photoId = id("aiphoto");
+  if (bankAsset) {
+    let identityScore: number | null = null;
+    try { identityScore = Number((JSON.parse(bankAsset.metadataJson) as { identityScore?: number }).identityScore ?? null); } catch { /* Keep audited asset even if optional metadata is missing. */ }
+    await db.insert(aiCompanionPhotos).values({ id: photoId, userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: parsed.data.requestMessageId ?? null, photoAssetId: bankAsset.id, sceneJson: JSON.stringify({ style: parsed.data.style, prompt: parsed.data.prompt, visualState, fingerprint }), prompt, objectKey: bankAsset.objectKey, status: "ready", identityScore, validationStatus: "approved", generationAttempt: 0, createdAt: timestamp, updatedAt: timestamp });
+    return c.json({ photo: { id: photoId, status: "ready", source: "bank" } }, 201);
+  }
+  if (!c.env.COMPANION_IDENTITY_EVALUATOR_URL || !c.env.COMPANION_IDENTITY_EVALUATOR_TOKEN) return c.json({ error: "Companion photo generation is not released until the identity consistency evaluator is configured." }, 503);
+  const selectedReferences = [referenceKeys[0], referenceKeys[5], referenceKeys[1], referenceKeys[4]];
+  await db.insert(aiCompanionPhotos).values({ id: photoId, userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: parsed.data.requestMessageId ?? null, photoAssetId: null, sceneJson: JSON.stringify({ style: parsed.data.style, prompt: parsed.data.prompt, visualState, fingerprint }), prompt, objectKey: null, status: "generating", identityScore: null, validationStatus: "pending", generationAttempt: 1, createdAt: timestamp, updatedAt: timestamp });
+  try {
+    const image = await generateReferenceImage(c.env, prompt, selectedReferences);
+    const evaluation = await evaluatePhotoIdentity(c.env, image, selectedReferences);
+    if (!evaluation.passed) {
+      await db.update(aiCompanionPhotos).set({ status: "rejected", identityScore: evaluation.score, validationStatus: "failed", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photoId));
+      await logEvent(c.env, { eventType: "ai_companion_photo_rejected", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id, appearanceId: visualIdentity.appearanceCatalogId, score: evaluation.score } });
+      return c.json({ error: "The generated photo did not pass identity and safety checks. No photo allowance was used." }, 422);
+    }
+    const assetId = id("aiphoto_asset");
+    const objectKey = `catalog/bank/v1/${visualIdentity.appearanceCatalogId}/${fingerprint}/${assetId}.png`;
+    await c.env.COMPANION_IMAGES.put(objectKey, image, { httpMetadata: { contentType: "image/png" } });
+    await db.batch([
+      db.insert(aiCompanionPhotoAssets).values({ id: assetId, userId: null, companionId: companion.id, appearanceCatalogId: visualIdentity.appearanceCatalogId, visualIdentityVersion: visualIdentity.version, objectKey, sceneFingerprint: fingerprint, metadataJson: JSON.stringify({ identityScore: evaluation.score, threshold: evaluation.threshold, identityMatch: evaluation.identityMatch, adult: evaluation.adult, nonExplicit: evaluation.nonExplicit, style: parsed.data.style, visualState, syntheticProvenance: "workers-ai-flux-2-klein-9b" }), generationSource: "workers-ai-flux-2-klein-9b", status: "approved", createdAt: timestamp, updatedAt: now() }),
+      db.update(aiCompanionPhotos).set({ photoAssetId: assetId, objectKey, status: "ready", identityScore: evaluation.score, validationStatus: "approved", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photoId)),
+    ]);
+    return c.json({ photo: { id: photoId, status: "ready", source: "generated" } }, 201);
+  } catch (error) {
+    await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photoId));
+    console.error("Companion production photo failed", { companionId: companion.id, photoId, error: error instanceof Error ? error.message : String(error) });
+    return c.json({ error: "The photo could not be prepared safely. No photo allowance was used." }, 502);
+  }
+});
+
+aiCompanionRoutes.get("/:companionId/photos/:photoId", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!c.env.COMPANION_IMAGES) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [photo, entitlement] = await Promise.all([
+    db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.id, c.req.param("photoId")), eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id))).limit(1).then((rows) => rows[0]),
+    getOrCreateEntitlement(c.env, context.userId),
+  ]);
+  if (!photo?.objectKey || !photo.photoAssetId || !["ready", "delivered"].includes(photo.status) || photo.validationStatus !== "approved") return c.json({ error: "Approved companion photo not found." }, 404);
+  const object = await c.env.COMPANION_IMAGES.get(photo.objectKey);
+  if (!object) return c.json({ error: "Approved companion photo not found." }, 404);
+  const delivery = await registerSuccessfulPhotoDelivery(c.env, { userId: context.userId, companionId: companion.id, photoId: photo.id, photoAssetId: photo.photoAssetId, requestMessageId: photo.requestMessageId, photoLimit: entitlement.photoLimit });
+  if (!delivery.allowed) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
+  if (!delivery.alreadyDelivered) await db.update(aiCompanionPhotos).set({ status: "delivered", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photo.id));
+  return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
 });
 
 aiCompanionRoutes.post("/:companionId/memories", async (c) => {

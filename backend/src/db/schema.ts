@@ -355,8 +355,20 @@ export const aiCompanionCanons = sqliteTable("ai_companion_canons", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionAppearanceCatalog = sqliteTable("ai_companion_appearance_catalog", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  sourceCompanionId: text("source_companion_id").notNull(),
+  lockedTraitsJson: text("locked_traits_json").notNull(),
+  canonicalObjectKey: text("canonical_object_key").notNull(),
+  referenceObjectKeysJson: text("reference_object_keys_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionVisualIdentities = sqliteTable("ai_companion_visual_identities", {
   companionId: text("companion_id").primaryKey().references(() => aiCompanions.id),
+  appearanceCatalogId: text("appearance_catalog_id").references(() => aiCompanionAppearanceCatalog.id),
   version: integer("version").notNull().default(1),
   status: text("status").notNull().default("pending_storage"),
   lockedTraitsJson: text("locked_traits_json").notNull(),
@@ -409,6 +421,7 @@ export const aiCompanionPhotos = sqliteTable("ai_companion_photos", {
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
   visualIdentityVersion: integer("visual_identity_version").notNull(),
   requestMessageId: text("request_message_id").references(() => aiCompanionMessages.id),
+  photoAssetId: text("photo_asset_id"),
   sceneJson: text("scene_json").notNull(),
   prompt: text("prompt").notNull(),
   objectKey: text("object_key"),
@@ -435,8 +448,10 @@ export const aiCompanionPhotoAssets = sqliteTable("ai_companion_photo_assets", {
   id: text("id").primaryKey(),
   userId: text("user_id").references(() => users.id),
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  appearanceCatalogId: text("appearance_catalog_id").references(() => aiCompanionAppearanceCatalog.id),
   visualIdentityVersion: integer("visual_identity_version").notNull(),
   objectKey: text("object_key").notNull(),
+  sceneFingerprint: text("scene_fingerprint"),
   metadataJson: text("metadata_json").notNull(),
   generationSource: text("generation_source").notNull(),
   status: text("status").notNull().default("approved"),
@@ -449,6 +464,7 @@ export const aiCompanionPhotoDeliveries = sqliteTable("ai_companion_photo_delive
   userId: text("user_id").notNull().references(() => users.id),
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
   photoAssetId: text("photo_asset_id").notNull().references(() => aiCompanionPhotoAssets.id),
+  photoId: text("photo_id").references(() => aiCompanionPhotos.id),
   requestMessageId: text("request_message_id").references(() => aiCompanionMessages.id),
   billingPeriod: text("billing_period").notNull(),
   deliveredAt: integer("delivered_at").notNull(),
