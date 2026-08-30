@@ -950,9 +950,15 @@ export type AiCompanionMemoryCandidate = {
 
 export type AiCompanionVisualIdentity = {
   version: number;
-  status: "pending_storage" | "generating" | "casting_review" | "review" | "ready" | "failed";
+  status: "pending_storage" | "generating" | "casting_review" | "casting_selected" | "review" | "ready" | "failed";
   validationStatus: "pending" | "manual_review" | "approved" | "failed";
   validationNotes: string | null;
+};
+
+export type AiCompanionVisualCandidate = {
+  id: string;
+  sortOrder: number;
+  status: "candidate" | "selected" | "rejected";
 };
 
 export function fetchAiCompanions() {
@@ -978,6 +984,7 @@ export function fetchAiCompanion(companionId: string) {
     memories: AiCompanionMemory[];
     memoryCandidates: AiCompanionMemoryCandidate[];
     visualIdentity: AiCompanionVisualIdentity | null;
+    castingCandidates: AiCompanionVisualCandidate[];
     photos: Array<{ id: string; status: string; createdAt: number }>;
     entitlement: AiEntitlement;
     aiEnabled: boolean;
@@ -992,12 +999,24 @@ export function completeAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/complete`, { method: "POST" });
 }
 
+export function selectAiCompanionVisualCandidate(companionId: string, candidateId: string) {
+  return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/candidates/${candidateId}/select`, { method: "POST" });
+}
+
+export function approveAiCompanionVisualIdentity(companionId: string) {
+  return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/approve`, { method: "POST" });
+}
+
 export function regenerateAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/regenerate`, { method: "POST" });
 }
 
 export function fetchAiCompanionVisualIdentityPreview(companionId: string, view: string) {
   return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/images/${view}`);
+}
+
+export function fetchAiCompanionVisualCandidatePreview(companionId: string, candidateId: string) {
+  return requestImageUrl(`/api/ai-companions/${companionId}/visual-identity/candidates/${candidateId}/preview`);
 }
 
 export function runAiCompanionLifestyleTest(companionId: string) {

@@ -368,6 +368,21 @@ export const aiCompanionVisualIdentities = sqliteTable("ai_companion_visual_iden
   updatedAt: integer("updated_at").notNull(),
 });
 
+// Casting options are intentionally separate from canonical references. A person is
+// selected once, then every later reference and production photo is conditioned on it.
+export const aiCompanionVisualCandidates = sqliteTable("ai_companion_visual_candidates", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  visualIdentityVersion: integer("visual_identity_version").notNull(),
+  objectKey: text("object_key").notNull(),
+  prompt: text("prompt").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  status: text("status").notNull().default("candidate"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionConversations = sqliteTable("ai_companion_conversations", {
   id: text("id").primaryKey(),
   companionId: text("companion_id").notNull().references(() => aiCompanions.id),
@@ -402,6 +417,47 @@ export const aiCompanionPhotos = sqliteTable("ai_companion_photos", {
   validationStatus: text("validation_status").notNull().default("pending"),
   generationAttempt: integer("generation_attempt").notNull().default(0),
   createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionVisualStates = sqliteTable("ai_companion_visual_states", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  conversationId: text("conversation_id").notNull().references(() => aiCompanionConversations.id),
+  stateJson: text("state_json").notNull(),
+  sourceMessageId: text("source_message_id").references(() => aiCompanionMessages.id),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionPhotoAssets = sqliteTable("ai_companion_photo_assets", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  visualIdentityVersion: integer("visual_identity_version").notNull(),
+  objectKey: text("object_key").notNull(),
+  metadataJson: text("metadata_json").notNull(),
+  generationSource: text("generation_source").notNull(),
+  status: text("status").notNull().default("approved"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionPhotoDeliveries = sqliteTable("ai_companion_photo_deliveries", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  photoAssetId: text("photo_asset_id").notNull().references(() => aiCompanionPhotoAssets.id),
+  requestMessageId: text("request_message_id").references(() => aiCompanionMessages.id),
+  billingPeriod: text("billing_period").notNull(),
+  deliveredAt: integer("delivered_at").notNull(),
+});
+
+export const aiCompanionPhotoUsage = sqliteTable("ai_companion_photo_usage", {
+  userId: text("user_id").notNull().references(() => users.id),
+  billingPeriod: text("billing_period").notNull(),
+  deliveredCount: integer("delivered_count").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
 
