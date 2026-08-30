@@ -172,12 +172,12 @@ function createDefaultVisualTraits(companion: typeof aiCompanions.$inferSelect):
   const traits = byPersona[companion.personaKey as (typeof personaKeys)[number]] ?? byPersona.supportive_partner;
   const identity = companion.identity as "woman" | "man";
   const feminineLooks: Record<(typeof personaKeys)[number], Partial<VisualIdentityTraits>> = {
-    supportive_partner: { hair: "chestnut brown, long soft waves", eyes: "warm hazel", skinAppearance: "warm medium complexion", distinctiveFeatures: ["gentle smile", "subtle freckles"] },
-    playful_tease: { hair: "dark espresso brown, playful textured bob", eyes: "bright brown", skinAppearance: "light olive complexion", distinctiveFeatures: ["expressive eyebrows", "small beauty mark near the cheek"] },
-    sarcastic_best_friend: { hair: "rich auburn, shoulder-length tousled waves", eyes: "green-brown", skinAppearance: "light warm complexion", distinctiveFeatures: ["knowing half-smile", "faint freckles across the nose"] },
-    confident_leader: { hair: "sleek black, long and glossy", eyes: "deep brown", skinAppearance: "golden medium complexion", distinctiveFeatures: ["strong brows", "defined cheekbones"] },
-    quiet_romantic: { hair: "soft black, long and lightly layered", eyes: "dark brown", skinAppearance: "light warm complexion", distinctiveFeatures: ["gentle eyes", "small beauty mark below one eye"] },
-    personal_growth_companion: { hair: "honey blonde, loose shoulder-length waves", eyes: "blue-green", skinAppearance: "light sun-kissed complexion", distinctiveFeatures: ["easy smile", "subtle dimples"] },
+    supportive_partner: { hair: "chestnut brown, long soft waves", eyes: "warm hazel", skinAppearance: "warm medium complexion", build: "softly curvy, feminine adult build with balanced natural proportions", distinctiveFeatures: ["gentle smile", "subtle freckles"] },
+    playful_tease: { hair: "dark espresso brown, playful textured bob", eyes: "bright brown", skinAppearance: "light olive complexion", build: "petite athletic-curvy adult build with a defined waist and balanced feminine proportions", distinctiveFeatures: ["expressive eyebrows", "small beauty mark near the cheek"] },
+    sarcastic_best_friend: { hair: "rich auburn, shoulder-length tousled waves", eyes: "green-brown", skinAppearance: "light warm complexion", build: "lean, naturally curvy adult build with balanced feminine proportions", distinctiveFeatures: ["knowing half-smile", "faint freckles across the nose"] },
+    confident_leader: { hair: "sleek black, long and glossy", eyes: "deep brown", skinAppearance: "golden medium complexion", build: "fit, naturally curvy adult build with poised, balanced proportions", distinctiveFeatures: ["strong brows", "defined cheekbones"] },
+    quiet_romantic: { hair: "soft black, long and lightly layered", eyes: "dark brown", skinAppearance: "light warm complexion", build: "soft, naturally curvy adult build with graceful balanced proportions", distinctiveFeatures: ["gentle eyes", "small beauty mark below one eye"] },
+    personal_growth_companion: { hair: "honey blonde, loose shoulder-length waves", eyes: "blue-green", skinAppearance: "light sun-kissed complexion", build: "fit, naturally curvy adult build with a defined waist and balanced feminine proportions", distinctiveFeatures: ["easy smile", "subtle dimples"] },
   };
   const persona = companion.personaKey as (typeof personaKeys)[number];
   return { identity, ...traits, ...(identity === "woman" ? feminineLooks[persona] : {}), apparentAge: identity === "woman" ? "24 to 28 years old" : "25 to 30 years old" };
