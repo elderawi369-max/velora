@@ -26,7 +26,7 @@ const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280)
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
 const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie"), requestMessageId: z.string().trim().min(1).optional() });
 const identityEvaluationSchema = z.object({ identityMatch: z.boolean(), score: z.number().min(0).max(1), adult: z.boolean(), nonExplicit: z.boolean() });
-const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|topless|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
+const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|thong|nude|nudity|naked|nipples?|genitals?|implied nudity|towel(?:[ -]?only)?|robe(?:[ -]?only)?|seduct(?:ive|ion)|sex(?:ual|y)?|porn(?:ographic)?|orgasm)\b/i;
 
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
@@ -121,6 +121,9 @@ async function isChatEnabledForUser(env: EnvBindings, userId: string) {
 }
 function effectiveCompanionLimit(planLimit: number, isApprovedBeta: boolean) {
   return isApprovedBeta ? Math.max(planLimit, personaKeys.length) : planLimit;
+}
+function isDisallowedCompanionPhotoRequest(prompt: string, identity: string) {
+  return disallowedCompanionPhotoRequest.test(prompt) || (identity !== "man" && /\b(?:topless|shirtless)\b/i.test(prompt));
 }
 async function reserveFreeReply(env: EnvBindings) {
   const cap = Math.max(0, Number.parseInt(env.AI_COMPANION_DAILY_TRIAL_LIMIT ?? "150", 10) || 0);
@@ -314,9 +317,9 @@ function lifestyleTestLooks(companion: typeof aiCompanions.$inferSelect) {
     "a relaxed cozy-at-home photo in a fitted lounge top and tailored shorts",
   ];
   const masculineOutfits = [
-    "a candid fully clothed casual selfie at home in a fitted T-shirt and shorts",
+    "a candid casual selfie at home in a fitted T-shirt and shorts",
     "an evening date-night photo in a polished casual shirt or knit",
-    "an outdoor daytime candid while walking in a modern summer outfit",
+    "a sunlit beach or poolside lifestyle photo in swim shorts, optionally shirtless",
     "a relaxed cozy-at-home photo in a fitted lounge top and shorts",
   ];
   const personalityDetails: Record<(typeof personaKeys)[number], string> = {
@@ -331,7 +334,10 @@ function lifestyleTestLooks(companion: typeof aiCompanions.$inferSelect) {
   return looks.map((look) => `${look}; ${personalityDetails[companion.personaKey as (typeof personaKeys)[number]]}`);
 }
 function lifestylePhotoPrompt(scene: string, traits: VisualIdentityTraits) {
-  return `All supplied reference images depict the exact same original fictional adult person. Use all of them together as a hard identity lock; the private user label is not an identity instruction and face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Preserve the same natural adult body identity too: ${traits.build}, consistent height impression, shoulder-to-waist proportions, silhouette, and overall body shape. Clothing, hairstyle, pose, camera distance, and lighting may vary, but do not make the person noticeably slimmer, curvier, taller, shorter, or otherwise differently built. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, confident, date-ready, and flattering. Keep it fully clothed, non-explicit, and non-erotic: no exposed nipples, genitals, lingerie, sexual acts, sexually suggestive pose, or body-part focus. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
+  const exposureGuidance = traits.identity === "man"
+    ? "For an adult male beach, poolside, or gym scene, a shirtless look is allowed when requested. Keep the framing natural and lifestyle-oriented, with no suggestive pose, genital focus, or body-part focus."
+    : "Keep the image non-explicit and non-erotic: no exposed nipples, genitals, lingerie, sexual acts, sexually suggestive pose, or body-part focus.";
+  return `All supplied reference images depict the exact same original fictional adult person. Use all of them together as a hard identity lock; the private user label is not an identity instruction and face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Preserve the same natural adult body identity too: ${traits.build}, consistent height impression, shoulder-to-waist proportions, silhouette, and overall body shape. Clothing, hairstyle, pose, camera distance, and lighting may vary, but do not make the person noticeably slimmer, curvier, taller, shorter, or otherwise differently built. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, confident, date-ready, and flattering. ${exposureGuidance} Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
 }
 function productionPhotoScene(request: z.infer<typeof photoSceneSchema>, state: CurrentVisualState | null) {
   const continuity = state ? ` Maintain conversational continuity where it does not conflict with the request: ${JSON.stringify(state)}.` : "";
@@ -1091,8 +1097,8 @@ aiCompanionRoutes.get("/:companionId/photos/:photoId/preview", async (c) => {
 aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const parsed = photoSceneSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Describe the photo in 3 to 360 characters." }, 400);
-  if (disallowedCompanionPhotoRequest.test(parsed.data.prompt)) return c.json({ error: "Companion photos can be romantic and stylish, but cannot include nudity, lingerie, sexually suggestive poses, or explicit content." }, 400);
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (isDisallowedCompanionPhotoRequest(parsed.data.prompt, companion.identity)) return c.json({ error: "Companion photos can be romantic and stylish, but cannot include nudity, lingerie, sexually suggestive poses, or explicit content." }, 400);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion photos are not enabled until private identity storage is configured." }, 503);
   const db = getDb(c.env);
   const [visualIdentity, conversation, entitlement] = await Promise.all([
