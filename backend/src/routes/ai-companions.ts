@@ -750,7 +750,11 @@ aiCompanionRoutes.get("/", async (c) => {
 
 aiCompanionRoutes.get("/appearance-options", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
-  const appearances = await getDb(c.env).select({ id: aiCompanionAppearanceCatalog.id, name: aiCompanionAppearanceCatalog.displayName }).from(aiCompanionAppearanceCatalog).orderBy(asc(aiCompanionAppearanceCatalog.createdAt));
+  const rows = await getDb(c.env).select({ id: aiCompanionAppearanceCatalog.id, name: aiCompanionAppearanceCatalog.displayName, lockedTraitsJson: aiCompanionAppearanceCatalog.lockedTraitsJson }).from(aiCompanionAppearanceCatalog).orderBy(asc(aiCompanionAppearanceCatalog.createdAt));
+  const appearances = rows.flatMap((appearance) => {
+    const traits = parseVisualTraits(appearance.lockedTraitsJson);
+    return traits ? [{ id: appearance.id, name: appearance.name, identity: traits.identity }] : [];
+  });
   return c.json({ appearances });
 });
 
@@ -772,12 +776,11 @@ aiCompanionRoutes.post("/", async (c) => {
   const companionLimit = effectiveCompanionLimit(entitlement.companionLimit, await isChatEnabledForUser(c.env, context.userId));
   if (existing.length >= companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
   const { appearanceId, ...companionInput } = parsed.data;
-  if (companionInput.identity !== "woman") return c.json({ error: "Only approved women appearances are available in this preview." }, 400);
   const [appearance] = await db.select().from(aiCompanionAppearanceCatalog).where(eq(aiCompanionAppearanceCatalog.id, appearanceId)).limit(1);
   const appearanceTraits = appearance ? parseVisualTraits(appearance.lockedTraitsJson) : null;
-  if (!appearance || appearanceTraits?.identity !== "woman") return c.json({ error: "Choose one approved appearance for your companion." }, 400);
+  if (!appearance || appearanceTraits?.identity !== companionInput.identity) return c.json({ error: "Choose one approved appearance that matches your companion." }, 400);
   const referenceKeys = (() => { try { return JSON.parse(appearance.referenceObjectKeysJson) as string[]; } catch { return []; } })();
-  if (!appearance.canonicalObjectKey || referenceKeys.length !== 6 || referenceKeys[0] !== appearance.canonicalObjectKey) return c.json({ error: "That appearance is not available right now." }, 409);
+  if (!appearance.canonicalObjectKey || referenceKeys.length < 1 || referenceKeys[0] !== appearance.canonicalObjectKey) return c.json({ error: "That appearance is not available right now." }, 409);
   const timestamp = now(); const companion = { id: id("aic"), userId: context.userId, ...companionInput, traitsJson: JSON.stringify(companionInput.traits), createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanions).values(companion);
   const canon = createDefaultCanon(companion);

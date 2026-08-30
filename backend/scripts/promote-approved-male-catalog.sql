@@ -1,0 +1,23 @@
+-- Promotes only the six user-approved male source images into the catalog.
+INSERT INTO ai_companion_appearance_catalog (id, display_name, source_companion_id, locked_traits_json, canonical_object_key, reference_object_keys_json, created_at, updated_at) VALUES
+  ('appearance_male_samir_v1', 'Samir', 'aic_male_catalog_draft_samir_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'short textured dark-brown hair', 'eyes', 'warm brown eyes', 'facialStructure', 'defined oval face', 'skinAppearance', 'warm olive complexion', 'build', 'fit, natural adult build', 'distinctiveFeatures', json_array('light stubble', 'calm direct gaze')), 'catalog/private/drafts/men-v1/samir/canonical.png', json_array('catalog/private/drafts/men-v1/samir/canonical.png'), unixepoch() * 1000, unixepoch() * 1000),
+  ('appearance_male_malik_v1', 'Malik', 'aic_male_catalog_draft_malik_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'close-cropped natural curls', 'eyes', 'deep brown eyes', 'facialStructure', 'strong oval face', 'skinAppearance', 'deep brown complexion', 'build', 'athletic, natural adult build', 'distinctiveFeatures', json_array('neatly shaped beard', 'warm smile')), 'catalog/private/drafts/men-v1/malik/canonical.png', json_array('catalog/private/drafts/men-v1/malik/canonical.png'), unixepoch() * 1000, unixepoch() * 1000),
+  ('appearance_male_kenji_v1', 'Kenji', 'aic_male_catalog_draft_kenji_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'softly wavy black hair', 'eyes', 'dark brown eyes', 'facialStructure', 'defined jawline and oval face', 'skinAppearance', 'warm light complexion', 'build', 'lean, natural adult build', 'distinctiveFeatures', json_array('subtle genuine smile', 'softly textured hair')), 'catalog/private/drafts/men-v1/kenji/canonical.png', json_array('catalog/private/drafts/men-v1/kenji/canonical.png'), unixepoch() * 1000, unixepoch() * 1000),
+  ('appearance_male_diego_v1', 'Diego', 'aic_male_catalog_draft_diego_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'long dark curls tied back', 'eyes', 'hazel eyes', 'facialStructure', 'long oval face', 'skinAppearance', 'warm golden-brown complexion', 'build', 'lean, natural adult build', 'distinctiveFeatures', json_array('bright smile', 'geometric forearm tattoo')), 'catalog/private/drafts/men-v1/diego/canonical.png', json_array('catalog/private/drafts/men-v1/diego/canonical.png'), unixepoch() * 1000, unixepoch() * 1000),
+  ('appearance_male_arjun_v1', 'Arjun', 'aic_male_catalog_draft_arjun_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'short styled black hair', 'eyes', 'rich brown eyes', 'facialStructure', 'defined oval face', 'skinAppearance', 'medium-brown complexion', 'build', 'strong, realistic adult build', 'distinctiveFeatures', json_array('close beard', 'warm composed expression')), 'catalog/private/drafts/men-v1/arjun/canonical.png', json_array('catalog/private/drafts/men-v1/arjun/canonical.png'), unixepoch() * 1000, unixepoch() * 1000),
+  ('appearance_male_oliver_v1', 'Oliver', 'aic_male_catalog_draft_oliver_v1', json_object('identity', 'man', 'apparentAge', '26 to 30 years old', 'hair', 'thick curly dark hair', 'eyes', 'green-hazel eyes', 'facialStructure', 'defined oval face', 'skinAppearance', 'warm olive complexion', 'build', 'comfortably athletic adult build', 'distinctiveFeatures', json_array('light stubble', 'easy half-smile')), 'catalog/private/drafts/men-v1/oliver/canonical.png', json_array('catalog/private/drafts/men-v1/oliver/canonical.png'), unixepoch() * 1000, unixepoch() * 1000)
+ON CONFLICT(source_companion_id) DO UPDATE SET
+  display_name = excluded.display_name,
+  locked_traits_json = excluded.locked_traits_json,
+  canonical_object_key = excluded.canonical_object_key,
+  reference_object_keys_json = excluded.reference_object_keys_json,
+  updated_at = excluded.updated_at;
+
+UPDATE ai_companion_visual_identities
+SET appearance_catalog_id = (SELECT id FROM ai_companion_appearance_catalog WHERE source_companion_id = ai_companion_visual_identities.companion_id),
+    locked_traits_json = (SELECT locked_traits_json FROM ai_companion_appearance_catalog WHERE source_companion_id = ai_companion_visual_identities.companion_id),
+    status = 'ready',
+    validation_status = 'approved',
+    validation_notes = 'Approved by catalog owner from the exact selected source portrait.',
+    updated_at = unixepoch() * 1000
+WHERE companion_id IN ('aic_male_catalog_draft_samir_v1', 'aic_male_catalog_draft_malik_v1', 'aic_male_catalog_draft_kenji_v1', 'aic_male_catalog_draft_diego_v1', 'aic_male_catalog_draft_arjun_v1', 'aic_male_catalog_draft_oliver_v1');

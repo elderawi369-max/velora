@@ -977,7 +977,7 @@ export function createAiCompanion(payload: {
   return request<{ companion: AiCompanion }>("/api/ai-companions", { method: "POST", body: payload });
 }
 
-export type AiCompanionAppearance = { id: string; name: string };
+export type AiCompanionAppearance = { id: string; name: string; identity: "woman" | "man" };
 
 export function fetchAiCompanionAppearances() {
   return request<{ appearances: AiCompanionAppearance[] }>("/api/ai-companions/appearance-options");
