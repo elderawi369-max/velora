@@ -6,6 +6,7 @@ export type EnvBindings = {
   COMPANION_IMAGES?: R2Bucket;
   APP_NAME?: string;
   ADMIN_SECRET?: string;
+  VISUAL_IDENTITY_OPERATOR_TOKEN?: string;
   APP_ENV?: string;
   ENABLE_DEV_ENDPOINTS?: string;
   TURNSTILE_SECRET_KEY?: string;

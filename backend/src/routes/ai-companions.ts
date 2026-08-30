@@ -30,6 +30,7 @@ const disallowedCompanionPhotoRequest = /\b(?:lingerie|underwear|bra\b|panties|t
 export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
+const hasVisualIdentityOperatorToken = (c: { env: EnvBindings; req: { header: (name: string) => string | undefined } }) => Boolean(c.env.VISUAL_IDENTITY_OPERATOR_TOKEN && c.req.header("X-Visual-Identity-Operator") === c.env.VISUAL_IDENTITY_OPERATOR_TOKEN);
 const isCrisisMessage = (message: string) => /\b(kill myself|suicide|suicidal|self[ -]?harm|hurt myself|end my life|want to die)\b/i.test(message);
 const safetyReply = () => "I'm really sorry you're carrying this right now. I can't be the only support for this. Please contact someone you trust or your local emergency service now; if you're in the U.S. or Canada, call or text 988. If you can, move somewhere safer and stay with another person while you get support.";
 const containsBlockedOutput = (text: string) => /\b(?:sexual(?:ly)? (?:with|involving) (?:a |an )?(?:minor|underage person|child)|instructions? (?:to|for) (?:kill yourself|suicide|self-harm)|rape (?:instruction|roleplay)|incest (?:roleplay|instruction))\b/i.test(text);
@@ -797,6 +798,35 @@ aiCompanionRoutes.post("/:companionId/visual-identity/complete", async (c) => {
   } catch {
     await db.update(aiCompanionVisualIdentities).set({ status: "casting_selected", validationStatus: "manual_review", validationNotes: "The selected base woman was kept. Generating the remaining identity views failed; retry when Workers AI is available.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
     return c.json({ error: "Identity-view generation failed. Your approved casting image was kept." }, 502);
+  }
+  const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  return c.json({ visualIdentity: updated });
+});
+
+// Deliberately separate from the public UI: this route is for an authenticated
+// development operator to build a pack only after the base image was approved.
+aiCompanionRoutes.post("/internal/visual-identities/:companionId/build-pack", async (c) => {
+  if (!hasVisualIdentityOperatorToken(c)) return c.json({ error: "Not found." }, 404);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [companion] = await db.select().from(aiCompanions).where(eq(aiCompanions.id, c.req.param("companionId"))).limit(1);
+  if (!companion) return c.json({ error: "Companion not found." }, 404);
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity?.canonicalObjectKey || visualIdentity.status !== "casting_selected") return c.json({ error: "An approved base identity is required." }, 409);
+  const canonicalKey = visualIdentity.canonicalObjectKey;
+  await db.update(aiCompanionVisualIdentities).set({ status: "generating", validationStatus: "pending", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  try {
+    const referenceKeys = [canonicalKey];
+    for (const [index, look] of identityTestLooks(companion.identity as "woman" | "man").entries()) {
+      const key = `companions/${companion.userId}/${companion.id}/identity/v${visualIdentity.version}/look-${index + 2}.png`;
+      const image = await generateReferenceImage(c.env, referencePortraitPrompt(companion, look), [canonicalKey]);
+      await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
+      referenceKeys.push(key);
+    }
+    await db.update(aiCompanionVisualIdentities).set({ status: "review", referenceObjectKeysJson: JSON.stringify(referenceKeys), validationStatus: "manual_review", validationNotes: "Review this six-image canonical reference pack before production approval.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  } catch (error) {
+    await db.update(aiCompanionVisualIdentities).set({ status: "casting_selected", validationStatus: "manual_review", validationNotes: "Base image kept. Canonical reference generation failed; retry the internal job.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    throw error;
   }
   const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   return c.json({ visualIdentity: updated });
