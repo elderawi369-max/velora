@@ -1128,7 +1128,10 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
   if (!traits) return c.json({ error: "The companion visual identity is invalid." }, 500);
   const prompt = lifestylePhotoPrompt(scene, traits);
-  const [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.sceneFingerprint, fingerprint), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
+  let [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.sceneFingerprint, fingerprint), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
+  // A catalog-approved bank photo is a safe immediate fallback while an exact
+  // requested scene has not yet been pre-generated.
+  if (!bankAsset) [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
   const timestamp = now();
   const photoId = id("aiphoto");
   if (bankAsset) {
