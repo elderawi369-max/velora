@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveAiCompanionMemoryCandidate,
+  completeAiCompanionVisualIdentity,
   createAiCompanion,
   createAiCompanionMemory,
   deleteAiCompanionMemory,
@@ -119,6 +120,10 @@ export function AiCompanionsPage() {
     mutationFn: () => regenerateAiCompanionVisualIdentity(selectedId!),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
   });
+  const completeVisualIdentityMutation = useMutation({
+    mutationFn: () => completeAiCompanionVisualIdentity(selectedId!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
   const lifestyleTestMutation = useMutation({
     mutationFn: () => runAiCompanionLifestyleTest(selectedId!),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
@@ -150,10 +155,12 @@ export function AiCompanionsPage() {
   }, [detail?.conversation.id, detail?.messages.length, pendingUserMessage]);
 
   useEffect(() => {
-    if (!selectedId || detail?.visualIdentity?.status !== "review") { setVisualReferenceUrls([]); return; }
+    const status = detail?.visualIdentity?.status;
+    if (!selectedId || (status !== "casting_review" && status !== "review")) { setVisualReferenceUrls([]); return; }
     let cancelled = false;
     const urls: string[] = [];
-    Promise.all(["0", "1", "2", "3", "4", "5"].map((view) => fetchAiCompanionVisualIdentityPreview(selectedId, view))).then((nextUrls) => {
+    const views = status === "casting_review" ? ["0"] : ["0", "1", "2", "3", "4", "5"];
+    Promise.all(views.map((view) => fetchAiCompanionVisualIdentityPreview(selectedId, view))).then((nextUrls) => {
       if (cancelled) { nextUrls.forEach((url) => URL.revokeObjectURL(url)); return; }
       urls.push(...nextUrls); setVisualReferenceUrls(nextUrls);
     }).catch(() => { if (!cancelled) setVisualReferenceUrls([]); });
@@ -213,6 +220,7 @@ export function AiCompanionsPage() {
           {!detail.aiEnabled ? <div className="ai-disabled-note">This private companion preview is not available for this account yet. We are opening it gradually while we review safety and usage.</div> : null}
           {detail.aiEnabled && (!detail.visualIdentity || detail.visualIdentity.status === "pending_storage") ? <div className="ai-disabled-note"><strong>Photos are not ready yet.</strong> Prepare {detail.companion.name}'s canonical visual identity before testing photo consistency. <button className="text-button" onClick={() => visualIdentityMutation.mutate()} disabled={visualIdentityMutation.isPending}>{visualIdentityMutation.isPending ? "Preparing identity..." : "Prepare identity"}</button>{visualIdentityMutation.error ? <p className="form-error">{visualIdentityMutation.error.message}</p> : null}</div> : null}
           {detail.visualIdentity?.status === "generating" ? <div className="ai-disabled-note">Preparing {detail.companion.name}'s canonical visual identity...</div> : null}
+          {detail.visualIdentity?.status === "casting_review" ? <div className="ai-disabled-note"><strong>{detail.companion.name}'s casting candidate is ready.</strong> Approve the base person before spending generations on the remaining five identity views. <button className="text-button" onClick={() => regenerateVisualIdentityMutation.mutate()} disabled={regenerateVisualIdentityMutation.isPending}>{regenerateVisualIdentityMutation.isPending ? "Resetting look..." : "Regenerate look"}</button><button className="text-button" onClick={() => completeVisualIdentityMutation.mutate()} disabled={completeVisualIdentityMutation.isPending}>{completeVisualIdentityMutation.isPending ? "Building identity set..." : "Build six-look set"}</button>{regenerateVisualIdentityMutation.error ? <p className="form-error">{regenerateVisualIdentityMutation.error.message}</p> : null}{completeVisualIdentityMutation.error ? <p className="form-error">{completeVisualIdentityMutation.error.message}</p> : null}{visualReferenceUrls.length === 1 ? <div className="ai-visual-reference-grid">{visualReferenceUrls.map((url) => <img src={url} alt={`${detail.companion.name} casting candidate`} key={url} />)}</div> : <p>Loading casting candidate...</p>}</div> : null}
           {detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note">{detail.companion.name}'s six-look visual identity set is awaiting the required consistency review. Photos will stay private until it passes. <button className="text-button" onClick={() => regenerateVisualIdentityMutation.mutate()} disabled={regenerateVisualIdentityMutation.isPending}>{regenerateVisualIdentityMutation.isPending ? "Resetting look..." : "Regenerate look"}</button><button className="text-button" onClick={() => lifestyleTestMutation.mutate()} disabled={lifestyleTestMutation.isPending}>{lifestyleTestMutation.isPending ? "Generating lifestyle test..." : "Run lifestyle test"}</button>{regenerateVisualIdentityMutation.error ? <p className="form-error">{regenerateVisualIdentityMutation.error.message}</p> : null}{lifestyleTestMutation.error ? <p className="form-error">{lifestyleTestMutation.error.message}</p> : null}{visualReferenceUrls.length === 6 ? <div className="ai-visual-reference-grid">{visualReferenceUrls.map((url, index) => <img src={url} alt={`${detail.companion.name} identity look ${index + 1}`} key={url} />)}</div> : <p>Loading private references...</p>}{lifestyleTestUrls.length === 4 ? <><strong>Lifestyle consistency test</strong><div className="ai-visual-reference-grid ai-lifestyle-test-grid">{lifestyleTestUrls.map((url, index) => <img src={url} alt={`${detail.companion.name} lifestyle test ${index + 1}`} key={url} />)}</div></> : null}</div> : null}
           {detail.visualIdentity?.status === "failed" ? <div className="ai-disabled-note">{detail.visualIdentity.validationNotes ?? "Visual identity preparation failed."} <button className="text-button" onClick={() => visualIdentityMutation.mutate()} disabled={visualIdentityMutation.isPending}>Retry</button></div> : null}
           <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>

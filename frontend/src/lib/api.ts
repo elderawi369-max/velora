@@ -950,7 +950,7 @@ export type AiCompanionMemoryCandidate = {
 
 export type AiCompanionVisualIdentity = {
   version: number;
-  status: "pending_storage" | "generating" | "review" | "ready" | "failed";
+  status: "pending_storage" | "generating" | "casting_review" | "review" | "ready" | "failed";
   validationStatus: "pending" | "manual_review" | "approved" | "failed";
   validationNotes: string | null;
 };
@@ -986,6 +986,10 @@ export function fetchAiCompanion(companionId: string) {
 
 export function prepareAiCompanionVisualIdentity(companionId: string) {
   return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity`, { method: "POST" });
+}
+
+export function completeAiCompanionVisualIdentity(companionId: string) {
+  return request<{ visualIdentity: AiCompanionVisualIdentity }>(`/api/ai-companions/${companionId}/visual-identity/complete`, { method: "POST" });
 }
 
 export function regenerateAiCompanionVisualIdentity(companionId: string) {

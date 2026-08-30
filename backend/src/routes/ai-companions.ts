@@ -203,8 +203,11 @@ async function generateReferenceImage(env: EnvBindings, prompt: string, referenc
   if (!env.AI || !env.COMPANION_IMAGES) throw new Error("Companion image services are unavailable.");
   const form = new FormData();
   form.append("prompt", prompt);
-  form.append("width", "512");
-  form.append("height", "512");
+  // Flux 2 Klein only accepts reference inputs smaller than 512px. Keeping every
+  // stored identity image at 480px makes later multi-reference conditioning valid.
+  form.append("width", "480");
+  form.append("height", "480");
+  form.append("guidance", "6");
   for (const [index, key] of referenceKeys.slice(0, 4).entries()) form.append(`input_image_${index}`, await readR2Image(env.COMPANION_IMAGES, key), `reference-${index}.png`);
   const serialized = new Response(form);
   const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-9b", { multipart: { body: serialized.body, contentType: serialized.headers.get("content-type") } } as never) as { image?: string };
@@ -702,7 +705,7 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
     [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   }
   if (!visualIdentity) return c.json({ error: "Visual identity record could not be prepared." }, 500);
-  if (visualIdentity.status === "review" || visualIdentity.status === "ready") return c.json({ visualIdentity });
+  if (visualIdentity.status === "casting_review" || visualIdentity.status === "review" || visualIdentity.status === "ready") return c.json({ visualIdentity });
   const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
   if (!traits) return c.json({ error: "Visual identity traits are invalid." }, 500);
   const timestamp = now();
@@ -711,6 +714,26 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
     const canonicalKey = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/canonical.png`;
     const canonical = await generateReferenceImage(c.env, canonicalPortraitPrompt(companion, traits));
     await c.env.COMPANION_IMAGES.put(canonicalKey, canonical, { httpMetadata: { contentType: "image/png" } });
+    await db.update(aiCompanionVisualIdentities).set({ status: "casting_review", canonicalObjectKey: canonicalKey, referenceObjectKeysJson: JSON.stringify([canonicalKey]), validationStatus: "manual_review", validationNotes: "Review this single casting image before generating the remaining identity views.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  } catch {
+    await db.update(aiCompanionVisualIdentities).set({ status: "failed", validationStatus: "failed", validationNotes: "Canonical reference generation failed. Retry after checking Workers AI availability.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    return c.json({ error: "Canonical reference generation failed. No photo identity was released." }, 502);
+  }
+  const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  return c.json({ visualIdentity: updated });
+});
+
+aiCompanionRoutes.post("/:companionId/visual-identity/complete", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
+  if (!(await isChatEnabledForUser(c.env, context.userId))) return c.json({ error: "Visual identity setup is only available in the private companion beta." }, 403);
+  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Companion image services are not configured." }, 503);
+  const db = getDb(c.env);
+  const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
+  if (!visualIdentity || !visualIdentity.canonicalObjectKey || visualIdentity.status !== "casting_review") return c.json({ error: "Approve a single casting image before generating the identity set." }, 409);
+  const canonicalKey = visualIdentity.canonicalObjectKey;
+  await db.update(aiCompanionVisualIdentities).set({ status: "generating", validationStatus: "pending", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+  try {
     const referenceKeys = [canonicalKey];
     for (const [index, look] of identityTestLooks(companion.identity as "woman" | "man").entries()) {
       const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/look-${index + 2}.png`;
@@ -718,10 +741,10 @@ aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
       await c.env.COMPANION_IMAGES.put(key, image, { httpMetadata: { contentType: "image/png" } });
       referenceKeys.push(key);
     }
-    await db.update(aiCompanionVisualIdentities).set({ status: "review", canonicalObjectKey: canonicalKey, referenceObjectKeysJson: JSON.stringify(referenceKeys), validationStatus: "manual_review", validationNotes: "Review the six-look identity set before approving this identity.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    await db.update(aiCompanionVisualIdentities).set({ status: "review", referenceObjectKeysJson: JSON.stringify(referenceKeys), validationStatus: "manual_review", validationNotes: "Review the six-look identity set before approving this identity.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
   } catch {
-    await db.update(aiCompanionVisualIdentities).set({ status: "failed", validationStatus: "failed", validationNotes: "Canonical reference generation failed. Retry after checking Workers AI availability.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
-    return c.json({ error: "Canonical reference generation failed. No photo identity was released." }, 502);
+    await db.update(aiCompanionVisualIdentities).set({ status: "casting_review", validationStatus: "manual_review", validationNotes: "The casting image was kept. Generating the remaining identity views failed; retry when Workers AI is available.", updatedAt: now() }).where(eq(aiCompanionVisualIdentities.companionId, companion.id));
+    return c.json({ error: "Identity-view generation failed. Your approved casting image was kept." }, 502);
   }
   const [updated] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   return c.json({ visualIdentity: updated });
@@ -745,7 +768,7 @@ aiCompanionRoutes.get("/:companionId/visual-identity/images/:view", async (c) =>
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.COMPANION_IMAGES) return c.json({ error: "Companion image services are not configured." }, 503);
   const [visualIdentity] = await getDb(c.env).select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
-  if (!visualIdentity || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Visual references are not ready for review." }, 404);
+  if (!visualIdentity || (visualIdentity.status !== "casting_review" && visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Visual references are not ready for review." }, 404);
   const storedKeys = (() => { try { return JSON.parse(visualIdentity.referenceObjectKeysJson) as string[]; } catch { return []; } })();
   const keys = (storedKeys.length ? storedKeys : [visualIdentity.canonicalObjectKey]).filter((key): key is string => Boolean(key));
   const requestedView = c.req.param("view");
