@@ -275,9 +275,13 @@
   margin-top: 12px;
 }
 
+.ai-casting-candidate-grid {
+  grid-template-columns: minmax(220px, 320px);
+}
+
 .ai-visual-reference-grid img {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 5;
   border-radius: 10px;
   border: 1px solid #dfcbd3;
   object-fit: cover;
