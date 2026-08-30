@@ -272,8 +272,8 @@ function lifestyleTestLooks(companion: typeof aiCompanions.$inferSelect) {
   const looks = companion.identity === "woman" ? feminineOutfits : masculineOutfits;
   return looks.map((look) => `${look}; ${personalityDetails[companion.personaKey as (typeof personaKeys)[number]]}`);
 }
-function lifestylePhotoPrompt(companion: typeof aiCompanions.$inferSelect, scene: string) {
-  return `Use the exact same original fictional adult person in reference image 0 as ${companion.name}; face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, feminine or masculine, confident, date-ready, and flattering, with natural visible legs, shoulders, midriff, or tasteful neckline only where appropriate to the fully clothed outfit. Keep it non-explicit and non-erotic: no nudity, lingerie, sexual acts, or body-part focus. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
+function lifestylePhotoPrompt(companion: typeof aiCompanions.$inferSelect, scene: string, traits: VisualIdentityTraits) {
+  return `All supplied reference images depict the exact same original fictional adult person, ${companion.name}. Use all of them together as a hard identity lock; face identity takes priority over outfit, scene, expression, and lighting. Preserve face shape, eyes, nose, lips, skin tone, apparent age, major facial proportions, hair color, and distinctive features exactly. Preserve the same natural adult body identity too: ${traits.build}, consistent height impression, shoulder-to-waist proportions, silhouette, and overall body shape. Clothing, hairstyle, pose, camera distance, and lighting may vary, but do not make the person noticeably slimmer, curvier, taller, shorter, or otherwise differently built. Create ${scene}. Make it feel like a genuine romantic companion photo sent from a real moment, not a fashion catalogue or stock lifestyle image: vary camera angle, setting, expression, and light naturally. Prioritize romantic attraction: adult, conventionally attractive, feminine or masculine, confident, date-ready, and flattering, with natural visible legs, shoulders, midriff, or tasteful neckline only where appropriate to the fully clothed outfit. Keep it non-explicit and non-erotic: no nudity, lingerie, sexual acts, or body-part focus. Do not use an office, blazer, businesswear, generic bright apartment template, stiff pose, text, watermark, or other people.`;
 }
 type CanonDetails = Omit<CharacterCanon, "version" | "name" | "customBackstory">;
 const personaCanonDetails: Record<(typeof personaKeys)[number], Record<"woman" | "man", CanonDetails>> = {
@@ -760,11 +760,28 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
   const db = getDb(c.env);
   const [visualIdentity] = await db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1);
   if (!visualIdentity || !visualIdentity.canonicalObjectKey || (visualIdentity.status !== "review" && visualIdentity.status !== "ready")) return c.json({ error: "Prepare the companion visual identity before running a lifestyle test." }, 409);
+  const traits = parseVisualTraits(visualIdentity.lockedTraitsJson);
+  if (!traits) return c.json({ error: "The companion visual identity is invalid. Regenerate it before running a lifestyle test." }, 500);
   const canonicalObjectKey = visualIdentity.canonicalObjectKey;
+  const storedReferenceKeys = (() => {
+    try {
+      return JSON.parse(visualIdentity.referenceObjectKeysJson) as string[];
+    } catch {
+      return [];
+    }
+  })();
+  // Flux 2 Klein supports four reference inputs. Use a clean portrait, close-up,
+  // and varied approved looks so a scene change cannot silently replace the face.
+  const referenceKeys = [
+    canonicalObjectKey,
+    storedReferenceKeys[5],
+    storedReferenceKeys[1],
+    storedReferenceKeys[4],
+  ].filter((key, index, keys): key is string => Boolean(key) && keys.indexOf(key) === index);
   const imageBucket = c.env.COMPANION_IMAGES;
   const timestamp = now();
   const testId = id("aitest");
-  const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
+  const entries = lifestyleTestLooks(companion).map((scene, index) => ({ id: id("aiphoto"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: null, sceneJson: JSON.stringify({ testId, index, scene }), prompt: lifestylePhotoPrompt(companion, scene, traits), objectKey: null, status: "generating", identityScore: null, validationStatus: "manual_review", generationAttempt: 1, createdAt: timestamp + index, updatedAt: timestamp }));
   await db.insert(aiCompanionPhotos).values(entries);
   const failures: string[] = [];
   // Generate one at a time: Flux reference jobs can be rate-limited when several
@@ -773,7 +790,7 @@ aiCompanionRoutes.post("/:companionId/photos/lifestyle-test", async (c) => {
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const image = await generateReferenceImage(c.env, entry.prompt, [canonicalObjectKey]);
+        const image = await generateReferenceImage(c.env, entry.prompt, referenceKeys);
         const key = `companions/${context.userId}/${companion.id}/identity/v${visualIdentity.version}/lifestyle-test/${entry.id}.png`;
         await imageBucket.put(key, image, { httpMetadata: { contentType: "image/png" } });
         await db.update(aiCompanionPhotos).set({ objectKey: key, status: "test_review", generationAttempt: attempt + 1, updatedAt: now() }).where(eq(aiCompanionPhotos.id, entry.id));
