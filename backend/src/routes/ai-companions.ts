@@ -720,7 +720,15 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(20),
   ]);
-  const castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
+  let castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
+  // Preserve a pre-redesign casting image as an explicit selectable option. This
+  // repairs the review UI without spending any new image generations.
+  if (visualIdentity?.status === "casting_review" && !castingCandidates.length && visualIdentity.canonicalObjectKey) {
+    const timestamp = now();
+    const legacyCandidate = { id: id("aicandidate"), userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, objectKey: visualIdentity.canonicalObjectKey, prompt: "Legacy casting option preserved during the multi-candidate workflow migration.", sortOrder: 0, status: "candidate", createdAt: timestamp, updatedAt: timestamp } as const;
+    await db.insert(aiCompanionVisualCandidates).values(legacyCandidate);
+    castingCandidates = [legacyCandidate];
+  }
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, visualIdentity, castingCandidates, photos, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
