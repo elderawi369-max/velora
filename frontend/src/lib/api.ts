@@ -963,7 +963,8 @@ export type AiCompanionVisualCandidate = {
 
 export type AiCompanionUserPhoto = {
   id: string;
-  status: "approved" | "quarantined" | "failed" | "rejected" | "deleting" | "deleted" | "replaced";
+  messageId: string | null;
+  status: "approved" | "quarantined" | "attaching" | "failed" | "rejected" | "deleting" | "deleted" | "replaced";
   contentType: string;
   byteSize: number;
   width: number;
@@ -1009,6 +1010,7 @@ export function fetchAiCompanion(companionId: string) {
     castingCandidates: AiCompanionVisualCandidate[];
     photos: Array<{ id: string; status: string; createdAt: number }>;
     deliveredPhotos: Array<{ id: string; requestMessageId: string | null; createdAt: number }>;
+    userPhotos: Array<{ id: string; messageId: string; contentType: string; width: number; height: number; createdAt: number }>;
     entitlement: AiEntitlement;
     aiEnabled: boolean;
   }>(`/api/ai-companions/${companionId}`);
@@ -1067,7 +1069,7 @@ export function fetchAiCompanionUserPhotoContent(companionId: string, photoId: s
 }
 
 export function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onProgress: (percent: number) => void) {
-  return new Promise<{ photo: AiCompanionUserPhoto }>((resolve, reject) => {
+  return new Promise<{ photo: AiCompanionUserPhoto; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage }>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${apiBaseUrl}/api/ai-companions/${companionId}/user-photo`);
     request.withCredentials = true;
@@ -1077,9 +1079,9 @@ export function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onP
     request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)); };
     request.onerror = () => reject(new Error("Upload interrupted. Check your connection and retry."));
     request.onload = () => {
-      let data: { photo?: AiCompanionUserPhoto; error?: string } = {};
+      let data: { photo?: AiCompanionUserPhoto; userMessage?: AiCompanionMessage; assistantMessage?: AiCompanionMessage; error?: string } = {};
       try { data = JSON.parse(request.responseText) as typeof data; } catch { /* handled below */ }
-      if (request.status >= 200 && request.status < 300 && data.photo) { onProgress(100); resolve({ photo: data.photo }); }
+      if (request.status >= 200 && request.status < 300 && data.photo && data.userMessage && data.assistantMessage) { onProgress(100); resolve({ photo: data.photo, userMessage: data.userMessage, assistantMessage: data.assistantMessage }); }
       else reject(new Error(data.error ?? "The photo could not be uploaded."));
     };
     const body = new FormData(); body.append("photo", photo, "shared-selfie.jpg"); request.send(body);
@@ -1088,6 +1090,10 @@ export function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onP
 
 export function deleteAiCompanionUserPhoto(companionId: string, photoId: string) {
   return request<{ ok: true }>(`/api/ai-companions/${companionId}/user-photo/${photoId}`, { method: "DELETE" });
+}
+
+export function sendApprovedAiCompanionUserPhoto(companionId: string, photoId: string) {
+  return request<{ photo: AiCompanionUserPhoto; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage }>(`/api/ai-companions/${companionId}/user-photo/${photoId}/send`, { method: "POST" });
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {

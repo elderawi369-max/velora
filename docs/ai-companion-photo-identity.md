@@ -42,10 +42,11 @@ After the six-look review, run a second private lifestyle test from the same can
 
 ## User-shared photos
 
-User uploads are a separate private asset class. They never replace, condition, or become references for an approved companion visual identity or catalog photo bank. A companion can have one active user-shared photo per owner.
+User uploads are private chat attachments. They never replace, condition, or become references for an approved companion visual identity or catalog photo bank. Each approved attachment is linked to one user chat message and remains available in that conversation until the owner removes it.
 
 - Free: no uploads. Pro: 12 validation attempts per UTC month, capped at 4 per day. Ultra: 40 per UTC month, capped at 10 per day. Attempts count before validation because validation and moderation consume resources.
 - The client re-encodes a decoded image to metadata-free JPEG and scales its longest edge to 1600 pixels. The Worker independently checks magic bytes, container structure, MIME agreement, dimensions, pixel count, animation, and size, then removes metadata-bearing chunks again.
 - New objects use a pseudonymous user scope plus random IDs and stay quarantined in private R2 until automated vision safety review approves exactly one clearly adult, non-explicit person. Uncertain results fail closed.
+- The composer offers gallery selection and front-camera capture. Approval atomically creates the user's photo message and the companion's vision response; rejected uploads never enter chat and receive a friendly policy-category explanation.
 - Read and delete routes always join the authenticated user, owned companion, photo ID, and approved status. Responses never include object keys, hashes, model output, or storage URLs.
-- Replacement makes the old object unreadable before activating the new record. Failed deletions remain tombstoned and are retried; abandoned quarantine objects are cleaned on the next owned request. Account deletion removes R2 objects before deleting their ownership rows.
+- Removal makes the attachment unreadable before storage cleanup. Failed deletions remain tombstoned and are retried; abandoned quarantine or attachment operations recover on the next owned request. Account deletion removes R2 objects before deleting their ownership rows.

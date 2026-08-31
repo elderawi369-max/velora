@@ -22,6 +22,7 @@ import {
   prepareAiCompanionVisualIdentity,
   regenerateAiCompanionVisualIdentity,
   runAiCompanionLifestyleTest,
+  sendApprovedAiCompanionUserPhoto,
   selectAiCompanionVisualCandidate,
   reportAiCompanionMessage,
   requestAiCompanionPhoto,
@@ -85,7 +86,8 @@ export function AiCompanionsPage() {
   const [deliveredPhotoUrls, setDeliveredPhotoUrls] = useState<Record<string, string>>({});
   const [selectedUserPhoto, setSelectedUserPhoto] = useState<Blob | null>(null);
   const [selectedUserPhotoUrl, setSelectedUserPhotoUrl] = useState<string | null>(null);
-  const [approvedUserPhotoUrl, setApprovedUserPhotoUrl] = useState<string | null>(null);
+  const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string>>({});
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [userPhotoProgress, setUserPhotoProgress] = useState(0);
   const [userPhotoError, setUserPhotoError] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -185,13 +187,25 @@ export function AiCompanionsPage() {
     mutationFn: () => uploadAiCompanionUserPhoto(selectedId!, selectedUserPhoto!, setUserPhotoProgress),
     onSuccess: async () => {
       setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null);
+      setPhotoMenuOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
       await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
     },
     onError: (error) => setUserPhotoError(error instanceof Error ? error.message : "The photo could not be uploaded."),
   });
   const userPhotoDeleteMutation = useMutation({
-    mutationFn: () => deleteAiCompanionUserPhoto(selectedId!, userPhotoQuery.data!.photo!.id),
-    onSuccess: async () => { setApprovedUserPhotoUrl(null); await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] }); },
+    mutationFn: (photoId: string) => deleteAiCompanionUserPhoto(selectedId!, photoId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
+    },
+  });
+  const legacyUserPhotoSendMutation = useMutation({
+    mutationFn: () => sendApprovedAiCompanionUserPhoto(selectedId!, userPhotoQuery.data!.photo!.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
+    },
   });
 
   function create(event: FormEvent) {
@@ -217,6 +231,7 @@ export function AiCompanionsPage() {
       const url = URL.createObjectURL(normalized);
       if (selectedUserPhotoUrl) URL.revokeObjectURL(selectedUserPhotoUrl);
       setSelectedUserPhoto(normalized); setSelectedUserPhotoUrl(url);
+      setPhotoMenuOpen(false);
     } catch (error) { setSelectedUserPhoto(null); setUserPhotoError(error instanceof Error ? error.message : "Choose a valid photo."); }
   }
 
@@ -299,16 +314,23 @@ export function AiCompanionsPage() {
     return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [deliveredPhotoIds, selectedId]);
 
-  const approvedUserPhotoId = userPhotoQuery.data?.photo?.id ?? "";
   useEffect(() => {
-    setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoError(null); setUserPhotoProgress(0);
+    setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoError(null); setUserPhotoProgress(0); setPhotoMenuOpen(false);
   }, [selectedId]);
+  const userPhotoIds = detail?.userPhotos.map((photo) => photo.id).join(",") ?? "";
   useEffect(() => {
-    if (!selectedId || !approvedUserPhotoId) { setApprovedUserPhotoUrl(null); return; }
-    let cancelled = false; let url = "";
-    fetchAiCompanionUserPhotoContent(selectedId, approvedUserPhotoId).then((nextUrl) => { url = nextUrl; if (cancelled) URL.revokeObjectURL(nextUrl); else setApprovedUserPhotoUrl(nextUrl); }).catch(() => { if (!cancelled) setApprovedUserPhotoUrl(null); });
-    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
-  }, [approvedUserPhotoId, selectedId]);
+    if (!selectedId || !detail?.userPhotos.length) { setUserPhotoUrls({}); return; }
+    let cancelled = false;
+    const urls: string[] = [];
+    Promise.all(detail.userPhotos.map(async (photo) => [photo.id, await fetchAiCompanionUserPhotoContent(selectedId, photo.id)] as const)).then((entries) => {
+      if (cancelled) { entries.forEach(([, url]) => URL.revokeObjectURL(url)); return; }
+      entries.forEach(([, url]) => urls.push(url));
+      setUserPhotoUrls(Object.fromEntries(entries));
+    }).catch(() => { if (!cancelled) setUserPhotoUrls({}); });
+    return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [userPhotoIds, selectedId]);
+
+  const userPhotoByMessageId = new Map((detail?.userPhotos ?? []).map((photo) => [photo.messageId, photo]));
 
   return (
     <main className="page-shell ai-companions-page">
@@ -364,23 +386,36 @@ export function AiCompanionsPage() {
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_review" ? <div className="ai-disabled-note"><div className="ai-casting-candidate-grid">{detail.castingCandidates.filter((candidate) => candidate.status === "candidate").map((candidate) => <article className="ai-casting-candidate-card" key={candidate.id}>{castingCandidateUrls[candidate.id] ? <img src={castingCandidateUrls[candidate.id]} alt={`${detail.companion.name} casting option ${candidate.sortOrder + 1}`} /> : null}<button className="secondary-button" onClick={() => selectCastingCandidateMutation.mutate(candidate.id)}>Choose option {candidate.sortOrder + 1}</button></article>)}</div></div> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_selected" ? <button className="text-button" onClick={() => completeVisualIdentityMutation.mutate()}>Build six canonical views</button> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note"><button className="text-button" onClick={() => lifestyleTestMutation.mutate()}>Run lifestyle test</button><button className="text-button" onClick={() => approveVisualIdentityMutation.mutate()}>Approve canonical identity</button></div> : null}
-          <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{detail.deliveredPhotos.map((photo) => deliveredPhotoUrls[photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={photo.id}><img src={deliveredPhotoUrls[photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>
-          <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">Photo delivery failed: {photoRequestError}</p> : null}</form>
-        </div>
-        <aside className="ai-memory-card">
-          <section className="ai-user-photo-card">
-            <p className="eyebrow">SHARE A PHOTO</p>
-            <h2>Your private shared selfie</h2>
-            <p className="muted">Your photo stays private and separate from your companion's fixed appearance. It is usable only after validation and safety review.</p>
-            {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} uploads left this month` : "Available with Velora Pro or Ultra"}</small> : null}
-            {selectedUserPhotoUrl ? <img className="ai-user-photo-preview" src={selectedUserPhotoUrl} alt="Selected private photo preview" /> : approvedUserPhotoUrl ? <img className="ai-user-photo-preview" src={approvedUserPhotoUrl} alt="Your approved private shared photo" /> : null}
-            {!selectedUserPhoto ? <div className="ai-user-photo-actions"><label className="secondary-button ai-photo-picker" aria-disabled={userPhotoQuery.data?.quota.monthlyLimit === 0}>Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={userPhotoQuery.data?.quota.monthlyLimit === 0} onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><label className="secondary-button ai-photo-picker" aria-disabled={userPhotoQuery.data?.quota.monthlyLimit === 0}>Take selfie<input type="file" accept="image/*" capture="user" disabled={userPhotoQuery.data?.quota.monthlyLimit === 0} onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div> : <div className="ai-user-photo-actions"><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Safety review..." : `Uploading ${userPhotoProgress}%` : approvedUserPhotoId ? "Replace photo" : "Upload photo"}</button><button className="text-button" type="button" onClick={() => { if (selectedUserPhotoUrl) URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Choose another</button></div>}
+          <div className="ai-messages" ref={messagesRef}>
+            {detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => {
+              const attachedPhoto = userPhotoByMessageId.get(item.id);
+              return <article className={`${item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"}${attachedPhoto ? " ai-photo-message" : ""}`} key={item.id}>
+                {attachedPhoto && userPhotoUrls[attachedPhoto.id] ? <><img src={userPhotoUrls[attachedPhoto.id]} alt="Photo you sent to your AI companion" /><button className="ai-photo-remove" type="button" onClick={() => userPhotoDeleteMutation.mutate(attachedPhoto.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></> : <p>{item.body}</p>}
+                {item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}
+                {reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}
+              </article>;
+            })}
+            {detail.deliveredPhotos.map((photo) => deliveredPhotoUrls[photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={photo.id}><img src={deliveredPhotoUrls[photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null)}
+            {pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}
+          </div>
+          <form className="ai-composer" onSubmit={send}>
+            <div className="ai-attachment-control">
+              <button className="ai-attachment-button" type="button" aria-label="Attach a photo" aria-expanded={photoMenuOpen} onClick={() => setPhotoMenuOpen((open) => !open)} disabled={!detail.aiEnabled || userPhotoUploadMutation.isPending}>+</button>
+              {photoMenuOpen ? <div className="ai-attachment-menu"><label className="ai-photo-picker">Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><label className="ai-photo-picker">Take selfie<input type="file" accept="image/*" capture="user" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div> : null}
+            </div>
+            <textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} />
+            <button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>
+            {selectedUserPhotoUrl ? <div className="ai-attachment-preview"><img src={selectedUserPhotoUrl} alt="Photo ready to send" /><div><strong>Ready to send privately</strong><small>It will appear in chat only after safety review.</small><span><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Reviewing..." : `Uploading ${userPhotoProgress}%` : "Send photo"}</button><button className="text-button" type="button" onClick={() => { URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Cancel</button></span></div></div> : null}
+            {userPhotoQuery.data?.photo ? <div className="ai-legacy-photo-note"><span><strong>Your earlier approved upload wasn't sent to chat.</strong><small>You can send it now without using another upload.</small></span><button className="secondary-button" type="button" onClick={() => legacyUserPhotoSendMutation.mutate()} disabled={legacyUserPhotoSendMutation.isPending}>{legacyUserPhotoSendMutation.isPending ? "Sending..." : "Send it now"}</button><button className="text-button" type="button" onClick={() => userPhotoDeleteMutation.mutate(userPhotoQuery.data!.photo!.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></div> : null}
             {userPhotoUploadMutation.isPending ? <progress max="100" value={userPhotoProgress} aria-label="Photo upload progress" /> : null}
-            {approvedUserPhotoId && !selectedUserPhoto ? <button className="text-button" type="button" onClick={() => userPhotoDeleteMutation.mutate()} disabled={userPhotoDeleteMutation.isPending}>{userPhotoDeleteMutation.isPending ? "Removing..." : "Remove photo"}</button> : null}
+            {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}
             {userPhotoError ? <p className="form-error">{userPhotoError}</p> : null}
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
-            <small className="muted">JPEG, PNG, or WebP · 5 MB max · one clearly adult person · metadata removed</small>
-          </section>
+            {legacyUserPhotoSendMutation.error ? <p className="form-error">{legacyUserPhotoSendMutation.error.message}</p> : null}
+            {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">Photo delivery failed: {photoRequestError}</p> : null}
+          </form>
+        </div>
+        <aside className="ai-memory-card">
           <p className="eyebrow">JOURNAL OF US</p>
           <h2>What {detail.companion.name} remembers</h2>
           <p className="muted">You control every long-term memory. Review suggestions before they are saved.</p>

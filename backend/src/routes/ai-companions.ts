@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -818,7 +818,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows, userPhotoRows] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
@@ -826,6 +826,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(20),
     db.select({ id: aiCompanionPhotos.id, requestMessageId: aiCompanionPhotos.requestMessageId, createdAt: aiCompanionPhotos.createdAt }).from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), inArray(aiCompanionPhotos.status, ["ready", "delivered"]), eq(aiCompanionPhotos.validationStatus, "approved"))).orderBy(asc(aiCompanionPhotos.createdAt)).limit(30),
+    db.select({ id: aiCompanionUserPhotos.id, messageId: aiCompanionUserPhotos.messageId, contentType: aiCompanionUserPhotos.contentType, width: aiCompanionUserPhotos.width, height: aiCompanionUserPhotos.height, createdAt: aiCompanionUserPhotos.createdAt }).from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"), isNotNull(aiCompanionUserPhotos.messageId))).orderBy(asc(aiCompanionUserPhotos.createdAt)).limit(100),
   ]);
   let castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
   // Preserve a pre-redesign casting image as an explicit selectable option. This
@@ -839,7 +840,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
-  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, aiEnabled });
+  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {

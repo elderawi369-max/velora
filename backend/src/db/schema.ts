@@ -493,6 +493,7 @@ export const aiCompanionUserPhotos = sqliteTable("ai_companion_user_photos", {
   moderationProvider: text("moderation_provider"),
   moderationReason: text("moderation_reason"),
   replacedById: text("replaced_by_id"),
+  messageId: text("message_id").references(() => aiCompanionMessages.id),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   deletedAt: integer("deleted_at"),
