@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
@@ -126,6 +126,12 @@ async function isChatEnabledForUser(env: EnvBindings, userId: string) {
 }
 function effectiveCompanionLimit(planLimit: number, isApprovedBeta: boolean) {
   return isApprovedBeta ? Math.max(planLimit, personaKeys.length) : planLimit;
+}
+function effectivePhotoLimit(planLimit: number, isApprovedBeta: boolean) {
+  return isApprovedBeta ? Math.max(planLimit, 15) : planLimit;
+}
+function isCompanionPhotoRequest(message: string) {
+  return /\b(?:send|show|share|give|see|want|take)\b[\s\S]{0,60}\b(?:photo|picture|pic|selfie|image)\b|\b(?:photo|picture|pic|selfie|image)\b[\s\S]{0,40}\b(?:of you|yourself|please)\b/i.test(message);
 }
 function isDisallowedCompanionPhotoRequest(prompt: string, identity: string) {
   return disallowedCompanionPhotoRequest.test(prompt) || (identity !== "man" && /\b(?:topless|shirtless)\b/i.test(prompt));
@@ -750,7 +756,7 @@ aiCompanionRoutes.get("/", async (c) => {
     isChatEnabledForUser(c.env, context.userId),
   ]);
   const companions = companionRows.map((row) => row.companion);
-  return c.json({ companions, entitlement: { ...entitlement, companionLimit: effectiveCompanionLimit(entitlement.companionLimit, aiEnabled) }, aiEnabled, trialReplies });
+  return c.json({ companions, entitlement: { ...entitlement, companionLimit: effectiveCompanionLimit(entitlement.companionLimit, aiEnabled), photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, aiEnabled, trialReplies });
 });
 
 aiCompanionRoutes.get("/appearance-options", async (c) => {
@@ -806,13 +812,14 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
     getOrCreateEntitlement(c.env, context.userId),
     db.select().from(aiCompanionVisualIdentities).where(eq(aiCompanionVisualIdentities.companionId, companion.id)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(20),
+    db.select({ id: aiCompanionPhotos.id, requestMessageId: aiCompanionPhotos.requestMessageId, createdAt: aiCompanionPhotos.createdAt }).from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), inArray(aiCompanionPhotos.status, ["ready", "delivered"]), eq(aiCompanionPhotos.validationStatus, "approved"))).orderBy(asc(aiCompanionPhotos.createdAt)).limit(30),
   ]);
   let castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
   // Preserve a pre-redesign casting image as an explicit selectable option. This
@@ -825,7 +832,8 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   }
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
-  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement, visualIdentity, castingCandidates, photos, aiEnabled: await isChatEnabledForUser(c.env, context.userId) });
+  const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
+  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
@@ -1119,9 +1127,10 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   // Do not replace missing references with text traits: that would create a different person.
   if (!visualIdentity?.appearanceCatalogId || visualIdentity.status !== "ready" || visualIdentity.validationStatus !== "approved" || !visualIdentity.canonicalObjectKey) return c.json({ error: "This companion's visual identity is still being verified. Photos remain unavailable until its canonical references pass review." }, 409);
   if (!conversation) return c.json({ error: "Conversation unavailable." }, 404);
-  if (entitlement.photoLimit <= 0) return c.json({ error: "Your current plan does not include companion photos." }, 403);
+  const photoLimit = effectivePhotoLimit(entitlement.photoLimit, await isChatEnabledForUser(c.env, context.userId));
+  if (photoLimit <= 0) return c.json({ error: "Your current plan does not include companion photos." }, 403);
   const usage = await c.env.DB.prepare("SELECT delivered_count FROM ai_companion_photo_usage WHERE user_id = ? AND billing_period = ?").bind(context.userId, currentBillingPeriod()).first<{ delivered_count: number }>();
-  if ((usage?.delivered_count ?? 0) >= entitlement.photoLimit) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
+  if ((usage?.delivered_count ?? 0) >= photoLimit) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
   if (parsed.data.requestMessageId) {
     const [requestMessage] = await db.select({ id: aiCompanionMessages.id }).from(aiCompanionMessages).where(and(eq(aiCompanionMessages.id, parsed.data.requestMessageId), eq(aiCompanionMessages.conversationId, conversation.id), eq(aiCompanionMessages.role, "user"))).limit(1);
     if (!requestMessage) return c.json({ error: "Photo request message not found." }, 404);
@@ -1185,7 +1194,7 @@ aiCompanionRoutes.get("/:companionId/photos/:photoId", async (c) => {
   if (!photo?.objectKey || !photo.photoAssetId || !["ready", "delivered"].includes(photo.status) || photo.validationStatus !== "approved") return c.json({ error: "Approved companion photo not found." }, 404);
   const object = await c.env.COMPANION_IMAGES.get(photo.objectKey);
   if (!object) return c.json({ error: "Approved companion photo not found." }, 404);
-  const delivery = await registerSuccessfulPhotoDelivery(c.env, { userId: context.userId, companionId: companion.id, photoId: photo.id, photoAssetId: photo.photoAssetId, requestMessageId: photo.requestMessageId, photoLimit: entitlement.photoLimit });
+  const delivery = await registerSuccessfulPhotoDelivery(c.env, { userId: context.userId, companionId: companion.id, photoId: photo.id, photoAssetId: photo.photoAssetId, requestMessageId: photo.requestMessageId, photoLimit: effectivePhotoLimit(entitlement.photoLimit, await isChatEnabledForUser(c.env, context.userId)) });
   if (!delivery.allowed) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
   if (!delivery.alreadyDelivered) await db.update(aiCompanionPhotos).set({ status: "delivered", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photo.id));
   return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
@@ -1257,6 +1266,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
   let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
+  else if (isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0) { responseBody = "Okay—here's one for you 📸"; }
   else if (directSarcasticAffectionReply) { responseBody = directSarcasticAffectionReply; }
   else {
     const [recentMessages, memories, canon] = await Promise.all([
@@ -1313,7 +1323,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     await db.update(aiCompanionConversations).set({ trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
   }
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } });
-  return c.json({ userMessage, assistantMessage, trialRepliesUsed });
+  return c.json({ userMessage, assistantMessage, trialRepliesUsed, photoRequested: moderationStatus === "allowed" && isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0 });
 });
 
 aiCompanionRoutes.post("/messages/:messageId/report", async (c) => {

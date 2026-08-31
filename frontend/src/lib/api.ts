@@ -997,6 +997,7 @@ export function fetchAiCompanion(companionId: string) {
     visualIdentity: AiCompanionVisualIdentity | null;
     castingCandidates: AiCompanionVisualCandidate[];
     photos: Array<{ id: string; status: string; createdAt: number }>;
+    deliveredPhotos: Array<{ id: string; requestMessageId: string | null; createdAt: number }>;
     entitlement: AiEntitlement;
     aiEnabled: boolean;
   }>(`/api/ai-companions/${companionId}`);
@@ -1047,7 +1048,7 @@ export function fetchAiCompanionDeliveredPhoto(companionId: string, photoId: str
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {
-  return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
+  return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number; photoRequested: boolean }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
 }
 
 export function createAiCompanionMemory(companionId: string, content: string) {

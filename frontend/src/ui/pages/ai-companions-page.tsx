@@ -13,6 +13,7 @@ import {
   fetchAiCompanionAppearancePreview,
   fetchAiCompanions,
   fetchAiCompanionPhotoPreview,
+  fetchAiCompanionDeliveredPhoto,
   fetchAiCompanionVisualCandidatePreview,
   fetchAiCompanionVisualIdentityPreview,
   prepareAiCompanionVisualIdentity,
@@ -20,6 +21,7 @@ import {
   runAiCompanionLifestyleTest,
   selectAiCompanionVisualCandidate,
   reportAiCompanionMessage,
+  requestAiCompanionPhoto,
   sendAiCompanionMessage,
   type AiCompanion,
 } from "../../lib/api";
@@ -57,6 +59,7 @@ export function AiCompanionsPage() {
   const [visualReferenceUrls, setVisualReferenceUrls] = useState<string[]>([]);
   const [castingCandidateUrls, setCastingCandidateUrls] = useState<Record<string, string>>({});
   const [lifestyleTestUrls, setLifestyleTestUrls] = useState<string[]>([]);
+  const [deliveredPhotoUrls, setDeliveredPhotoUrls] = useState<Record<string, string>>({});
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,6 +88,9 @@ export function AiCompanionsPage() {
       const startedAt = Date.now();
       setPendingUserMessage(outgoingMessage);
       const result = await sendAiCompanionMessage(selectedId!, outgoingMessage);
+      if (result.photoRequested) {
+        await requestAiCompanionPhoto(selectedId!, { prompt: outgoingMessage, style: "selfie", requestMessageId: result.userMessage.id });
+      }
       const thinkingDelay = Math.min(2600, Math.max(900, result.assistantMessage.body.length * 9));
       await new Promise((resolve) => window.setTimeout(resolve, Math.max(0, thinkingDelay - (Date.now() - startedAt))));
       return result;
@@ -227,6 +233,19 @@ export function AiCompanionsPage() {
     return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [lifestyleTestPhotoIds, selectedId]);
 
+  const deliveredPhotoIds = detail?.deliveredPhotos.map((photo) => photo.id).join(",") ?? "";
+  useEffect(() => {
+    if (!selectedId || !deliveredPhotoIds) { setDeliveredPhotoUrls({}); return; }
+    let cancelled = false;
+    const urls: string[] = [];
+    Promise.all(deliveredPhotoIds.split(",").map(async (photoId) => [photoId, await fetchAiCompanionDeliveredPhoto(selectedId, photoId)] as const)).then((entries) => {
+      if (cancelled) { entries.forEach(([, url]) => URL.revokeObjectURL(url)); return; }
+      entries.forEach(([, url]) => urls.push(url));
+      setDeliveredPhotoUrls(Object.fromEntries(entries));
+    }).catch(() => { if (!cancelled) setDeliveredPhotoUrls({}); });
+    return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [deliveredPhotoIds, selectedId]);
+
   return (
     <main className="page-shell ai-companions-page">
       <section className="ai-hero">
@@ -281,7 +300,7 @@ export function AiCompanionsPage() {
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_review" ? <div className="ai-disabled-note"><div className="ai-casting-candidate-grid">{detail.castingCandidates.filter((candidate) => candidate.status === "candidate").map((candidate) => <article className="ai-casting-candidate-card" key={candidate.id}>{castingCandidateUrls[candidate.id] ? <img src={castingCandidateUrls[candidate.id]} alt={`${detail.companion.name} casting option ${candidate.sortOrder + 1}`} /> : null}<button className="secondary-button" onClick={() => selectCastingCandidateMutation.mutate(candidate.id)}>Choose option {candidate.sortOrder + 1}</button></article>)}</div></div> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_selected" ? <button className="text-button" onClick={() => completeVisualIdentityMutation.mutate()}>Build six canonical views</button> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note"><button className="text-button" onClick={() => lifestyleTestMutation.mutate()}>Run lifestyle test</button><button className="text-button" onClick={() => approveVisualIdentityMutation.mutate()}>Approve canonical identity</button></div> : null}
-          <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>
+          <div className="ai-messages" ref={messagesRef}>{detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => <article className={item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"} key={item.id}><p>{item.body}</p>{item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}{reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}</article>)}{detail.deliveredPhotos.map((photo) => deliveredPhotoUrls[photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={photo.id}><img src={deliveredPhotoUrls[photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null)}{pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}</div>
           <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}</form>
         </div>
         <aside className="ai-memory-card">

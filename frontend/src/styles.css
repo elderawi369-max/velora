@@ -378,6 +378,8 @@
 .ai-message p { margin: 0; }
 .ai-message-user { justify-self: end; color: #fff; background: #2d6f9e; border-bottom-right-radius: 4px; }
 .ai-message-assistant { justify-self: start; color: #463440; background: #f6e9ed; border-bottom-left-radius: 4px; }
+.ai-photo-message { padding: 6px; overflow: hidden; }
+.ai-photo-message img { display: block; width: min(100%, 340px); max-height: 460px; object-fit: cover; border-radius: 14px; }
 .text-button { width: fit-content; padding: 3px 0; border: 0; color: #9e4163; background: transparent; font: inherit; font-size: 0.78rem; text-decoration: underline; cursor: pointer; }
 .ai-report { display: flex; gap: 7px; align-items: center; margin-top: 8px; }
 .ai-report select { padding: 7px; font-size: 0.78rem; }
