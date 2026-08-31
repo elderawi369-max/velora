@@ -11,6 +11,9 @@ import {
   messages,
   notifications,
   eventLogs,
+  aiCompanionUserPhotos,
+  aiUserPhotoUploadDailyUsage,
+  aiUserPhotoUploadMonthlyUsage,
   passwordResetTokens,
   profiles,
   purchases,
@@ -583,6 +586,16 @@ authRoutes.delete("/account", async (c) => {
 
     await db.delete(eventLogs).where(eq(eventLogs.userId, userId));
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+
+    // Private R2 data must be removed before its ownership records and account.
+    // If storage is temporarily unavailable, fail closed and let the user retry
+    // rather than creating an ownerless private object.
+    const userPhotos = await db.select({ objectKey: aiCompanionUserPhotos.objectKey }).from(aiCompanionUserPhotos).where(eq(aiCompanionUserPhotos.userId, userId));
+    if (userPhotos.some((photo) => photo.objectKey) && !c.env.COMPANION_IMAGES) throw new Error("Private photo storage is temporarily unavailable. Please retry account deletion.");
+    for (const photo of userPhotos) if (photo.objectKey) await c.env.COMPANION_IMAGES!.delete(photo.objectKey);
+    await db.delete(aiCompanionUserPhotos).where(eq(aiCompanionUserPhotos.userId, userId));
+    await db.delete(aiUserPhotoUploadDailyUsage).where(eq(aiUserPhotoUploadDailyUsage.userId, userId));
+    await db.delete(aiUserPhotoUploadMonthlyUsage).where(eq(aiUserPhotoUploadMonthlyUsage.userId, userId));
 
     await db.delete(sessions).where(eq(sessions.userId, userId));
     await db.delete(users).where(eq(users.id, userId));

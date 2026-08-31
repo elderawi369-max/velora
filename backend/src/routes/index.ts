@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { EnvBindings } from "../lib/db";
 import { adminRoutes } from "./admin";
 import { aiCompanionRoutes } from "./ai-companions";
+import { aiCompanionUserPhotoRoutes } from "./ai-companion-user-photos";
 import { authRoutes } from "./auth";
 import { chatRoutes } from "./chat";
 import { challengeRoutes } from "./challenges";
@@ -18,6 +19,7 @@ export const apiRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 apiRoutes.route("/admin", adminRoutes);
 apiRoutes.route("/ai-companions", aiCompanionRoutes);
+apiRoutes.route("/ai-companions", aiCompanionUserPhotoRoutes);
 apiRoutes.route("/auth", authRoutes);
 apiRoutes.route("/profiles", profileRoutes);
 apiRoutes.route("/push", pushRoutes);

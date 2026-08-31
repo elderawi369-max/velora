@@ -961,6 +961,17 @@ export type AiCompanionVisualCandidate = {
   status: "candidate" | "selected" | "rejected";
 };
 
+export type AiCompanionUserPhoto = {
+  id: string;
+  status: "approved" | "quarantined" | "failed" | "rejected" | "deleting" | "deleted" | "replaced";
+  contentType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export function fetchAiCompanions() {
   return request<{ companions: AiCompanion[]; entitlement: AiEntitlement; aiEnabled: boolean; trialReplies: number }>("/api/ai-companions");
 }
@@ -1045,6 +1056,38 @@ export function requestAiCompanionPhoto(companionId: string, payload: { prompt: 
 
 export function fetchAiCompanionDeliveredPhoto(companionId: string, photoId: string) {
   return requestImageUrl(`/api/ai-companions/${companionId}/photos/${photoId}`);
+}
+
+export function fetchAiCompanionUserPhoto(companionId: string) {
+  return request<{ photo: AiCompanionUserPhoto | null; quota: { plan: "free" | "pro" | "ultra"; monthlyLimit: number; monthlyUsed: number; remaining: number } }>(`/api/ai-companions/${companionId}/user-photo`);
+}
+
+export function fetchAiCompanionUserPhotoContent(companionId: string, photoId: string) {
+  return requestImageUrl(`/api/ai-companions/${companionId}/user-photo/${photoId}/content`);
+}
+
+export function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onProgress: (percent: number) => void) {
+  return new Promise<{ photo: AiCompanionUserPhoto }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${apiBaseUrl}/api/ai-companions/${companionId}/user-photo`);
+    request.withCredentials = true;
+    const authToken = getAuthToken();
+    if (authToken) request.setRequestHeader("Authorization", `Bearer ${authToken}`);
+    Object.entries(getClientPlatformHeaders()).forEach(([name, value]) => request.setRequestHeader(name, value));
+    request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)); };
+    request.onerror = () => reject(new Error("Upload interrupted. Check your connection and retry."));
+    request.onload = () => {
+      let data: { photo?: AiCompanionUserPhoto; error?: string } = {};
+      try { data = JSON.parse(request.responseText) as typeof data; } catch { /* handled below */ }
+      if (request.status >= 200 && request.status < 300 && data.photo) { onProgress(100); resolve({ photo: data.photo }); }
+      else reject(new Error(data.error ?? "The photo could not be uploaded."));
+    };
+    const body = new FormData(); body.append("photo", photo, "shared-selfie.jpg"); request.send(body);
+  });
+}
+
+export function deleteAiCompanionUserPhoto(companionId: string, photoId: string) {
+  return request<{ ok: true }>(`/api/ai-companions/${companionId}/user-photo/${photoId}`, { method: "DELETE" });
 }
 
 export function sendAiCompanionMessage(companionId: string, body: string) {

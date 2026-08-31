@@ -6,6 +6,7 @@ import {
   completeAiCompanionVisualIdentity,
   createAiCompanion,
   createAiCompanionMemory,
+  deleteAiCompanionUserPhoto,
   deleteAiCompanionMemory,
   dismissAiCompanionMemoryCandidate,
   fetchAiCompanion,
@@ -14,6 +15,8 @@ import {
   fetchAiCompanions,
   fetchAiCompanionPhotoPreview,
   fetchAiCompanionDeliveredPhoto,
+  fetchAiCompanionUserPhoto,
+  fetchAiCompanionUserPhotoContent,
   fetchAiCompanionVisualCandidatePreview,
   fetchAiCompanionVisualIdentityPreview,
   prepareAiCompanionVisualIdentity,
@@ -23,6 +26,7 @@ import {
   reportAiCompanionMessage,
   requestAiCompanionPhoto,
   sendAiCompanionMessage,
+  uploadAiCompanionUserPhoto,
   type AiCompanion,
 } from "../../lib/api";
 
@@ -40,6 +44,24 @@ function companionInitial(companion: AiCompanion) {
 }
 
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
+
+async function normalizeUserPhoto(file: File) {
+  if (file.size <= 0 || file.size > 5 * 1024 * 1024) throw new Error("Choose a photo that is 5 MB or smaller.");
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch { throw new Error("This file could not be read as a photo. Choose a JPEG, PNG, or WebP image."); }
+  try {
+    if (bitmap.width < 256 || bitmap.height < 256) throw new Error("Photo dimensions must be at least 256 by 256 pixels.");
+    if (bitmap.width > 6000 || bitmap.height > 6000 || bitmap.width * bitmap.height > 20_000_000) throw new Error("Photo dimensions are too large. Choose an image up to 6000 pixels per side and 20 megapixels.");
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas"); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    const context = canvas.getContext("2d"); if (!context) throw new Error("Photo processing is unavailable in this browser.");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    if (!blob) throw new Error("The photo could not be prepared for upload.");
+    return blob;
+  } finally { bitmap.close(); }
+}
 
 export function AiCompanionsPage() {
   const queryClient = useQueryClient();
@@ -61,6 +83,11 @@ export function AiCompanionsPage() {
   const [castingCandidateUrls, setCastingCandidateUrls] = useState<Record<string, string>>({});
   const [lifestyleTestUrls, setLifestyleTestUrls] = useState<string[]>([]);
   const [deliveredPhotoUrls, setDeliveredPhotoUrls] = useState<Record<string, string>>({});
+  const [selectedUserPhoto, setSelectedUserPhoto] = useState<Blob | null>(null);
+  const [selectedUserPhotoUrl, setSelectedUserPhotoUrl] = useState<string | null>(null);
+  const [approvedUserPhotoUrl, setApprovedUserPhotoUrl] = useState<string | null>(null);
+  const [userPhotoProgress, setUserPhotoProgress] = useState(0);
+  const [userPhotoError, setUserPhotoError] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +102,7 @@ export function AiCompanionsPage() {
     retry: false,
   });
   const appearancesQuery = useQuery({ queryKey: ["ai-companion-appearances"], queryFn: fetchAiCompanionAppearances, retry: false });
+  const userPhotoQuery = useQuery({ queryKey: ["ai-companion-user-photo", selectedId], queryFn: () => fetchAiCompanionUserPhoto(selectedId!), enabled: Boolean(selectedId), retry: false });
 
   const createMutation = useMutation({
     mutationFn: createAiCompanion,
@@ -153,6 +181,18 @@ export function AiCompanionsPage() {
     mutationFn: () => approveAiCompanionVisualIdentity(selectedId!),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
   });
+  const userPhotoUploadMutation = useMutation({
+    mutationFn: () => uploadAiCompanionUserPhoto(selectedId!, selectedUserPhoto!, setUserPhotoProgress),
+    onSuccess: async () => {
+      setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null);
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
+    },
+    onError: (error) => setUserPhotoError(error instanceof Error ? error.message : "The photo could not be uploaded."),
+  });
+  const userPhotoDeleteMutation = useMutation({
+    mutationFn: () => deleteAiCompanionUserPhoto(selectedId!, userPhotoQuery.data!.photo!.id),
+    onSuccess: async () => { setApprovedUserPhotoUrl(null); await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] }); },
+  });
 
   function create(event: FormEvent) {
     event.preventDefault();
@@ -168,6 +208,16 @@ export function AiCompanionsPage() {
   function saveMemory(event: FormEvent) {
     event.preventDefault();
     if (memory.trim() && !memoryMutation.isPending) memoryMutation.mutate();
+  }
+  async function chooseUserPhoto(file: File | undefined) {
+    if (!file) return;
+    setUserPhotoError(null); setUserPhotoProgress(0);
+    try {
+      const normalized = await normalizeUserPhoto(file);
+      const url = URL.createObjectURL(normalized);
+      if (selectedUserPhotoUrl) URL.revokeObjectURL(selectedUserPhotoUrl);
+      setSelectedUserPhoto(normalized); setSelectedUserPhotoUrl(url);
+    } catch (error) { setSelectedUserPhoto(null); setUserPhotoError(error instanceof Error ? error.message : "Choose a valid photo."); }
   }
 
   const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
@@ -249,6 +299,17 @@ export function AiCompanionsPage() {
     return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [deliveredPhotoIds, selectedId]);
 
+  const approvedUserPhotoId = userPhotoQuery.data?.photo?.id ?? "";
+  useEffect(() => {
+    setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoError(null); setUserPhotoProgress(0);
+  }, [selectedId]);
+  useEffect(() => {
+    if (!selectedId || !approvedUserPhotoId) { setApprovedUserPhotoUrl(null); return; }
+    let cancelled = false; let url = "";
+    fetchAiCompanionUserPhotoContent(selectedId, approvedUserPhotoId).then((nextUrl) => { url = nextUrl; if (cancelled) URL.revokeObjectURL(nextUrl); else setApprovedUserPhotoUrl(nextUrl); }).catch(() => { if (!cancelled) setApprovedUserPhotoUrl(null); });
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [approvedUserPhotoId, selectedId]);
+
   return (
     <main className="page-shell ai-companions-page">
       <section className="ai-hero">
@@ -307,6 +368,19 @@ export function AiCompanionsPage() {
           <form className="ai-composer" onSubmit={send}><textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} /><button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>{messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">Photo delivery failed: {photoRequestError}</p> : null}</form>
         </div>
         <aside className="ai-memory-card">
+          <section className="ai-user-photo-card">
+            <p className="eyebrow">SHARE A PHOTO</p>
+            <h2>Your private shared selfie</h2>
+            <p className="muted">Your photo stays private and separate from your companion's fixed appearance. It is usable only after validation and safety review.</p>
+            {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} uploads left this month` : "Available with Velora Pro or Ultra"}</small> : null}
+            {selectedUserPhotoUrl ? <img className="ai-user-photo-preview" src={selectedUserPhotoUrl} alt="Selected private photo preview" /> : approvedUserPhotoUrl ? <img className="ai-user-photo-preview" src={approvedUserPhotoUrl} alt="Your approved private shared photo" /> : null}
+            {!selectedUserPhoto ? <div className="ai-user-photo-actions"><label className="secondary-button ai-photo-picker" aria-disabled={userPhotoQuery.data?.quota.monthlyLimit === 0}>Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" disabled={userPhotoQuery.data?.quota.monthlyLimit === 0} onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><label className="secondary-button ai-photo-picker" aria-disabled={userPhotoQuery.data?.quota.monthlyLimit === 0}>Take selfie<input type="file" accept="image/*" capture="user" disabled={userPhotoQuery.data?.quota.monthlyLimit === 0} onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div> : <div className="ai-user-photo-actions"><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Safety review..." : `Uploading ${userPhotoProgress}%` : approvedUserPhotoId ? "Replace photo" : "Upload photo"}</button><button className="text-button" type="button" onClick={() => { if (selectedUserPhotoUrl) URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Choose another</button></div>}
+            {userPhotoUploadMutation.isPending ? <progress max="100" value={userPhotoProgress} aria-label="Photo upload progress" /> : null}
+            {approvedUserPhotoId && !selectedUserPhoto ? <button className="text-button" type="button" onClick={() => userPhotoDeleteMutation.mutate()} disabled={userPhotoDeleteMutation.isPending}>{userPhotoDeleteMutation.isPending ? "Removing..." : "Remove photo"}</button> : null}
+            {userPhotoError ? <p className="form-error">{userPhotoError}</p> : null}
+            {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
+            <small className="muted">JPEG, PNG, or WebP · 5 MB max · one clearly adult person · metadata removed</small>
+          </section>
           <p className="eyebrow">JOURNAL OF US</p>
           <h2>What {detail.companion.name} remembers</h2>
           <p className="muted">You control every long-term memory. Review suggestions before they are saved.</p>

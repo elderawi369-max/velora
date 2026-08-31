@@ -477,6 +477,43 @@ export const aiCompanionPhotoUsage = sqliteTable("ai_companion_photo_usage", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// User-owned shared photos are deliberately separate from companion visual
+// identities and generated assets. They can never become catalog references.
+export const aiCompanionUserPhotos = sqliteTable("ai_companion_user_photos", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  objectKey: text("object_key"),
+  status: text("status").notNull().default("quarantined"),
+  contentType: text("content_type"),
+  byteSize: integer("byte_size"),
+  width: integer("width"),
+  height: integer("height"),
+  contentSha256: text("content_sha256"),
+  moderationProvider: text("moderation_provider"),
+  moderationReason: text("moderation_reason"),
+  replacedById: text("replaced_by_id"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  deletedAt: integer("deleted_at"),
+});
+
+export const aiUserPhotoUploadDailyUsage = sqliteTable("ai_user_photo_upload_daily_usage", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  dayNumber: integer("day_number").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiUserPhotoUploadMonthlyUsage = sqliteTable("ai_user_photo_upload_monthly_usage", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  billingPeriod: text("billing_period").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionMemories = sqliteTable("ai_companion_memories", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id),
