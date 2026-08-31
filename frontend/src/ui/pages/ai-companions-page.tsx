@@ -237,6 +237,17 @@ export function AiCompanionsPage() {
 
       {companionsQuery.isLoading ? <p className="status-message">Loading your companion space...</p> : null}
       {companionsQuery.error ? <p className="form-error">{companionsQuery.error.message}</p> : null}
+      {selectedId && detailQuery.isLoading ? <p className="status-message">Loading your companion...</p> : null}
+      {selectedId && detailQuery.error ? <p className="form-error">Unable to load your companion: {detailQuery.error.message}</p> : null}
+
+      {selectedId && !detail && companionsQuery.data?.companions.length ? (
+        <section className="ai-companion-workspace">
+          <aside className="ai-sidebar">
+            <p className="eyebrow">YOUR COMPANION</p>
+            {companionsQuery.data.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} key={companion.id} onClick={() => setSelectedId(companion.id)}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>AI companion</small></span></button>)}
+          </aside>
+        </section>
+      ) : null}
 
       {canCreate ? (
         <section className="ai-create-card">
