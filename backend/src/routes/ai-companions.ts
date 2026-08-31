@@ -133,6 +133,12 @@ function effectivePhotoLimit(planLimit: number, isApprovedBeta: boolean) {
 function isCompanionPhotoRequest(message: string) {
   return /\b(?:send|show|share|give|see|want|take)\b[\s\S]{0,60}\b(?:photo|picture|pic|selfie|image)\b|\b(?:photo|picture|pic|selfie|image)\b[\s\S]{0,40}\b(?:of you|yourself|please)\b/i.test(message);
 }
+function requestedPhotoBankFingerprint(prompt: string) {
+  if (/\b(?:date|dinner|restaurant|dress|night out|rooftop)\b/i.test(prompt)) return "bank-date-night-v1";
+  if (/\b(?:outside|outdoor|park|walk|daylight|morning|coffee stand)\b/i.test(prompt)) return "bank-outdoor-daytime-v1";
+  if (/\b(?:selfie|cozy|home|couch|sofa|bed|bedtime|before i go to bed|evening)\b/i.test(prompt)) return "bank-cozy-evening-v1";
+  return null;
+}
 function isDisallowedCompanionPhotoRequest(prompt: string, identity: string) {
   return disallowedCompanionPhotoRequest.test(prompt) || (identity !== "man" && /\b(?:topless|shirtless)\b/i.test(prompt));
 }
@@ -1145,6 +1151,8 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   if (!traits) return c.json({ error: "The companion visual identity is invalid." }, 500);
   const prompt = lifestylePhotoPrompt(scene, traits);
   let [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.sceneFingerprint, fingerprint), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
+  const requestedBankFingerprint = requestedPhotoBankFingerprint(parsed.data.prompt);
+  if (!bankAsset && requestedBankFingerprint) [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.sceneFingerprint, requestedBankFingerprint), eq(aiCompanionPhotoAssets.status, "approved"))).limit(1);
   // A catalog-approved bank photo is a safe immediate fallback while an exact
   // requested scene has not yet been pre-generated.
   if (!bankAsset) [bankAsset] = await db.select().from(aiCompanionPhotoAssets).where(and(eq(aiCompanionPhotoAssets.appearanceCatalogId, visualIdentity.appearanceCatalogId), eq(aiCompanionPhotoAssets.status, "approved"))).orderBy(desc(aiCompanionPhotoAssets.updatedAt)).limit(1);
