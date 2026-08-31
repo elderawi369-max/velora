@@ -1322,7 +1322,9 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     const relationshipPoints = conversation.relationshipPoints + relationshipPointsForMessage(parsed.data.body);
     await db.update(aiCompanionConversations).set({ trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
   }
-  await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } });
+  // The conversation is already committed. Telemetry must not suppress the
+  // response that tells the client to continue with an attached photo action.
+  await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } }).catch(() => undefined);
   return c.json({ userMessage, assistantMessage, trialRepliesUsed, photoRequested: moderationStatus === "allowed" && isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0 });
 });
 
