@@ -795,7 +795,9 @@ aiCompanionRoutes.post("/", async (c) => {
   await db.insert(aiCompanionVisualIdentities).values({ companionId: companion.id, appearanceCatalogId: appearance.id, version: 1, status: "ready", lockedTraitsJson: appearance.lockedTraitsJson, canonicalObjectKey: appearance.canonicalObjectKey, referenceObjectKeysJson: appearance.referenceObjectKeysJson, validationStatus: "approved", validationNotes: `Approved appearance catalog identity ${appearance.id}.`, createdAt: timestamp, updatedAt: timestamp });
   const conversation = { id: id("aiconv"), companionId: companion.id, userId: context.userId, trialRepliesUsed: 0, relationshipPoints: 0, relationshipStage: "new", createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiCompanionConversations).values(conversation);
-  await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey, appearanceId: appearance.id } });
+  // Creation is already committed at this point. A non-critical analytics write
+  // must not turn a successful companion creation into a misleading HTTP 500.
+  await logEvent(c.env, { eventType: "ai_companion_created", userId: context.userId, profileId: context.profileId, eventData: { persona: companion.personaKey, appearanceId: appearance.id } }).catch(() => undefined);
   return c.json({ companion, conversation }, 201);
 });
 
