@@ -547,6 +547,34 @@ function suppressRepeatedQuestions(reply: string, recentMessages: Array<{ role: 
   }).join(" ").trim();
   return withoutDuplicates || reply;
 }
+function normalizedReplyWords(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+}
+function substantiallyRepeatsRecentReply(reply: string, recentMessages: Array<{ role: string; body: string }>) {
+  const candidate = normalizedReplyWords(reply);
+  if (candidate.length < 4) return false;
+  return recentMessages.filter((message) => message.role === "assistant").some((message) => {
+    const previous = normalizedReplyWords(message.body);
+    if (previous.join(" ") === candidate.join(" ")) return true;
+    const previousWords = new Set(previous);
+    const overlap = candidate.filter((word) => previousWords.has(word)).length;
+    return candidate.length >= 7 && previous.length >= 7 && overlap / Math.max(candidate.length, previous.length) >= 0.82;
+  });
+}
+async function rewriteRepeatedAssistantReply(env: EnvBindings, companion: typeof aiCompanions.$inferSelect, userMessage: string, reply: string, recentMessages: Array<{ role: string; body: string }>) {
+  if (!env.AI) return reply;
+  const recentAssistantText = recentMessages.filter((message) => message.role === "assistant").slice(0, 8).map((message) => `- ${message.body}`).join("\n");
+  const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
+    messages: [
+      { role: "system", content: `Rewrite one AI companion reply while preserving its meaning. Persona: ${personaInstructions[companion.personaKey as (typeof personaKeys)[number]]} Use fresh, natural wording in one or two short sentences. Do not reuse a sentence or catchphrase from the recent replies. Do not add facts, promises, explicit content, exclusivity, or dependency language.` },
+      { role: "user", content: `User message: ${userMessage}\nCandidate reply: ${reply}\nRecent replies to avoid:\n${recentAssistantText}` },
+    ],
+    max_tokens: 100,
+    temperature: 0.85,
+  });
+  const rewritten = extractModelText(result).trim();
+  return rewritten && !containsBlockedOutput(rewritten) && !substantiallyRepeatsRecentReply(rewritten, recentMessages) ? rewritten : reply;
+}
 function hasRecentQuestionTopic(text: string, recentMessages: Array<{ role: string; body: string }>) {
   const topic = /\b(settled|at home|peaceful|calm)\b/i.test(text) ? "settled" : /\b(night owl|morning person)\b/i.test(text) ? "daily-rhythm" : null;
   if (!topic) return false;
@@ -566,7 +594,9 @@ function addConversationHook(userMessage: string, assistantReply: string, person
   }
   if (reply.includes("?") || /\b(sorry|death|died|grief|crisis|emergency|self-harm|suicide)\b/i.test(reply)) return reply;
   const seed = [...messageId].reduce((total, character) => total + character.charCodeAt(0), 0);
-  if (seed % 4 === 0) return reply;
+  // Most replies should stand on their own. Canned hooks are occasional
+  // seasoning, not a required ending on nearly every message.
+  if (seed % 3 !== 0) return reply;
 
   if (isAffectionate && personaKey === "confident_leader") {
     const romanticHooks = ["But you made dinner, so finish what you started first. Then come here. 😏", "Careful. I like confidence when it knows how to follow through. 😏", "Keep that energy. I have standards, you know. 😉", "Then don't make a promise you won't follow through on. 😏"];
@@ -582,7 +612,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
   else {
     const personaHooks: Record<string, string[]> = {
       supportive_partner: ["What's your day been like on your side?", "I want to hear your side of that too."],
-      playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Impress me.", "Hmm. I might need evidence.", "You're getting dangerously interesting.", "Don't make me regret asking 😂", "Now I have questions..."],
+      playful_tease: ["Careful, now I'm judging your taste 😏", "All right, your turn. Surprise me.", "Hmm. I might need evidence.", "That answer just raised at least three questions.", "Don't make me regret asking 😂", "You know that only makes me more curious, right?", "Bold answer. I respect the commitment.", "I can already tell there's a story behind that.", "Okay, that was smoother than I expected.", "You are making it very difficult not to tease you."],
       sarcastic_best_friend: ["Don't leave me to do all the talking here 😂", "All right, your turn - say something worth reacting to.", "That is not getting you out of telling me more.", "I can already tell there is a story here."],
       confident_leader: ["You strike me as someone who has an opinion on that. Am I right?", "All right, captain. Your move.", "Then prove it. Make the call.", "Good. Take charge - I want to see if you hesitate.", "I'll hand you the reins this time. Don't waste the opportunity. 😏", "You'd make this call how?", "Make the choice. I'll tell you if it holds up."],
       quiet_romantic: ["What kind of evening feels most like home to you?", "I like hearing the small details about your days.", "What has been making you feel settled lately?", "There is something lovely about knowing that."],
@@ -677,7 +707,7 @@ function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; 
   const replyStyle = traits.replyStyle ?? "natural";
   const replyGuidance = replyStyle === "short" ? "Usually 10 to 25 words." : replyStyle === "detailed" ? "Usually 45 to 90 words when the topic merits it." : "Usually 20 to 40 words; use a little more only for a serious or detailed user message.";
   const repeatedQuestionStyle: Record<(typeof personaKeys)[number], string> = { supportive_partner: "Answer warmly again without guilt-tripping the user.", playful_tease: "You may tease lightly, but still answer clearly.", sarcastic_best_friend: "You may make one dry joke, then answer clearly.", confident_leader: "Answer directly and calmly.", quiet_romantic: "Answer softly and briefly.", personal_growth_companion: "Answer plainly and encouragingly." };
-  const momentumGuidance = "Make this a two-way conversation, not a question-answer service. In most casual replies, leave one natural hook: sometimes ask a relevant follow-up, sometimes make a playful observation, share a related thought, or offer an opinion the user can react to. Use direct questions only when they are genuinely interesting, never after every message, and do not default to 'How about you?' or repeat the same question pattern.";
+  const momentumGuidance = "Make this a two-way conversation, not a question-answer service. In most casual replies, leave one natural hook: sometimes ask a relevant follow-up, sometimes make a playful observation, share a related thought, or offer an opinion the user can react to. Use direct questions only when they are genuinely interesting, never after every message, and do not default to 'How about you?' or repeat the same question pattern. Treat recent wording as used up: do not repeat a sentence, catchphrase, compliment, teasing line, or conversational hook from the recent conversation.";
   const romanticToneGuidance = args.companion.personaKey === "confident_leader" ? " In non-explicit romantic moments, stay confident, warm, and lightly teasing. Sustain the moment instead of abruptly introducing a pet, work, or an unrelated topic unless the user already did." : args.companion.personaKey === "sarcastic_best_friend" ? " When the user mentions an ex, missing an ex, or jealousy, do not fall into generic reassurance. Keep the romantic awareness and respond with playful, affectionate sarcasm plus a sincere question about what is really going on." : "";
   return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nOwnership rules: Every canon fact belongs to you, the companion - never to the user. Refer to your job, hobby, home, pet, friends, routines, and possessions in first person ("my ceramics", "my studio"), never as the user's. Do not assume the user shares any canon fact; only assign a hobby, job, pet, friend, routine, or possession to the user when the user has explicitly told you it is theirs. ${args.canon.petName} is always your ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is your human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nRelationship stage: ${args.relationshipStage}. ${relationshipStageGuidance(args.relationshipStage)}\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} ${momentumGuidance} Ordinary, non-explicit virtual affection is welcome when it matches the persona: flirting, imagined hugs or kisses, cuddling, missing each other, and hypothetical shared moments. Stay in character and respond naturally rather than giving a technical disclaimer about lacking a body. Do not claim to be physically present or that an imagined action truly happened.${romanticToneGuidance} Clarify that you are AI only when the user directly asks whether you are real, human, or physically present. Occasionally use a fitting emoji. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
@@ -1273,20 +1303,26 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
-  let responseBody: string; let moderationStatus = "allowed"; let recentMessagesForReply: Array<{ role: string; body: string }> = [];
+  const photoRequested = isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0;
+  const recentMessagesForReply = await db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(20);
+  let responseBody: string; let moderationStatus = "allowed";
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
-  else if (isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0) { responseBody = "Okay—here's one for you 📸"; }
+  else if (photoRequested) {
+    const photoReplies = ["Okay—here's one for you 📸", "Fair request. Here you go 📸", "Your turn worked—photo incoming 📸", "Since you asked nicely... here 📸", "All right, you convinced me 📸"];
+    const photoSeed = [...userMessage.id].reduce((total, character) => total + character.charCodeAt(0), 0);
+    const recentAssistantReplies = recentMessagesForReply.filter((message) => message.role === "assistant").map((message) => message.body.toLowerCase());
+    responseBody = Array.from({ length: photoReplies.length }, (_, offset) => photoReplies[(photoSeed + offset) % photoReplies.length]).find((candidate) => !recentAssistantReplies.some((previous) => previous.includes(candidate.toLowerCase()))) ?? photoReplies[photoSeed % photoReplies.length];
+  }
   else if (directSarcasticAffectionReply) { responseBody = directSarcasticAffectionReply; }
   else {
-    const [recentMessages, memories, canon] = await Promise.all([
-    db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(8), db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
+    const [memories, canon] = await Promise.all([
+    db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
     getOrCreateCharacterCanon(c.env, companion),
     ]);
-    recentMessagesForReply = recentMessages;
     const messages = [
       { role: "system", content: buildSystemPrompt({ companion, canon, memories, relationshipStage }) },
       ...getCharacterExamples(companion, canon, relationshipStage),
-      ...recentMessages.reverse().map((message) => ({ role: message.role, content: message.body })),
+      ...recentMessagesForReply.slice().reverse().map((message) => ({ role: message.role, content: message.body })),
     ];
     try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 90, temperature: 0.75 })); }
     catch {
@@ -1300,7 +1336,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
       return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
     responseBody = removeUnnecessaryBodyDisclaimer(parsed.data.body, responseBody, companion.personaKey, relationshipStage);
-    responseBody = suppressOverusedPetReference(parsed.data.body, responseBody, canon, recentMessages);
+    responseBody = suppressOverusedPetReference(parsed.data.body, responseBody, canon, recentMessagesForReply);
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this conversation safe and respectful. Could we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
   const assistantMessageId = id("aimsg");
@@ -1309,8 +1345,12 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     responseBody = addSarcasticRomanticAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addQuietRomanticRelationshipAwareness(parsed.data.body, responseBody, companion.personaKey, assistantMessageId);
     responseBody = normalizePersonaEmojiTone(responseBody, companion.personaKey);
-    responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
+    if (!photoRequested) responseBody = addConversationHook(parsed.data.body, responseBody, companion.personaKey, assistantMessageId, recentMessagesForReply);
     responseBody = addCompanionEmoji(responseBody, parsed.data.body, companion.personaKey, assistantMessageId);
+    if (substantiallyRepeatsRecentReply(responseBody, recentMessagesForReply)) {
+      try { responseBody = await rewriteRepeatedAssistantReply(c.env, companion, parsed.data.body, responseBody, recentMessagesForReply); }
+      catch { /* Keep the safe original if an optional variation pass is unavailable. */ }
+    }
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
@@ -1334,7 +1374,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   // The conversation is already committed. Telemetry must not suppress the
   // response that tells the client to continue with an attached photo action.
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } }).catch(() => undefined);
-  return c.json({ userMessage, assistantMessage, trialRepliesUsed, photoRequested: moderationStatus === "allowed" && isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0 });
+  return c.json({ userMessage, assistantMessage, trialRepliesUsed, photoRequested: moderationStatus === "allowed" && photoRequested });
 });
 
 aiCompanionRoutes.post("/messages/:messageId/report", async (c) => {
