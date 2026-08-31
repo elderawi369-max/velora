@@ -193,12 +193,11 @@ aiCompanionUserPhotoRoutes.get("/:companionId/user-photo", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
   const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   await retryPendingDeletes(c.env, context.userId, companion.id);
-  const [[photo], quota, monthlyUsed] = await Promise.all([
-    getDb(c.env).select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"), isNull(aiCompanionUserPhotos.messageId))).limit(1),
+  const [quota, monthlyUsed] = await Promise.all([
     getUploadQuota(c.env, context.userId),
     readMonthlyUsage(c.env, context.userId),
   ]);
-  return c.json({ photo: publicPhoto(photo), quota: { plan: quota.plan, monthlyLimit: quota.monthlyLimit, monthlyUsed, remaining: Math.max(0, quota.monthlyLimit - monthlyUsed) } });
+  return c.json({ photo: null, quota: { plan: quota.plan, monthlyLimit: quota.monthlyLimit, monthlyUsed, remaining: Math.max(0, quota.monthlyLimit - monthlyUsed) } });
 });
 
 aiCompanionUserPhotoRoutes.get("/:companionId/user-photo/:photoId/content", async (c) => {
@@ -248,6 +247,10 @@ aiCompanionUserPhotoRoutes.post("/:companionId/user-photo", async (c) => {
       return c.json({ error: friendlyRejection(moderation), photo: { id: photoId, status: "rejected" } }, 422);
     }
     const { userMessage, assistantMessage } = await attachApprovedPhotoToChat(c.env, context.userId, companion, photoId, image.bytes);
+    // If this is the same image that was approved by the pre-chat release,
+    // retire that standalone copy so the UI cannot offer a duplicate send.
+    await db.update(aiCompanionUserPhotos).set({ status: "deleting", replacedById: photoId, updatedAt: Date.now() }).where(and(eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.contentSha256, contentSha256), eq(aiCompanionUserPhotos.status, "approved"), isNull(aiCompanionUserPhotos.messageId)));
+    await retryPendingDeletes(c.env, context.userId, companion.id);
     const [approved] = await db.select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.id, photoId), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.status, "approved"))).limit(1);
     return c.json({ photo: publicPhoto(approved), userMessage, assistantMessage }, 201);
   } catch (error) {
@@ -257,33 +260,6 @@ aiCompanionUserPhotoRoutes.post("/:companionId/user-photo", async (c) => {
     // object keys, model output, user identifiers, or image metadata.
     console.error("User photo processing failed", error instanceof Error ? error.message.slice(0, 200) : "Unknown processing error");
     return c.json({ error: "The photo could not be validated safely. Please retry with another image.", photo: { id: photoId, status: "failed" } }, 502);
-  }
-});
-
-// Photos approved by the first release can be attached without consuming a
-// second upload attempt. The object never leaves the authenticated pipeline.
-aiCompanionUserPhotoRoutes.post("/:companionId/user-photo/:photoId/send", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
-  const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
-  if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Private photo sharing is temporarily unavailable." }, 503);
-  const db = getDb(c.env);
-  const [photo] = await db.select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.id, c.req.param("photoId")), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"), isNull(aiCompanionUserPhotos.messageId))).limit(1);
-  if (!photo?.objectKey) return c.json({ error: "That approved photo is no longer available." }, 404);
-  const claim = await db.update(aiCompanionUserPhotos).set({ status: "attaching", updatedAt: Date.now() }).where(and(eq(aiCompanionUserPhotos.id, photo.id), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.status, "approved"), isNull(aiCompanionUserPhotos.messageId)));
-  if ((claim.meta.changes ?? 0) !== 1) return c.json({ error: "That photo is already being sent." }, 409);
-  const object = await c.env.COMPANION_IMAGES.get(photo.objectKey);
-  if (!object) {
-    await db.update(aiCompanionUserPhotos).set({ status: "failed", objectKey: null, moderationReason: "storage_missing", updatedAt: Date.now(), deletedAt: Date.now() }).where(and(eq(aiCompanionUserPhotos.id, photo.id), eq(aiCompanionUserPhotos.userId, context.userId)));
-    return c.json({ error: "That approved photo is no longer available." }, 404);
-  }
-  try {
-    const { userMessage, assistantMessage } = await attachApprovedPhotoToChat(c.env, context.userId, companion, photo.id, new Uint8Array(await object.arrayBuffer()));
-    const [attached] = await db.select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.id, photo.id), eq(aiCompanionUserPhotos.userId, context.userId))).limit(1);
-    return c.json({ photo: publicPhoto(attached), userMessage, assistantMessage });
-  } catch (error) {
-    await db.update(aiCompanionUserPhotos).set({ status: "approved", updatedAt: Date.now() }).where(and(eq(aiCompanionUserPhotos.id, photo.id), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.status, "attaching"))).catch(() => undefined);
-    console.error("Approved user photo chat attachment failed", error instanceof Error ? error.message.slice(0, 200) : "Unknown processing error");
-    return c.json({ error: "Your photo is still approved, but it could not be sent just now. Please try again." }, 502);
   }
 });
 

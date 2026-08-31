@@ -435,8 +435,7 @@
 .ai-composer .form-error,
 .ai-composer progress,
 .ai-composer > .ai-photo-quota,
-.ai-attachment-preview,
-.ai-legacy-photo-note { grid-column: 1 / -1; }
+.ai-attachment-preview { grid-column: 1 / -1; }
 .ai-composer .form-error { margin: 0; }
 .ai-composer progress { width: 100%; accent-color: #2d6f9e; }
 
@@ -450,8 +449,6 @@
 .ai-attachment-preview > div { display: grid; gap: 5px; }
 .ai-attachment-preview small { color: #806874; }
 .ai-attachment-preview span { display: flex; gap: 12px; align-items: center; }
-.ai-legacy-photo-note { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid #d8e5ef; border-radius: 13px; color: #315f82; background: #f1f8fc; }
-.ai-legacy-photo-note > span { display: grid; flex: 1 1 220px; gap: 2px; }
 
 .ai-relationship-stage {
   display: block;

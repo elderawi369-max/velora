@@ -22,7 +22,6 @@ import {
   prepareAiCompanionVisualIdentity,
   regenerateAiCompanionVisualIdentity,
   runAiCompanionLifestyleTest,
-  sendApprovedAiCompanionUserPhoto,
   selectAiCompanionVisualCandidate,
   reportAiCompanionMessage,
   requestAiCompanionPhoto,
@@ -200,13 +199,6 @@ export function AiCompanionsPage() {
       await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
     },
   });
-  const legacyUserPhotoSendMutation = useMutation({
-    mutationFn: () => sendApprovedAiCompanionUserPhoto(selectedId!, userPhotoQuery.data!.photo!.id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
-      await queryClient.invalidateQueries({ queryKey: ["ai-companion-user-photo", selectedId] });
-    },
-  });
 
   function create(event: FormEvent) {
     event.preventDefault();
@@ -237,6 +229,10 @@ export function AiCompanionsPage() {
 
   const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
   const detail = detailQuery.data;
+  const chatTimeline = detail ? [
+    ...detail.messages.map((item) => ({ kind: "message" as const, createdAt: item.createdAt, item })),
+    ...detail.deliveredPhotos.map((photo) => ({ kind: "companion-photo" as const, createdAt: photo.createdAt, photo })),
+  ].sort((left, right) => left.createdAt - right.createdAt) : [];
   // Casting and visual-identity review are an internal development workflow.
   // Public companion conversations must never expose these controls or states.
   const showInternalVisualIdentityControls = false;
@@ -255,12 +251,14 @@ export function AiCompanionsPage() {
 
   useEffect(() => {
     if (!detail) return;
-    const frame = window.requestAnimationFrame(() => {
+    const scrollToLatest = () => {
       const messages = messagesRef.current;
       if (messages) messages.scrollTop = messages.scrollHeight;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [detail?.conversation.id, detail?.messages.length, pendingUserMessage]);
+    };
+    const frame = window.requestAnimationFrame(scrollToLatest);
+    const timer = window.setTimeout(scrollToLatest, 80);
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); };
+  }, [detail?.conversation.id, detail?.messages.length, detail?.deliveredPhotos.length, Object.keys(userPhotoUrls).length, Object.keys(deliveredPhotoUrls).length, pendingUserMessage]);
 
   useEffect(() => {
     const status = detail?.visualIdentity?.status;
@@ -387,7 +385,9 @@ export function AiCompanionsPage() {
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_selected" ? <button className="text-button" onClick={() => completeVisualIdentityMutation.mutate()}>Build six canonical views</button> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note"><button className="text-button" onClick={() => lifestyleTestMutation.mutate()}>Run lifestyle test</button><button className="text-button" onClick={() => approveVisualIdentityMutation.mutate()}>Approve canonical identity</button></div> : null}
           <div className="ai-messages" ref={messagesRef}>
-            {detail.messages.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : detail.messages.map((item) => {
+            {chatTimeline.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : chatTimeline.map((entry) => {
+              if (entry.kind === "companion-photo") return deliveredPhotoUrls[entry.photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}><img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null;
+              const item = entry.item;
               const attachedPhoto = userPhotoByMessageId.get(item.id);
               return <article className={`${item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"}${attachedPhoto ? " ai-photo-message" : ""}`} key={item.id}>
                 {attachedPhoto && userPhotoUrls[attachedPhoto.id] ? <><img src={userPhotoUrls[attachedPhoto.id]} alt="Photo you sent to your AI companion" /><button className="ai-photo-remove" type="button" onClick={() => userPhotoDeleteMutation.mutate(attachedPhoto.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></> : <p>{item.body}</p>}
@@ -395,7 +395,6 @@ export function AiCompanionsPage() {
                 {reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}
               </article>;
             })}
-            {detail.deliveredPhotos.map((photo) => deliveredPhotoUrls[photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={photo.id}><img src={deliveredPhotoUrls[photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null)}
             {pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}
           </div>
           <form className="ai-composer" onSubmit={send}>
@@ -406,12 +405,10 @@ export function AiCompanionsPage() {
             <textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} />
             <button className="primary-button" disabled={!detail.aiEnabled || !message.trim() || messageMutation.isPending}>{messageMutation.isPending ? "Replying..." : "Send"}</button>
             {selectedUserPhotoUrl ? <div className="ai-attachment-preview"><img src={selectedUserPhotoUrl} alt="Photo ready to send" /><div><strong>Ready to send privately</strong><small>It will appear in chat only after safety review.</small><span><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Reviewing..." : `Uploading ${userPhotoProgress}%` : "Send photo"}</button><button className="text-button" type="button" onClick={() => { URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Cancel</button></span></div></div> : null}
-            {userPhotoQuery.data?.photo ? <div className="ai-legacy-photo-note"><span><strong>Your earlier approved upload wasn't sent to chat.</strong><small>You can send it now without using another upload.</small></span><button className="secondary-button" type="button" onClick={() => legacyUserPhotoSendMutation.mutate()} disabled={legacyUserPhotoSendMutation.isPending}>{legacyUserPhotoSendMutation.isPending ? "Sending..." : "Send it now"}</button><button className="text-button" type="button" onClick={() => userPhotoDeleteMutation.mutate(userPhotoQuery.data!.photo!.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></div> : null}
             {userPhotoUploadMutation.isPending ? <progress max="100" value={userPhotoProgress} aria-label="Photo upload progress" /> : null}
             {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}
             {userPhotoError ? <p className="form-error">{userPhotoError}</p> : null}
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
-            {legacyUserPhotoSendMutation.error ? <p className="form-error">{legacyUserPhotoSendMutation.error.message}</p> : null}
             {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">Photo delivery failed: {photoRequestError}</p> : null}
           </form>
         </div>

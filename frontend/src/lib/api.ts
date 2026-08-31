@@ -1092,10 +1092,6 @@ export function deleteAiCompanionUserPhoto(companionId: string, photoId: string)
   return request<{ ok: true }>(`/api/ai-companions/${companionId}/user-photo/${photoId}`, { method: "DELETE" });
 }
 
-export function sendApprovedAiCompanionUserPhoto(companionId: string, photoId: string) {
-  return request<{ photo: AiCompanionUserPhoto; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage }>(`/api/ai-companions/${companionId}/user-photo/${photoId}/send`, { method: "POST" });
-}
-
 export function sendAiCompanionMessage(companionId: string, body: string) {
   return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number; photoRequested: boolean }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
 }
