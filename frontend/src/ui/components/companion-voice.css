@@ -3,6 +3,7 @@
 .ai-call-button { color: #2c6e7f; background: rgba(255,255,255,.82); box-shadow: 0 6px 18px rgba(45,111,158,.14); }
 .ai-call-button:hover:not(:disabled), .ai-send-button:hover:not(:disabled), .ai-mic-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 11px 24px rgba(45,111,158,.28); }
 .ai-call-button:disabled, .ai-send-button:disabled, .ai-mic-button:disabled { cursor: not-allowed; opacity: .42; }
+.ai-mic-button.recording { background: linear-gradient(145deg,#d66e84,#b54964); animation: ai-record-pulse 1.1s ease-in-out infinite; }
 .ai-call-button svg, .ai-send-button svg, .ai-mic-button svg { width: 22px; height: 22px; fill: currentColor; }
 .ai-message:has(.ai-voice-note) { width: min(360px, 88%); padding: 9px 11px 7px; }
 .ai-composer .ai-voice-quota { grid-column: 2 / -1; color: #75636c; font-size: .75rem; }

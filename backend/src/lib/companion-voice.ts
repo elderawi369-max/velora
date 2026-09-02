@@ -64,6 +64,7 @@ export function prepareSpokenText(text: string) {
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/^\s*[-*#>]\s*/gm, "")
     .replace(/[*_~]/g, "")
+    .replace(/[“”„‟«»\"]/g, "")
     .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "")
     .replace(/\s+/g, " ")
     .trim();

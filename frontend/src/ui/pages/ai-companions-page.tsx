@@ -28,6 +28,7 @@ import {
   reportAiCompanionMessage,
   requestAiCompanionPhoto,
   sendAiCompanionMessage,
+  transcribeAiCompanionVoiceInput,
   uploadAiCompanionUserPhoto,
   type AiCompanion,
 } from "../../lib/api";
@@ -96,12 +97,22 @@ export function AiCompanionsPage() {
   const [userPhotoError, setUserPhotoError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [callOpen, setCallOpen] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceTranscribing, setVoiceTranscribing] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     const first = companionsQuery.data?.companions[0];
     if (first && !selectedId) setSelectedId(first.id);
   }, [companionsQuery.data?.companions, selectedId]);
+
+  useEffect(() => () => {
+    if (voiceRecorderRef.current?.state === "recording") { voiceRecorderRef.current.onstop = null; voiceRecorderRef.current.stop(); }
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   const detailQuery = useQuery({
     queryKey: ["ai-companion", selectedId],
@@ -135,7 +146,7 @@ export function AiCompanionsPage() {
         try { await createAiCompanionVoiceMessage(selectedId!, result.assistantMessage.id); }
         catch (error) { setVoiceError(error instanceof Error ? error.message : "The voice note could not be created."); }
       }
-      const thinkingDelay = Math.min(2600, Math.max(900, result.assistantMessage.body.length * 9));
+      const thinkingDelay = requestVoice ? 0 : Math.min(2600, Math.max(900, result.assistantMessage.body.length * 9));
       await new Promise((resolve) => window.setTimeout(resolve, Math.max(0, thinkingDelay - (Date.now() - startedAt))));
       return result;
     },
@@ -223,6 +234,38 @@ export function AiCompanionsPage() {
   function send(event: FormEvent) {
     event.preventDefault();
     if (message.trim() && !messageMutation.isPending) messageMutation.mutate({ outgoingMessage: message, requestVoice: /\b(?:send|leave|record)\b[\s\S]{0,30}\bvoice (?:message|note)\b/i.test(message) });
+  }
+  async function toggleVoiceRecording() {
+    const activeRecorder = voiceRecorderRef.current;
+    if (activeRecorder?.state === "recording") {
+      activeRecorder.stop();
+      setVoiceRecording(false);
+      return;
+    }
+    setVoiceError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") { setVoiceError("Voice recording needs microphone access in a supported browser or the Velora app."); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const preferred = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) voiceChunksRef.current.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        setVoiceTranscribing(true);
+        try {
+          const audio = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          const transcript = await transcribeAiCompanionVoiceInput(selectedId!, audio);
+          messageMutation.mutate({ outgoingMessage: transcript, requestVoice: true });
+        } catch (error) { setVoiceError(error instanceof Error ? error.message : "The voice message could not be sent."); }
+        finally { setVoiceTranscribing(false); }
+      };
+      voiceRecorderRef.current = recorder;
+      recorder.start();
+      setVoiceRecording(true);
+    } catch { setVoiceError("Microphone access is needed to record a voice message."); }
   }
   function saveMemory(event: FormEvent) {
     event.preventDefault();
@@ -417,8 +460,8 @@ export function AiCompanionsPage() {
               <button className="ai-attachment-button" type="button" aria-label="Attach a photo" aria-expanded={photoMenuOpen} onClick={() => setPhotoMenuOpen((open) => !open)} disabled={!detail.aiEnabled || userPhotoUploadMutation.isPending}>+</button>
               {photoMenuOpen ? <div className="ai-attachment-menu"><label className="ai-photo-picker">Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><label className="ai-photo-picker">Take selfie<input type="file" accept="image/*" capture="user" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div> : null}
             </div>
-            <textarea value={message} maxLength={1000} placeholder={`Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending} />
-            {message.trim() ? <button className="ai-send-button" type="submit" aria-label="Send message" disabled={!detail.aiEnabled || messageMutation.isPending}>{messageMutation.isPending ? <span className="ai-voice-spinner" /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 20 18-8L3 4v6l13 2-13 2z" /></svg>}</button> : <button className="ai-mic-button" type="button" aria-label={`Ask ${detail.companion.name} for a voice message`} title="Ask for a voice message" onClick={() => messageMutation.mutate({ outgoingMessage: "Send me a short voice message.", requestVoice: true })} disabled={!detail.aiEnabled || !voiceQuery.data?.voice.enabled || messageMutation.isPending}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" /></svg></button>}
+            <textarea value={message} maxLength={1000} placeholder={voiceRecording ? "Recording… tap stop when you're finished" : voiceTranscribing ? "Preparing your voice message…" : `Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending || voiceRecording || voiceTranscribing} />
+            {message.trim() ? <button className="ai-send-button" type="submit" aria-label="Send message" disabled={!detail.aiEnabled || messageMutation.isPending}>{messageMutation.isPending ? <span className="ai-voice-spinner" /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 20 18-8L3 4v6l13 2-13 2z" /></svg>}</button> : <button className={`ai-mic-button${voiceRecording ? " recording" : ""}`} type="button" aria-label={voiceRecording ? "Finish voice message" : `Record a voice message for ${detail.companion.name}`} title={voiceRecording ? "Tap to finish" : "Record a voice message"} onClick={toggleVoiceRecording} disabled={!detail.aiEnabled || !voiceQuery.data?.voice.enabled || messageMutation.isPending || voiceTranscribing}>{voiceTranscribing ? <span className="ai-voice-spinner" /> : voiceRecording ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" /></svg>}</button>}
             {selectedUserPhotoUrl ? <div className="ai-attachment-preview"><img src={selectedUserPhotoUrl} alt="Photo ready to send" /><div><strong>Ready to send privately</strong><small>It will appear in chat only after safety review.</small><span><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Reviewing..." : `Uploading ${userPhotoProgress}%` : "Send photo"}</button><button className="text-button" type="button" onClick={() => { URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Cancel</button></span></div></div> : null}
             {userPhotoUploadMutation.isPending ? <progress max="100" value={userPhotoProgress} aria-label="Photo upload progress" /> : null}
             {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}

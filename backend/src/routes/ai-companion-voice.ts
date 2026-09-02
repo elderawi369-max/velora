@@ -18,7 +18,7 @@ import {
 import { detectVoiceDeliveryStyle, prepareSpokenText, synthesizeCompanionSpeech, voiceForCatalogName, type LockedVoiceProfile } from "../lib/companion-voice";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
-import { buildSystemPrompt, containsBlockedOutput, createMemoryCandidates, extractModelText, getCharacterExamples, getOrCreateCharacterCanon, isCrisisMessage, relationshipPointsForMessage, relationshipStageForPoints, safetyReply } from "./ai-companions";
+import { buildSystemPrompt, containsBlockedOutput, createMemoryCandidates, extractModelText, getOrCreateCharacterCanon, isCrisisMessage, relationshipPointsForMessage, relationshipStageForPoints, safetyReply } from "./ai-companions";
 
 export const aiCompanionVoiceRoutes = new Hono<{ Bindings: EnvBindings }>();
 
@@ -240,6 +240,37 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
+async function readRecordedAudio(c: any) {
+  const form = await c.req.formData();
+  const audioEntry = form.get("audio");
+  const audio = typeof audioEntry === "object" && audioEntry !== null && "arrayBuffer" in audioEntry ? audioEntry as Blob : null;
+  if (!audio || audio.size <= 0 || audio.size > 4 * 1024 * 1024 || !/^audio\//i.test(audio.type)) return null;
+  return audio;
+}
+
+async function transcribeRecordedAudio(ai: Ai, audio: Blob) {
+  const result = await ai.run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(new Uint8Array(await audio.arrayBuffer())), task: "transcribe", vad_filter: true, condition_on_previous_text: false });
+  const transcript = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string" ? (result as { text: string }).text.trim() : "";
+  return transcript && transcript.length <= 1000 ? transcript : "";
+}
+
+aiCompanionVoiceRoutes.post("/:companionId/voice-input/transcribe", async (c) => {
+  const data = await companionContext(c);
+  if (!data) return c.json({ error: "Companion not found." }, 404);
+  if (c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !c.env.AI || !data.profile) return c.json({ error: "Voice messages are unavailable." }, 503);
+  const limits = voiceLimits(data.entitlement.plan, data.beta);
+  if (limits.monthly <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
+  const day = await c.env.DB.prepare("SELECT reserved_count, successful_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${data.context.userId}:day:${dayPeriod()}`).first<{ reserved_count: number; successful_count: number }>();
+  if ((day?.reserved_count ?? 0) + (day?.successful_count ?? 0) >= limits.daily) return c.json({ error: "Your voice-message allowance is complete for today." }, 429);
+  const audio = await readRecordedAudio(c);
+  if (!audio) return c.json({ error: "Record a voice message up to 4 MB." }, 400);
+  try {
+    const transcript = await transcribeRecordedAudio(c.env.AI, audio);
+    if (!transcript) return c.json({ error: "I couldn't hear a clear message. Please record it again." }, 422);
+    return c.json({ transcript });
+  } catch { return c.json({ error: "I couldn't transcribe that message. Please try again." }, 422); }
+});
+
 aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
@@ -248,14 +279,11 @@ aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
   if (!call) return c.json({ error: "Call not found or already ended." }, 404);
   const [latestTurn] = await getDb(c.env).select({ createdAt: aiCompanionCallTurns.createdAt }).from(aiCompanionCallTurns).where(eq(aiCompanionCallTurns.callId, call.id)).orderBy(desc(aiCompanionCallTurns.createdAt)).limit(1);
   if (latestTurn && latestTurn.createdAt > now() - 2_000) return c.json({ error: "Give the call a moment before sending another turn." }, 429);
-  const form = await c.req.formData();
-  const audioEntry = form.get("audio");
-  const audio = typeof audioEntry === "object" && audioEntry !== null && "arrayBuffer" in audioEntry ? audioEntry as Blob : null;
-  if (!audio || audio.size <= 0 || audio.size > 4 * 1024 * 1024 || !/^audio\//i.test(audio.type)) return c.json({ error: "Record a voice turn up to 4 MB." }, 400);
+  const audio = await readRecordedAudio(c);
+  if (!audio) return c.json({ error: "Record a voice turn up to 4 MB." }, 400);
   let transcript = "";
   try {
-    const result = await c.env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(new Uint8Array(await audio.arrayBuffer())), task: "transcribe", language: "en", vad_filter: true, condition_on_previous_text: false });
-    transcript = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string" ? (result as { text: string }).text.trim() : "";
+    transcript = await transcribeRecordedAudio(c.env.AI, audio);
   } catch { return c.json({ error: "I couldn't hear that clearly. Please try that turn again." }, 422); }
   if (!transcript || transcript.length > 1000) return c.json({ error: "I couldn't hear a clear spoken turn. Please try again." }, 422);
   const db = getDb(c.env);
@@ -271,8 +299,8 @@ aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
       getOrCreateCharacterCanon(c.env, data.companion),
       db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, data.conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(14),
     ]);
-    const messages = [{ role: "system", content: `${buildSystemPrompt({ companion: data.companion, canon, memories, relationshipStage })}\n\nThis is a turn-based voice call. Reply in one to three short, natural spoken sentences. Use contractions and conversational wording. Do not use markdown, lists, stage directions, emoji, URLs, or narration about your tone. Do not begin every turn with the user's name.` }, ...getCharacterExamples(data.companion, canon, relationshipStage), ...recent.slice().reverse().map((message) => ({ role: message.role, content: message.body }))];
-    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 75, temperature: 0.72 })); }
+    const messages = [{ role: "system", content: `${buildSystemPrompt({ companion: data.companion, canon, memories, relationshipStage })}\n\nThis is a turn-based voice call. Reply in one or two short, natural spoken sentences. Use contractions and conversational wording. Do not use markdown, lists, stage directions, emoji, URLs, quotation marks, or narration about your tone. Do not begin every turn with the user's name.` }, ...recent.slice().reverse().map((message) => ({ role: message.role, content: message.body }))];
+    try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-1b-instruct", { messages, max_tokens: 55, temperature: 0.68 })); }
     catch { await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id)); return c.json({ error: "The call reply could not be created. Please try again." }, 502); }
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this safe and respectful. Can we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }

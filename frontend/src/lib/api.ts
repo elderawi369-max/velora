@@ -1120,6 +1120,18 @@ export function createAiCompanionVoiceMessage(companionId: string, messageId: st
   return request<{ voiceAsset: AiCompanionVoiceAsset }>(`/api/ai-companions/${companionId}/voice-messages`, { method: "POST", body: { messageId } });
 }
 
+export async function transcribeAiCompanionVoiceInput(companionId: string, audio: Blob) {
+  const headers: Record<string, string> = getClientPlatformHeaders();
+  const authToken = getAuthToken();
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const form = new FormData();
+  form.append("audio", audio, `voice-message.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`);
+  const response = await fetch(`${apiBaseUrl}/api/ai-companions/${companionId}/voice-input/transcribe`, { method: "POST", credentials: "include", headers, body: form });
+  const result = await response.json() as { transcript?: string; error?: string };
+  if (!response.ok || !result.transcript) throw new Error(result.error ?? "The voice message could not be transcribed.");
+  return result.transcript;
+}
+
 export function fetchAiCompanionVoiceAudio(companionId: string, assetId: string) {
   return requestImageUrl(`/api/ai-companions/${companionId}/voice-messages/${assetId}/audio`);
 }
