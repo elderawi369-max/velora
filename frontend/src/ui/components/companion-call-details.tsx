@@ -59,7 +59,7 @@ export function CompanionCallDetails({ call, companionId, companionName, onClose
             <p>{turn.assistantText}</p>
             {turn.voiceAsset ? <CompanionVoiceNote companionId={companionId} asset={turn.voiceAsset} transcript={turn.assistantText} transcriptControl={false} /> : null}
             {turn.assistantMessageId ? <div className="ai-call-details-report">
-              {reportedMessageIds.has(turn.assistantMessageId) ? <span>Response reported. Thank you.</span> : <button className="text-button" type="button" onClick={() => setReportingMessageId((current) => current === turn.assistantMessageId ? null : turn.assistantMessageId)}>Report response</button>}
+              {reportedMessageIds.has(turn.assistantMessageId) ? <span>Response reported. Thank you.</span> : <button className="ai-report-trigger" type="button" aria-label="Report response" title="Report response" onClick={() => setReportingMessageId((current) => current === turn.assistantMessageId ? null : turn.assistantMessageId)}><span aria-hidden="true">i</span></button>}
               {reportingMessageId === turn.assistantMessageId ? <div className="ai-report">
                 <select aria-label="Report reason" value={reportReason} onChange={(event) => setReportReason(event.target.value as ReportReason)}>
                   <option value="unsafe">Unsafe or crisis handling</option>

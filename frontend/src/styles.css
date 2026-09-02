@@ -387,6 +387,8 @@
 .ai-report { display: flex; gap: 7px; align-items: center; margin-top: 8px; }
 .ai-report select { padding: 7px; font-size: 0.78rem; }
 .ai-report .secondary-button { padding: 7px 9px; font-size: 0.78rem; }
+.ai-report-trigger { display: grid; width: 20px; height: 20px; place-items: center; margin: 6px 0 0 auto; padding: 0; border: 1px solid rgba(128,84,103,.28); border-radius: 50%; color: #95677a; background: rgba(255,255,255,.52); font: 700 .72rem/1 Georgia,serif; cursor: pointer; opacity: .72; transition: opacity 140ms ease, background 140ms ease, border-color 140ms ease; }
+.ai-report-trigger:hover, .ai-report-trigger:focus-visible { border-color: rgba(128,84,103,.5); background: rgba(255,255,255,.9); opacity: 1; }
 
 .ai-empty-chat {
   display: grid;
