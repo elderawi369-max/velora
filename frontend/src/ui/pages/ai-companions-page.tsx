@@ -60,6 +60,8 @@ function compactCallDuration(call: AiCompanionCallLog) {
 
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
 
+type CompanionPanel = "memories" | "profile" | "photos" | "settings";
+
 async function normalizeUserPhoto(file: File) {
   if (file.size <= 0 || file.size > 5 * 1024 * 1024) throw new Error("Choose a photo that is 5 MB or smaller.");
   let bitmap: ImageBitmap;
@@ -107,6 +109,9 @@ export function AiCompanionsPage() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [callOpen, setCallOpen] = useState(false);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [companionSwitcherOpen, setCompanionSwitcherOpen] = useState(false);
+  const [companionMenuOpen, setCompanionMenuOpen] = useState(false);
+  const [activeCompanionPanel, setActiveCompanionPanel] = useState<CompanionPanel | null>(null);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTranscribing, setVoiceTranscribing] = useState(false);
   const [pendingRecordedVoice, setPendingRecordedVoice] = useState<{ asset: AiCompanionVoiceAsset; transcript: string; url: string } | null>(null);
@@ -127,6 +132,28 @@ export function AiCompanionsPage() {
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
     if (pendingRecordedUrlRef.current) URL.revokeObjectURL(pendingRecordedUrlRef.current);
   }, []);
+
+  useEffect(() => {
+    setCompanionSwitcherOpen(false);
+    setCompanionMenuOpen(false);
+    setActiveCompanionPanel(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!activeCompanionPanel && !companionSwitcherOpen && !companionMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setActiveCompanionPanel(null);
+      setCompanionSwitcherOpen(false);
+      setCompanionMenuOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    if (activeCompanionPanel) document.body.classList.add("ai-panel-open");
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.classList.remove("ai-panel-open");
+    };
+  }, [activeCompanionPanel, companionSwitcherOpen, companionMenuOpen]);
 
   const detailQuery = useQuery({
     queryKey: ["ai-companion", selectedId],
@@ -315,6 +342,14 @@ export function AiCompanionsPage() {
 
   const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
   const detail = detailQuery.data;
+  const companionPersona = personas.find((persona) => persona.key === detail?.companion.personaKey);
+  let companionReplyStyle = "Natural";
+  if (detail?.companion.traitsJson) {
+    try {
+      const traits = JSON.parse(detail.companion.traitsJson) as { replyStyle?: "short" | "natural" | "detailed" };
+      companionReplyStyle = traits.replyStyle === "short" ? "Short & texty" : traits.replyStyle === "detailed" ? "Detailed" : "Natural";
+    } catch { companionReplyStyle = "Natural"; }
+  }
   const calls = detail?.calls ?? [];
   const callMessageIds = new Set(calls.flatMap((call) => call.turns.flatMap((turn) => [turn.userMessageId, turn.assistantMessageId].filter((messageId): messageId is string => Boolean(messageId)))));
   const chatTimeline = detail ? [
@@ -423,27 +458,18 @@ export function AiCompanionsPage() {
 
   return (
     <main className="page-shell ai-companions-page">
-      <section className="ai-hero">
+      {!selectedId ? <section className="ai-hero">
         <p className="eyebrow">PRIVATE AI COMPANIONS</p>
         <h1>A conversation that gets to know you.</h1>
         <p>Build one adult virtual companion for private, clearly AI-labelled conversations. You stay in control of what is remembered.</p>
-      </section>
+      </section> : null}
 
       {companionsQuery.isLoading ? <p className="status-message">Loading your companion space...</p> : null}
       {companionsQuery.error ? <p className="form-error">{companionsQuery.error.message}</p> : null}
       {selectedId && detailQuery.isLoading ? <p className="status-message">Loading your companion...</p> : null}
       {selectedId && detailQuery.error ? <p className="form-error">Unable to load your companion: {detailQuery.error.message}</p> : null}
 
-      {selectedId && !detail && companionsQuery.data?.companions.length ? (
-        <section className="ai-companion-workspace">
-          <aside className="ai-sidebar">
-            <p className="eyebrow">YOUR COMPANION</p>
-            {companionsQuery.data.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} key={companion.id} onClick={() => setSelectedId(companion.id)}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>AI companion</small></span></button>)}
-          </aside>
-        </section>
-      ) : null}
-
-      {canCreate ? (
+      {canCreate && !selectedId ? (
         <section className="ai-create-card">
           <div>
             <p className="eyebrow">CREATE YOUR COMPANION</p>
@@ -463,13 +489,32 @@ export function AiCompanionsPage() {
       ) : null}
 
       {detail ? <section className="ai-companion-workspace">
-        <aside className="ai-sidebar">
-          <p className="eyebrow">YOUR COMPANION</p>
-          {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} key={companion.id} onClick={() => setSelectedId(companion.id)}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>AI companion</small></span></button>)}
-          <div className="ai-safety-note"><strong>Always AI.</strong><span>Private chats are not a substitute for real-world emergency or professional support.</span></div>
-        </aside>
         <div className="ai-chat-card">
-          <header><div><p className="eyebrow">AI COMPANION</p><h2>{detail.companion.name}</h2><small className="ai-relationship-stage">{relationshipStageLabel[detail.conversation.relationshipStage]}</small></div><div className="ai-chat-actions"><button className="ai-call-button" type="button" aria-label={`Call ${detail.companion.name}`} title={voiceQuery.data?.calls.enabled ? `Call ${detail.companion.name}` : "Voice calls require Velora Ultra"} onClick={() => setCallOpen(true)} disabled={!voiceQuery.data?.calls.enabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.7 3.3 3.4 5 6.7 6.7l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.7 3.9.7.6 0 1 .4 1 1v3.7c0 .6-.4 1-1 1C10.6 21.5 2.5 13.4 2.5 3.5c0-.6.4-1 1-1h3.7c.6 0 1 .4 1 1 0 1.4.2 2.7.7 3.9.1.4 0 .8-.3 1.1z" /></svg></button><span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span></div></header>
+          <header className="ai-chat-header">
+            <div className="ai-companion-identity-wrap">
+              <button className="ai-chat-identity" type="button" aria-label={companionsQuery.data && companionsQuery.data.companions.length > 1 ? `Switch from ${detail.companion.name}` : `${detail.companion.name}, AI companion`} aria-expanded={(companionsQuery.data?.companions.length ?? 0) > 1 ? companionSwitcherOpen : undefined} onClick={() => { if ((companionsQuery.data?.companions.length ?? 0) > 1) { setCompanionSwitcherOpen((open) => !open); setCompanionMenuOpen(false); } }}>
+                <span className="ai-avatar">{companionInitial(detail.companion)}</span>
+                <span><small>AI COMPANION</small><strong>{detail.companion.name}</strong><em>{relationshipStageLabel[detail.conversation.relationshipStage]}</em></span>
+                {(companionsQuery.data?.companions.length ?? 0) > 1 ? <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5" /></svg> : null}
+              </button>
+              {companionSwitcherOpen ? <div className="ai-companion-switcher" role="menu" aria-label="Choose a companion">
+                {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} role="menuitem" type="button" key={companion.id} onClick={() => { setSelectedId(companion.id); setCompanionSwitcherOpen(false); }}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>{companion.id === selectedId ? "Current companion" : "AI companion"}</small></span></button>)}
+              </div> : null}
+            </div>
+            <div className="ai-chat-actions">
+              <span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span>
+              <button className="ai-call-button" type="button" aria-label={`Call ${detail.companion.name}`} title={voiceQuery.data?.calls.enabled ? `Call ${detail.companion.name}` : "Voice calls require Velora Ultra"} onClick={() => setCallOpen(true)} disabled={!voiceQuery.data?.calls.enabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.7 3.3 3.4 5 6.7 6.7l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.7 3.9.7.6 0 1 .4 1 1v3.7c0 .6-.4 1-1 1C10.6 21.5 2.5 13.4 2.5 3.5c0-.6.4-1 1-1h3.7c.6 0 1 .4 1 1 0 1.4.2 2.7.7 3.9.1.4 0 .8-.3 1.1z" /></svg></button>
+              <div className="ai-companion-menu-wrap">
+                <button className="ai-companion-menu-button" type="button" aria-label="Companion menu" aria-expanded={companionMenuOpen} onClick={() => { setCompanionMenuOpen((open) => !open); setCompanionSwitcherOpen(false); }}><span aria-hidden="true">•••</span></button>
+                {companionMenuOpen ? <div className="ai-companion-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setActiveCompanionPanel("memories"); setCompanionMenuOpen(false); }}><span aria-hidden="true">♡</span><span><strong>Memories &amp; Journal</strong><small>What {detail.companion.name} remembers</small></span></button>
+                  <button type="button" role="menuitem" onClick={() => { setActiveCompanionPanel("profile"); setCompanionMenuOpen(false); }}><span aria-hidden="true">◯</span><span><strong>Companion profile</strong><small>Personality and connection</small></span></button>
+                  <button type="button" role="menuitem" onClick={() => { setActiveCompanionPanel("photos"); setCompanionMenuOpen(false); }}><span aria-hidden="true">▧</span><span><strong>Photos</strong><small>Photos shared in this chat</small></span></button>
+                  <button type="button" role="menuitem" onClick={() => { setActiveCompanionPanel("settings"); setCompanionMenuOpen(false); }}><span aria-hidden="true">⚙</span><span><strong>Settings</strong><small>Voice, photos, and safety</small></span></button>
+                </div> : null}
+              </div>
+            </div>
+          </header>
           {!detail.aiEnabled ? <div className="ai-disabled-note">This private companion preview is not available for this account yet. We are opening it gradually while we review safety and usage.</div> : null}
           {showInternalVisualIdentityControls && detail.aiEnabled && (!detail.visualIdentity || detail.visualIdentity.status === "pending_storage") ? <div className="ai-disabled-note"><button className="text-button" onClick={() => visualIdentityMutation.mutate()} disabled={visualIdentityMutation.isPending}>Generate casting options</button></div> : null}
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "casting_review" ? <div className="ai-disabled-note"><div className="ai-casting-candidate-grid">{detail.castingCandidates.filter((candidate) => candidate.status === "candidate").map((candidate) => <article className="ai-casting-candidate-card" key={candidate.id}>{castingCandidateUrls[candidate.id] ? <img src={castingCandidateUrls[candidate.id]} alt={`${detail.companion.name} casting option ${candidate.sortOrder + 1}`} /> : null}<button className="secondary-button" onClick={() => selectCastingCandidateMutation.mutate(candidate.id)}>Choose option {candidate.sortOrder + 1}</button></article>)}</div></div> : null}
@@ -510,15 +555,54 @@ export function AiCompanionsPage() {
             {voiceQuery.data?.voice.enabled ? <small className="ai-voice-quota">{Math.max(0, voiceQuery.data.voice.dailyLimit - voiceQuery.data.voice.dailyUsed)} voice notes left today · {Math.max(0, voiceQuery.data.voice.monthlyLimit - voiceQuery.data.voice.monthlyUsed)} this month</small> : null}
           </form>
         </div>
-        <aside className="ai-memory-card">
-          <p className="eyebrow">JOURNAL OF US</p>
-          <h2>What {detail.companion.name} remembers</h2>
-          <p className="muted">You control every long-term memory. Review suggestions before they are saved.</p>
-          {detail.memoryCandidates.length > 0 ? <section className="ai-memory-candidates"><strong>Suggested memories</strong>{detail.memoryCandidates.map((candidate) => <div key={candidate.id}><span>{candidate.content}</span><div><button className="secondary-button" onClick={() => approveMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Keep</button><button className="text-button" onClick={() => dismissMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Dismiss</button></div></div>)}</section> : null}
-          <form onSubmit={saveMemory}><textarea value={memory} maxLength={280} placeholder="Example: I start a new job on Monday." onChange={(event) => setMemory(event.target.value)} /><button className="secondary-button" disabled={memoryMutation.isPending || !memory.trim()}>Save memory</button></form>
-          <div className="ai-memory-list">{detail.memories.map((item) => <div key={item.id}><span>{item.content}</span><button className="text-button" onClick={() => deleteMemoryMutation.mutate(item.id)}>Delete</button></div>)}{detail.memories.length === 0 ? <p className="muted">Nothing has been saved yet.</p> : null}</div>
-        </aside>
       </section> : null}
+      {detail && activeCompanionPanel ? <div className="ai-companion-panel-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setActiveCompanionPanel(null); }}>
+        <aside className="ai-companion-panel" role="dialog" aria-modal="true" aria-labelledby="ai-companion-panel-title">
+          <header>
+            <div>
+              <p className="eyebrow">{activeCompanionPanel === "memories" ? "JOURNAL OF US" : "AI COMPANION"}</p>
+              <h2 id="ai-companion-panel-title">{activeCompanionPanel === "memories" ? `What ${detail.companion.name} remembers` : activeCompanionPanel === "profile" ? `${detail.companion.name}'s profile` : activeCompanionPanel === "photos" ? "Photos from your chat" : "Companion settings"}</h2>
+            </div>
+            <button className="ai-panel-close" type="button" aria-label="Close" onClick={() => setActiveCompanionPanel(null)}>×</button>
+          </header>
+          <div className="ai-companion-panel-body">
+            {activeCompanionPanel === "memories" ? <>
+              <p className="muted">You control every long-term memory. Review suggestions before they are saved.</p>
+              {detail.memoryCandidates.length > 0 ? <section className="ai-memory-candidates"><strong>Suggested memories</strong>{detail.memoryCandidates.map((candidate) => <div key={candidate.id}><span>{candidate.content}</span><div><button className="secondary-button" onClick={() => approveMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Keep</button><button className="text-button" onClick={() => dismissMemoryCandidateMutation.mutate(candidate.id)} disabled={approveMemoryCandidateMutation.isPending || dismissMemoryCandidateMutation.isPending}>Dismiss</button></div></div>)}</section> : null}
+              <form className="ai-memory-form" onSubmit={saveMemory}><textarea value={memory} maxLength={280} placeholder="Example: I start a new job on Monday." onChange={(event) => setMemory(event.target.value)} /><button className="secondary-button" disabled={memoryMutation.isPending || !memory.trim()}>Save memory</button></form>
+              <div className="ai-memory-list">{detail.memories.map((item) => <div key={item.id}><span>{item.content}</span><button className="text-button" onClick={() => deleteMemoryMutation.mutate(item.id)}>Delete</button></div>)}{detail.memories.length === 0 ? <p className="ai-panel-empty">Nothing has been saved yet.</p> : null}</div>
+            </> : null}
+            {activeCompanionPanel === "profile" ? <>
+              <section className="ai-profile-summary">
+                <span className="ai-avatar ai-profile-avatar">{companionInitial(detail.companion)}</span>
+                <div><h3>{detail.companion.name}</h3><p>AI companion · {relationshipStageLabel[detail.conversation.relationshipStage]}</p></div>
+              </section>
+              <dl className="ai-companion-facts">
+                <div><dt>Personality</dt><dd>{companionPersona?.title ?? "Personal companion"}</dd></div>
+                <div><dt>Reply style</dt><dd>{companionReplyStyle}</dd></div>
+                <div><dt>Connection</dt><dd>{relationshipStageLabel[detail.conversation.relationshipStage]}</dd></div>
+              </dl>
+              <section className="ai-profile-story"><h3>About {detail.companion.name}</h3><p>{detail.companion.backstory.trim() || companionPersona?.description || "A private companion created for conversations that grow with you."}</p></section>
+              <div className="ai-safety-note"><strong>Always AI.</strong><span>{detail.companion.name} is a fictional AI companion, not a real person.</span></div>
+            </> : null}
+            {activeCompanionPanel === "photos" ? <>
+              <section className="ai-photo-library"><h3>From {detail.companion.name}</h3>{detail.deliveredPhotos.length ? <div className="ai-photo-library-grid">{detail.deliveredPhotos.map((photo) => deliveredPhotoUrls[photo.id] ? <img key={photo.id} src={deliveredPhotoUrls[photo.id]} alt={`${detail.companion.name} shared companion photo`} /> : null)}</div> : <p className="ai-panel-empty">No companion photos have been shared yet.</p>}</section>
+              <section className="ai-photo-library"><h3>From you</h3>{detail.userPhotos.length ? <div className="ai-photo-library-grid">{detail.userPhotos.map((photo) => userPhotoUrls[photo.id] ? <img key={photo.id} src={userPhotoUrls[photo.id]} alt="Photo you shared in this companion chat" /> : null)}</div> : <p className="ai-panel-empty">You have not shared any photos in this chat.</p>}</section>
+              <p className="ai-panel-note">Only photos already shared in this conversation appear here.</p>
+            </> : null}
+            {activeCompanionPanel === "settings" ? <>
+              <section className="ai-settings-list">
+                <div><span>Plan</span><strong>{detail.entitlement.plan === "free" ? "Velora Free" : detail.entitlement.plan === "pro" ? "Velora Pro" : "Velora Ultra"}</strong></div>
+                <div><span>Reply style</span><strong>{companionReplyStyle}</strong></div>
+                <div><span>Voice messages</span><strong>{voiceQuery.data?.voice.enabled ? "Available" : "Unavailable on this plan"}</strong></div>
+                <div><span>Voice calls</span><strong>{voiceQuery.data?.calls.enabled ? "Available" : "Velora Ultra required"}</strong></div>
+              </section>
+              <div className="ai-safety-note"><strong>Always AI.</strong><span>Private chats are not a substitute for real-world emergency or professional support.</span></div>
+              <p className="ai-panel-note">Photos and voice messages keep their existing privacy and retention behavior.</p>
+            </> : null}
+          </div>
+        </aside>
+      </div> : null}
       {detail && callOpen && voiceQuery.data ? <CompanionCallDialog companion={detail.companion} capabilities={voiceQuery.data} onClose={() => setCallOpen(false)} onConversationChanged={() => { void queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }); void queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] }); }} /> : null}
       {detail && selectedCall ? <CompanionCallDetails call={selectedCall} companionId={detail.companion.id} companionName={detail.companion.name} onClose={() => setSelectedCallId(null)} /> : null}
     </main>
