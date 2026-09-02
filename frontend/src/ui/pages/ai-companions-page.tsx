@@ -7,6 +7,7 @@ import {
   createAiCompanion,
   createAiCompanionMemory,
   createAiCompanionVoiceMessage,
+  deleteAiCompanionVoiceInput,
   deleteAiCompanionUserPhoto,
   deleteAiCompanionMemory,
   dismissAiCompanionMemoryCandidate,
@@ -31,6 +32,7 @@ import {
   transcribeAiCompanionVoiceInput,
   uploadAiCompanionUserPhoto,
   type AiCompanion,
+  type AiCompanionVoiceAsset,
 } from "../../lib/api";
 import { CompanionCallDialog } from "../components/companion-call-dialog";
 import { CompanionVoiceNote } from "../components/companion-voice-note";
@@ -99,10 +101,13 @@ export function AiCompanionsPage() {
   const [callOpen, setCallOpen] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTranscribing, setVoiceTranscribing] = useState(false);
+  const [pendingRecordedVoice, setPendingRecordedVoice] = useState<{ asset: AiCompanionVoiceAsset; transcript: string; url: string } | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceRecordingStartedAtRef = useRef(0);
+  const pendingRecordedUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     const first = companionsQuery.data?.companions[0];
@@ -112,6 +117,7 @@ export function AiCompanionsPage() {
   useEffect(() => () => {
     if (voiceRecorderRef.current?.state === "recording") { voiceRecorderRef.current.onstop = null; voiceRecorderRef.current.stop(); }
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (pendingRecordedUrlRef.current) URL.revokeObjectURL(pendingRecordedUrlRef.current);
   }, []);
 
   const detailQuery = useQuery({
@@ -132,12 +138,12 @@ export function AiCompanionsPage() {
     },
   });
   const messageMutation = useMutation({
-    mutationFn: async ({ outgoingMessage, requestVoice }: { outgoingMessage: string; requestVoice: boolean }) => {
+    mutationFn: async ({ outgoingMessage, requestVoice, userVoiceAssetId }: { outgoingMessage: string; requestVoice: boolean; userVoiceAssetId?: string }) => {
       const startedAt = Date.now();
       setPhotoRequestError(null);
       setVoiceError(null);
       setPendingUserMessage(outgoingMessage);
-      const result = await sendAiCompanionMessage(selectedId!, outgoingMessage);
+      const result = await sendAiCompanionMessage(selectedId!, outgoingMessage, userVoiceAssetId);
       if (result.photoRequested) {
         try { await requestAiCompanionPhoto(selectedId!, { prompt: outgoingMessage, style: "selfie", requestMessageId: result.userMessage.id }); }
         catch (error) { setPhotoRequestError(error instanceof Error ? error.message : "The photo could not be delivered."); }
@@ -153,11 +159,16 @@ export function AiCompanionsPage() {
     onSuccess: async () => {
       setMessage("");
       setPendingUserMessage(null);
+      clearPendingRecordedVoice();
       await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
       await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
       await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] });
     },
-    onError: () => setPendingUserMessage(null),
+    onError: (_error, variables) => {
+      setPendingUserMessage(null);
+      if (variables.userVoiceAssetId && selectedId) void deleteAiCompanionVoiceInput(selectedId, variables.userVoiceAssetId).catch(() => undefined);
+      clearPendingRecordedVoice();
+    },
   });
   const memoryMutation = useMutation({
     mutationFn: () => createAiCompanionMemory(selectedId!, memory),
@@ -252,20 +263,31 @@ export function AiCompanionsPage() {
       voiceChunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size) voiceChunksRef.current.push(event.data); };
       recorder.onstop = async () => {
+        voiceRecorderRef.current = null;
         stream.getTracks().forEach((track) => track.stop());
         voiceStreamRef.current = null;
         setVoiceTranscribing(true);
         try {
           const audio = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-          const transcript = await transcribeAiCompanionVoiceInput(selectedId!, audio);
-          messageMutation.mutate({ outgoingMessage: transcript, requestVoice: true });
+          const durationMs = Math.max(250, Date.now() - voiceRecordingStartedAtRef.current);
+          const result = await transcribeAiCompanionVoiceInput(selectedId!, audio, durationMs);
+          const url = URL.createObjectURL(audio);
+          pendingRecordedUrlRef.current = url;
+          setPendingRecordedVoice({ asset: result.voiceAsset, transcript: result.transcript, url });
+          messageMutation.mutate({ outgoingMessage: result.transcript, requestVoice: true, userVoiceAssetId: result.voiceAsset.id });
         } catch (error) { setVoiceError(error instanceof Error ? error.message : "The voice message could not be sent."); }
         finally { setVoiceTranscribing(false); }
       };
       voiceRecorderRef.current = recorder;
+      voiceRecordingStartedAtRef.current = Date.now();
       recorder.start();
       setVoiceRecording(true);
     } catch { setVoiceError("Microphone access is needed to record a voice message."); }
+  }
+  function clearPendingRecordedVoice() {
+    if (pendingRecordedUrlRef.current) URL.revokeObjectURL(pendingRecordedUrlRef.current);
+    pendingRecordedUrlRef.current = null;
+    setPendingRecordedVoice(null);
   }
   function saveMemory(event: FormEvent) {
     event.preventDefault();
@@ -448,12 +470,12 @@ export function AiCompanionsPage() {
               const attachedPhoto = userPhotoByMessageId.get(item.id);
               const voiceAsset = voiceByMessageId.get(item.id);
               return <article className={`${item.role === "user" ? "ai-message ai-message-user" : "ai-message ai-message-assistant"}${attachedPhoto ? " ai-photo-message" : ""}`} key={item.id}>
-                {attachedPhoto && userPhotoUrls[attachedPhoto.id] ? <><img src={userPhotoUrls[attachedPhoto.id]} alt="Photo you sent to your AI companion" /><button className="ai-photo-remove" type="button" onClick={() => userPhotoDeleteMutation.mutate(attachedPhoto.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></> : voiceAsset && item.role === "assistant" ? <CompanionVoiceNote companionId={detail.companion.id} asset={voiceAsset} transcript={item.body} /> : <p>{item.body}</p>}
+                {attachedPhoto && userPhotoUrls[attachedPhoto.id] ? <><img src={userPhotoUrls[attachedPhoto.id]} alt="Photo you sent to your AI companion" /><button className="ai-photo-remove" type="button" onClick={() => userPhotoDeleteMutation.mutate(attachedPhoto.id)} disabled={userPhotoDeleteMutation.isPending}>Remove</button></> : voiceAsset ? <CompanionVoiceNote companionId={detail.companion.id} asset={voiceAsset} transcript={item.body} /> : <p>{item.body}</p>}
                 {item.role === "assistant" ? <button className="text-button" onClick={() => setReportingMessageId(item.id)}>Report response</button> : null}
                 {reportingMessageId === item.id ? <div className="ai-report"><select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or crisis handling</option><option value="harmful">Harmful or manipulative</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => reportMutation.mutate(item.id)} disabled={reportMutation.isPending}>Submit report</button></div> : null}
               </article>;
             })}
-            {pendingUserMessage ? <><article className="ai-message ai-message-user"><p>{pendingUserMessage}</p></article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}
+            {pendingUserMessage ? <><article className="ai-message ai-message-user">{pendingRecordedVoice ? <CompanionVoiceNote companionId={detail.companion.id} asset={pendingRecordedVoice.asset} transcript={pendingRecordedVoice.transcript} initialUrl={pendingRecordedVoice.url} /> : <p>{pendingUserMessage}</p>}</article><div className="ai-typing" aria-label={`${detail.companion.name} is thinking`}><i /><i /><i /></div></> : null}
           </div>
           <form className="ai-composer" onSubmit={send}>
             <div className="ai-attachment-control">

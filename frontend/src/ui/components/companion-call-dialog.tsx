@@ -7,6 +7,13 @@ function formatDuration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.max(0, seconds % 60)).padStart(2, "0")}`;
 }
 
+function inlineAudioUrl(base64: string, contentType: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return URL.createObjectURL(new Blob([bytes], { type: contentType }));
+}
+
 export function CompanionCallDialog({ companion, capabilities, onClose, onConversationChanged }: { companion: AiCompanion; capabilities: AiCompanionVoiceCapabilities; onClose: () => void; onConversationChanged: () => void }) {
   const [state, setState] = useState<CallState>("ready");
   const [callId, setCallId] = useState<string | null>(null);
@@ -182,7 +189,7 @@ export function CompanionCallDialog({ companion, capabilities, onClose, onConver
           speechStarted = true;
           lastSpeechAt = now;
         }
-        if ((speechStarted && now - lastSpeechAt >= 1050) || now - recordingStartedAt >= 60_000) {
+        if ((speechStarted && now - lastSpeechAt >= 850) || now - recordingStartedAt >= 60_000) {
           recorder.stop();
           setState("thinking");
           return;
@@ -213,7 +220,7 @@ export function CompanionCallDialog({ companion, capabilities, onClose, onConver
       setRemaining(result.call.remainingSeconds);
       onConversationChanged();
       if (replyUrlRef.current) URL.revokeObjectURL(replyUrlRef.current);
-      const url = await fetchAiCompanionVoiceAudio(companion.id, result.voiceAsset.id);
+      const url = result.audioBase64 ? inlineAudioUrl(result.audioBase64, result.audioContentType ?? "audio/mpeg") : await fetchAiCompanionVoiceAudio(companion.id, result.voiceAsset.id);
       replyUrlRef.current = url;
       const audio = new Audio(url);
       replyAudioRef.current = audio;

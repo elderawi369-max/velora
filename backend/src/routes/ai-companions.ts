@@ -21,7 +21,7 @@ const createCompanionSchema = z.object({
   traits: z.object({ warmth: z.number().int().min(1).max(5), playfulness: z.number().int().min(1).max(5), directness: z.number().int().min(1).max(5), replyStyle: z.enum(["short", "natural", "detailed"]).default("natural") }),
   backstory: z.string().trim().max(500).default(""), avatarKey: z.string().trim().min(1).max(80).default("companion-default"), appearanceId: z.string().trim().min(1),
 });
-const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000) });
+const sendMessageSchema = z.object({ body: z.string().trim().min(1).max(1000), voiceAssetId: z.string().trim().min(1).optional() });
 const createMemorySchema = z.object({ content: z.string().trim().min(2).max(280) });
 const reportSchema = z.object({ reason: z.enum(["unsafe", "harmful", "sexual_content", "misleading", "other"]), details: z.string().trim().max(600).default("") });
 const photoSceneSchema = z.object({ prompt: z.string().trim().min(3).max(360), style: z.enum(["selfie", "portrait", "moment"]).default("selfie"), requestMessageId: z.string().trim().min(1).optional() });
@@ -1292,6 +1292,8 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]), getOrCreateEntitlement(c.env, context.userId), db.select({ displayName: profiles.displayName, email: users.email }).from(profiles).innerJoin(users, eq(profiles.userId, users.id)).where(eq(profiles.id, context.profileId)).limit(1).then((rows) => rows[0]),
   ]);
   if (!conversation || !profile) return c.json({ error: "Conversation unavailable." }, 404);
+  const recordedVoiceAsset = parsed.data.voiceAssetId ? await db.select({ id: aiCompanionVoiceAssets.id }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, parsed.data.voiceAssetId), eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.conversationId, conversation.id), eq(aiCompanionVoiceAssets.provider, "user-recorded"), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.messageId), isNull(aiCompanionVoiceAssets.deletedAt))).limit(1).then((rows) => rows[0] ?? null) : null;
+  if (parsed.data.voiceAssetId && !recordedVoiceAsset) return c.json({ error: "That recorded voice message is no longer available." }, 409);
   const isApprovedBeta = isApprovedBetaUser(c.env, profile.email);
   if (!isApprovedBeta) return c.json({ error: "The private AI Companion preview is not available for this account yet." }, 403);
   if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Subscription plans are coming soon." }, 403);
@@ -1351,6 +1353,13 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     if (substantiallyRepeatsRecentReply(responseBody, recentMessagesForReply)) {
       try { responseBody = await rewriteRepeatedAssistantReply(c.env, companion, parsed.data.body, responseBody, recentMessagesForReply); }
       catch { /* Keep the safe original if an optional variation pass is unavailable. */ }
+    }
+  }
+  if (recordedVoiceAsset) {
+    const attached = await db.update(aiCompanionVoiceAssets).set({ messageId: userMessage.id, updatedAt: now() }).where(and(eq(aiCompanionVoiceAssets.id, recordedVoiceAsset.id), isNull(aiCompanionVoiceAssets.messageId)));
+    if ((attached.meta.changes ?? 0) !== 1) {
+      await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
+      return c.json({ error: "That recorded voice message could not be attached. Please try again." }, 409);
     }
   }
   const assistantMessage = { id: assistantMessageId, conversationId: conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };

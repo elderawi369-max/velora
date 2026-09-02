@@ -968,6 +968,7 @@ export type AiCompanionVoiceAsset = {
   durationMs: number | null;
   characterCount: number;
   deliveryStyle: "natural" | "romantic" | "playful" | "comforting" | "serious" | "excited";
+  origin?: "user" | "companion";
   createdAt: number;
 };
 
@@ -1108,8 +1109,8 @@ export function deleteAiCompanionUserPhoto(companionId: string, photoId: string)
   return request<{ ok: true }>(`/api/ai-companions/${companionId}/user-photo/${photoId}`, { method: "DELETE" });
 }
 
-export function sendAiCompanionMessage(companionId: string, body: string) {
-  return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number; photoRequested: boolean }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
+export function sendAiCompanionMessage(companionId: string, body: string, voiceAssetId?: string) {
+  return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number; photoRequested: boolean }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body, voiceAssetId } });
 }
 
 export function fetchAiCompanionVoiceCapabilities(companionId: string) {
@@ -1120,16 +1121,21 @@ export function createAiCompanionVoiceMessage(companionId: string, messageId: st
   return request<{ voiceAsset: AiCompanionVoiceAsset }>(`/api/ai-companions/${companionId}/voice-messages`, { method: "POST", body: { messageId } });
 }
 
-export async function transcribeAiCompanionVoiceInput(companionId: string, audio: Blob) {
+export async function transcribeAiCompanionVoiceInput(companionId: string, audio: Blob, durationMs: number) {
   const headers: Record<string, string> = getClientPlatformHeaders();
   const authToken = getAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const form = new FormData();
   form.append("audio", audio, `voice-message.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`);
+  form.append("durationMs", String(durationMs));
   const response = await fetch(`${apiBaseUrl}/api/ai-companions/${companionId}/voice-input/transcribe`, { method: "POST", credentials: "include", headers, body: form });
-  const result = await response.json() as { transcript?: string; error?: string };
-  if (!response.ok || !result.transcript) throw new Error(result.error ?? "The voice message could not be transcribed.");
-  return result.transcript;
+  const result = await response.json() as { transcript?: string; voiceAsset?: AiCompanionVoiceAsset; error?: string };
+  if (!response.ok || !result.transcript || !result.voiceAsset) throw new Error(result.error ?? "The voice message could not be transcribed.");
+  return { transcript: result.transcript, voiceAsset: result.voiceAsset };
+}
+
+export function deleteAiCompanionVoiceInput(companionId: string, assetId: string) {
+  return request<{ ok: true }>(`/api/ai-companions/${companionId}/voice-input/${assetId}`, { method: "DELETE" });
 }
 
 export function fetchAiCompanionVoiceAudio(companionId: string, assetId: string) {
@@ -1157,7 +1163,7 @@ export async function sendAiCompanionCallTurn(companionId: string, callId: strin
   const form = new FormData();
   form.append("audio", audio, `turn.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`);
   const response = await fetch(`${apiBaseUrl}/api/ai-companions/${companionId}/calls/${callId}/turns`, { method: "POST", credentials: "include", headers, body: form });
-  const result = await response.json() as { error?: string; transcript: string; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; voiceAsset: AiCompanionVoiceAsset; call: { billableSeconds: number; remainingSeconds: number; ended: boolean } };
+  const result = await response.json() as { error?: string; transcript: string; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; voiceAsset: AiCompanionVoiceAsset; call: { billableSeconds: number; remainingSeconds: number; ended: boolean }; audioBase64?: string; audioContentType?: string; timingMs?: { transcription: number; reply: number; voice: number; total: number } };
   if (!response.ok) throw new Error(result.error ?? "The voice turn could not be sent.");
   return result;
 }

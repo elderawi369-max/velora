@@ -98,7 +98,7 @@ async function lockedProfileFor(env: EnvBindings, companion: typeof aiCompanions
 }
 
 function publicAsset(asset: typeof aiCompanionVoiceAssets.$inferSelect) {
-  return { id: asset.id, messageId: asset.messageId, status: asset.status, durationMs: asset.durationMs, characterCount: asset.characterCount, deliveryStyle: asset.deliveryStyle, createdAt: asset.createdAt };
+  return { id: asset.id, messageId: asset.messageId, status: asset.status, durationMs: asset.durationMs, characterCount: asset.characterCount, deliveryStyle: asset.deliveryStyle, origin: asset.provider === "user-recorded" ? "user" : "companion", createdAt: asset.createdAt };
 }
 
 async function createVoiceAsset(args: { env: EnvBindings; userId: string; companion: typeof aiCompanions.$inferSelect; conversationId: string; messageId: string; callId?: string; requestKey: string; text: string; profile: LockedVoiceProfile; countMessageQuota: boolean; limits?: { monthly: number; daily: number } }) {
@@ -192,7 +192,7 @@ aiCompanionVoiceRoutes.get("/:companionId/voice-messages/:assetId/audio", async 
   if (!asset?.objectKey) return c.json({ error: "Voice note not found." }, 404);
   const object = await c.env.COMPANION_AUDIO.get(asset.objectKey);
   if (!object) return c.json({ error: "Voice note not found." }, 404);
-  return new Response(object.body, { headers: { "Content-Type": "audio/mpeg", "Content-Length": String(object.size), "Cache-Control": "private, no-store", "Content-Disposition": "inline" } });
+  return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "audio/mpeg", "Content-Length": String(object.size), "Cache-Control": "private, no-store", "Content-Disposition": "inline" } });
 });
 
 aiCompanionVoiceRoutes.post("/:companionId/calls", async (c) => {
@@ -245,11 +245,13 @@ async function readRecordedAudio(c: any) {
   const audioEntry = form.get("audio");
   const audio = typeof audioEntry === "object" && audioEntry !== null && "arrayBuffer" in audioEntry ? audioEntry as Blob : null;
   if (!audio || audio.size <= 0 || audio.size > 4 * 1024 * 1024 || !/^audio\//i.test(audio.type)) return null;
-  return audio;
+  const rawDuration = Number(form.get("durationMs"));
+  const durationMs = Number.isFinite(rawDuration) ? Math.max(250, Math.min(300_000, Math.round(rawDuration))) : null;
+  return { audio, durationMs };
 }
 
-async function transcribeRecordedAudio(ai: Ai, audio: Blob) {
-  const result = await ai.run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(new Uint8Array(await audio.arrayBuffer())), task: "transcribe", vad_filter: true, condition_on_previous_text: false });
+async function transcribeRecordedAudio(ai: Ai, audio: Blob, fast = false) {
+  const result = await ai.run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(new Uint8Array(await audio.arrayBuffer())), task: "transcribe", vad_filter: true, condition_on_previous_text: false, ...(fast ? { beam_size: 1 } : {}) });
   const transcript = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string" ? (result as { text: string }).text.trim() : "";
   return transcript && transcript.length <= 1000 ? transcript : "";
 }
@@ -262,16 +264,40 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-input/transcribe", async (c) =>
   if (limits.monthly <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
   const day = await c.env.DB.prepare("SELECT reserved_count, successful_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${data.context.userId}:day:${dayPeriod()}`).first<{ reserved_count: number; successful_count: number }>();
   if ((day?.reserved_count ?? 0) + (day?.successful_count ?? 0) >= limits.daily) return c.json({ error: "Your voice-message allowance is complete for today." }, 429);
-  const audio = await readRecordedAudio(c);
-  if (!audio) return c.json({ error: "Record a voice message up to 4 MB." }, 400);
+  const recording = await readRecordedAudio(c);
+  if (!recording) return c.json({ error: "Record a voice message up to 4 MB." }, 400);
+  let transcript = "";
   try {
-    const transcript = await transcribeRecordedAudio(c.env.AI, audio);
-    if (!transcript) return c.json({ error: "I couldn't hear a clear message. Please record it again." }, 422);
-    return c.json({ transcript });
+    transcript = await transcribeRecordedAudio(c.env.AI, recording.audio);
   } catch { return c.json({ error: "I couldn't transcribe that message. Please try again." }, 422); }
+  if (!transcript) return c.json({ error: "I couldn't hear a clear message. Please record it again." }, 422);
+  if (!c.env.COMPANION_AUDIO) return c.json({ error: "Voice storage is unavailable." }, 503);
+  try {
+    const assetId = id("aivoice");
+    const extension = recording.audio.type.includes("ogg") ? "ogg" : recording.audio.type.includes("mp4") ? "m4a" : "webm";
+    const objectKey = `voice/${data.context.userId}/${data.companion.id}/${assetId}/recording.${extension}`;
+    const timestamp = now();
+    await c.env.COMPANION_AUDIO.put(objectKey, await recording.audio.arrayBuffer(), { httpMetadata: { contentType: recording.audio.type, cacheControl: "private, no-store" }, customMetadata: { origin: "user-recorded" } });
+    const asset = { id: assetId, userId: data.context.userId, companionId: data.companion.id, conversationId: data.conversation.id, messageId: null, callId: null, requestKey: `user-recording:${assetId}`, objectKey, status: "ready", durationMs: recording.durationMs, characterCount: transcript.length, provider: "user-recorded", profileVersion: 0, deliveryStyle: "natural", errorCode: null, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    try { await getDb(c.env).insert(aiCompanionVoiceAssets).values(asset); }
+    catch { await c.env.COMPANION_AUDIO.delete(objectKey); throw new Error("voice_asset_create_failed"); }
+    return c.json({ transcript, voiceAsset: publicAsset(asset) }, 201);
+  } catch { return c.json({ error: "The recorded voice message could not be stored. Please try again." }, 502); }
+});
+
+aiCompanionVoiceRoutes.delete("/:companionId/voice-input/:assetId", async (c) => {
+  const data = await companionContext(c);
+  if (!data) return c.json({ error: "Companion not found." }, 404);
+  const db = getDb(c.env);
+  const [asset] = await db.select().from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, c.req.param("assetId")), eq(aiCompanionVoiceAssets.userId, data.context.userId), eq(aiCompanionVoiceAssets.companionId, data.companion.id), eq(aiCompanionVoiceAssets.provider, "user-recorded"), isNull(aiCompanionVoiceAssets.messageId), isNull(aiCompanionVoiceAssets.deletedAt))).limit(1);
+  if (!asset) return c.json({ ok: true });
+  if (asset.objectKey && c.env.COMPANION_AUDIO) await c.env.COMPANION_AUDIO.delete(asset.objectKey);
+  await db.delete(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.id, asset.id));
+  return c.json({ ok: true });
 });
 
 aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
+  const turnStartedAt = now();
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.AI || !data.profile) return c.json({ error: "Call services are unavailable." }, 503);
@@ -279,12 +305,13 @@ aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
   if (!call) return c.json({ error: "Call not found or already ended." }, 404);
   const [latestTurn] = await getDb(c.env).select({ createdAt: aiCompanionCallTurns.createdAt }).from(aiCompanionCallTurns).where(eq(aiCompanionCallTurns.callId, call.id)).orderBy(desc(aiCompanionCallTurns.createdAt)).limit(1);
   if (latestTurn && latestTurn.createdAt > now() - 2_000) return c.json({ error: "Give the call a moment before sending another turn." }, 429);
-  const audio = await readRecordedAudio(c);
-  if (!audio) return c.json({ error: "Record a voice turn up to 4 MB." }, 400);
+  const recording = await readRecordedAudio(c);
+  if (!recording) return c.json({ error: "Record a voice turn up to 4 MB." }, 400);
   let transcript = "";
   try {
-    transcript = await transcribeRecordedAudio(c.env.AI, audio);
+    transcript = await transcribeRecordedAudio(c.env.AI, recording.audio, true);
   } catch { return c.json({ error: "I couldn't hear that clearly. Please try that turn again." }, 422); }
+  const transcriptionReadyAt = now();
   if (!transcript || transcript.length > 1000) return c.json({ error: "I couldn't hear a clear spoken turn. Please try again." }, 422);
   const db = getDb(c.env);
   const relationshipStage = relationshipStageForPoints(data.conversation.relationshipPoints);
@@ -295,26 +322,30 @@ aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
   if (isCrisisMessage(transcript)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else {
     const [memories, canon, recent] = await Promise.all([
-      db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, data.context.userId), eq(aiCompanionMemories.companionId, data.companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(12),
+      db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, data.context.userId), eq(aiCompanionMemories.companionId, data.companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(8),
       getOrCreateCharacterCanon(c.env, data.companion),
-      db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, data.conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(14),
+      db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, data.conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(10),
     ]);
     const messages = [{ role: "system", content: `${buildSystemPrompt({ companion: data.companion, canon, memories, relationshipStage })}\n\nThis is a turn-based voice call. Reply in one or two short, natural spoken sentences. Use contractions and conversational wording. Do not use markdown, lists, stage directions, emoji, URLs, quotation marks, or narration about your tone. Do not begin every turn with the user's name.` }, ...recent.slice().reverse().map((message) => ({ role: message.role, content: message.body }))];
     try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-1b-instruct", { messages, max_tokens: 55, temperature: 0.68 })); }
     catch { await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id)); return c.json({ error: "The call reply could not be created. Please try again." }, 502); }
     if (!responseBody || containsBlockedOutput(responseBody)) { responseBody = "I want to keep this safe and respectful. Can we take that in a different direction?"; moderationStatus = "safety_redirect"; }
   }
+  const replyReadyAt = now();
   const assistantMessage = { id: id("aimsg"), conversationId: data.conversation.id, role: "assistant", body: responseBody, moderationStatus, createdAt: now() };
   await db.insert(aiCompanionMessages).values(assistantMessage);
   let voiceAsset;
   try { voiceAsset = await createVoiceAsset({ env: c.env, userId: data.context.userId, companion: data.companion, conversationId: data.conversation.id, messageId: assistantMessage.id, callId: call.id, requestKey: `call:${call.id}:turn:${userMessage.id}:profile:${data.profile.profileVersion}`, text: assistantMessage.body, profile: data.profile, countMessageQuota: false }); }
   catch { return c.json({ error: "The reply was saved, but its call audio could not be created." }, 502); }
+  const voiceReadyAt = now();
   const turn = { id: id("aicallturn"), callId: call.id, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id, voiceAssetId: voiceAsset.id, transcript, createdAt: now() };
   const relationshipPoints = data.conversation.relationshipPoints + relationshipPointsForMessage(transcript);
+  const inlineAudioPromise = voiceAsset.objectKey && c.env.COMPANION_AUDIO ? c.env.COMPANION_AUDIO.get(voiceAsset.objectKey) : Promise.resolve(null);
   await db.batch([db.insert(aiCompanionCallTurns).values(turn), db.update(aiCompanionConversations).set({ relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, data.conversation.id))]);
-  if (moderationStatus === "allowed") await createMemoryCandidates(c.env, { userId: data.context.userId, companionId: data.companion.id, sourceMessageId: userMessage.id, message: transcript }).catch(() => undefined);
-  const heartbeat = await accountHeartbeat(c.env, call);
-  return c.json({ transcript, userMessage, assistantMessage, voiceAsset: publicAsset(voiceAsset), call: heartbeat }, 201);
+  if (moderationStatus === "allowed") c.executionCtx.waitUntil(createMemoryCandidates(c.env, { userId: data.context.userId, companionId: data.companion.id, sourceMessageId: userMessage.id, message: transcript }).catch(() => undefined));
+  const [heartbeat, inlineAudio] = await Promise.all([accountHeartbeat(c.env, call), inlineAudioPromise]);
+  const audioBase64 = inlineAudio ? bytesToBase64(new Uint8Array(await inlineAudio.arrayBuffer())) : undefined;
+  return c.json({ transcript, userMessage, assistantMessage, voiceAsset: publicAsset(voiceAsset), call: heartbeat, audioBase64, audioContentType: inlineAudio?.httpMetadata?.contentType ?? "audio/mpeg", timingMs: { transcription: transcriptionReadyAt - turnStartedAt, reply: replyReadyAt - transcriptionReadyAt, voice: voiceReadyAt - replyReadyAt, total: now() - turnStartedAt } }, 201);
 });
 
 aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/end", async (c) => {
