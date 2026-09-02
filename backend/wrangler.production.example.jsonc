@@ -8,12 +8,20 @@
     "APP_ENV": "production",
     "ENABLE_DEV_ENDPOINTS": "false",
     "AI_COMPANION_ENABLED": "false",
+    "AI_COMPANION_VOICE_ENABLED": "false",
+    "AI_COMPANION_CALLS_ENABLED": "false",
     "AI_COMPANION_DAILY_TRIAL_LIMIT": "40",
     "AI_COMPANION_BETA_EMAILS": ""
   },
   "ai": {
     "binding": "AI"
   },
+  "r2_buckets": [
+    {
+      "binding": "COMPANION_AUDIO",
+      "bucket_name": "velora-companion-audio"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

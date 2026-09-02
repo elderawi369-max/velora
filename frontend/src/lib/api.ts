@@ -427,7 +427,7 @@ async function requestImageUrl(path: string): Promise<string> {
   const authToken = getAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", headers });
-  if (!response.ok) throw new Error("Could not load the private visual reference.");
+  if (!response.ok) throw new Error("Could not load this private media.");
   return URL.createObjectURL(await response.blob());
 }
 
@@ -961,6 +961,21 @@ export type AiCompanionVisualCandidate = {
   status: "candidate" | "selected" | "rejected";
 };
 
+export type AiCompanionVoiceAsset = {
+  id: string;
+  messageId: string | null;
+  status: "generating" | "ready" | "failed";
+  durationMs: number | null;
+  characterCount: number;
+  deliveryStyle: "natural" | "romantic" | "playful" | "comforting" | "serious" | "excited";
+  createdAt: number;
+};
+
+export type AiCompanionVoiceCapabilities = {
+  voice: { enabled: boolean; catalogName: string | null; engine: string | null; monthlyLimit: number; monthlyUsed: number; dailyLimit: number; dailyUsed: number; maxCharacters: number; maxDurationSeconds: number };
+  calls: { enabled: boolean; monthlySeconds: number; transcriptionDisclosure: string };
+};
+
 export type AiCompanionUserPhoto = {
   id: string;
   messageId: string | null;
@@ -1011,6 +1026,7 @@ export function fetchAiCompanion(companionId: string) {
     photos: Array<{ id: string; status: string; createdAt: number }>;
     deliveredPhotos: Array<{ id: string; requestMessageId: string | null; createdAt: number }>;
     userPhotos: Array<{ id: string; messageId: string; contentType: string; width: number; height: number; createdAt: number }>;
+    voiceAssets: AiCompanionVoiceAsset[];
     entitlement: AiEntitlement;
     aiEnabled: boolean;
   }>(`/api/ai-companions/${companionId}`);
@@ -1094,6 +1110,44 @@ export function deleteAiCompanionUserPhoto(companionId: string, photoId: string)
 
 export function sendAiCompanionMessage(companionId: string, body: string) {
   return request<{ userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; trialRepliesUsed: number; photoRequested: boolean }>(`/api/ai-companions/${companionId}/messages`, { method: "POST", body: { body } });
+}
+
+export function fetchAiCompanionVoiceCapabilities(companionId: string) {
+  return request<AiCompanionVoiceCapabilities>(`/api/ai-companions/${companionId}/voice`);
+}
+
+export function createAiCompanionVoiceMessage(companionId: string, messageId: string) {
+  return request<{ voiceAsset: AiCompanionVoiceAsset }>(`/api/ai-companions/${companionId}/voice-messages`, { method: "POST", body: { messageId } });
+}
+
+export function fetchAiCompanionVoiceAudio(companionId: string, assetId: string) {
+  return requestImageUrl(`/api/ai-companions/${companionId}/voice-messages/${assetId}/audio`);
+}
+
+export type AiCompanionCall = { id: string; status: "connected" | "ended"; maxSeconds: number; connectedAt: number };
+
+export function startAiCompanionCall(companionId: string) {
+  return request<{ call: AiCompanionCall; disclosure: string }>(`/api/ai-companions/${companionId}/calls`, { method: "POST" });
+}
+
+export function heartbeatAiCompanionCall(companionId: string, callId: string) {
+  return request<{ billableSeconds: number; remainingSeconds: number; ended: boolean }>(`/api/ai-companions/${companionId}/calls/${callId}/heartbeat`, { method: "POST" });
+}
+
+export function endAiCompanionCall(companionId: string, callId: string) {
+  return request<{ ok: true; billableSeconds?: number; alreadyEnded?: boolean }>(`/api/ai-companions/${companionId}/calls/${callId}/end`, { method: "POST" });
+}
+
+export async function sendAiCompanionCallTurn(companionId: string, callId: string, audio: Blob) {
+  const headers: Record<string, string> = getClientPlatformHeaders();
+  const authToken = getAuthToken();
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const form = new FormData();
+  form.append("audio", audio, `turn.${audio.type.includes("ogg") ? "ogg" : audio.type.includes("mp4") ? "m4a" : "webm"}`);
+  const response = await fetch(`${apiBaseUrl}/api/ai-companions/${companionId}/calls/${callId}/turns`, { method: "POST", credentials: "include", headers, body: form });
+  const result = await response.json() as { error?: string; transcript: string; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage; voiceAsset: AiCompanionVoiceAsset; call: { billableSeconds: number; remainingSeconds: number; ended: boolean } };
+  if (!response.ok) throw new Error(result.error ?? "The voice turn could not be sent.");
+  return result;
 }
 
 export function createAiCompanionMemory(companionId: string, content: string) {

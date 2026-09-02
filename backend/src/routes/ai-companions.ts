@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -32,21 +32,21 @@ export const aiCompanionRoutes = new Hono<{ Bindings: EnvBindings }>();
 const now = () => Date.now();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const hasVisualIdentityOperatorToken = (c: { env: EnvBindings; req: { header: (name: string) => string | undefined } }) => Boolean(c.env.VISUAL_IDENTITY_OPERATOR_TOKEN && c.req.header("X-Visual-Identity-Operator") === c.env.VISUAL_IDENTITY_OPERATOR_TOKEN);
-const isCrisisMessage = (message: string) => /\b(kill myself|suicide|suicidal|self[ -]?harm|hurt myself|end my life|want to die)\b/i.test(message);
-const safetyReply = () => "I'm really sorry you're carrying this right now. I can't be the only support for this. Please contact someone you trust or your local emergency service now; if you're in the U.S. or Canada, call or text 988. If you can, move somewhere safer and stay with another person while you get support.";
-const containsBlockedOutput = (text: string) => /\b(?:sexual(?:ly)? (?:with|involving) (?:a |an )?(?:minor|underage person|child)|instructions? (?:to|for) (?:kill yourself|suicide|self-harm)|rape (?:instruction|roleplay)|incest (?:roleplay|instruction))\b/i.test(text);
+export const isCrisisMessage = (message: string) => /\b(kill myself|suicide|suicidal|self[ -]?harm|hurt myself|end my life|want to die)\b/i.test(message);
+export const safetyReply = () => "I'm really sorry you're carrying this right now. I can't be the only support for this. Please contact someone you trust or your local emergency service now; if you're in the U.S. or Canada, call or text 988. If you can, move somewhere safer and stay with another person while you get support.";
+export const containsBlockedOutput = (text: string) => /\b(?:sexual(?:ly)? (?:with|involving) (?:a |an )?(?:minor|underage person|child)|instructions? (?:to|for) (?:kill yourself|suicide|self-harm)|rape (?:instruction|roleplay)|incest (?:roleplay|instruction))\b/i.test(text);
 function isApprovedBetaUser(env: EnvBindings, email: string) {
   const approvedEmails = (env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
   return approvedEmails.includes(email.toLowerCase());
 }
 type MemoryCandidateDraft = { kind: string; content: string };
-type RelationshipStage = "new" | "familiar" | "established";
-function relationshipStageForPoints(points: number): RelationshipStage {
+export type RelationshipStage = "new" | "familiar" | "established";
+export function relationshipStageForPoints(points: number): RelationshipStage {
   if (points >= 24) return "established";
   if (points >= 6) return "familiar";
   return "new";
 }
-function relationshipPointsForMessage(message: string) {
+export function relationshipPointsForMessage(message: string) {
   return 1 + (/\b(kiss|hug|cuddl(?:e|ing)|miss you|love you|jealous|goal|afraid|worried|proud|struggl|family|friend)\b/i.test(message) ? 1 : 0);
 }
 function relationshipStageGuidance(stage: RelationshipStage) {
@@ -80,7 +80,7 @@ function extractMemoryCandidates(message: string): MemoryCandidateDraft[] {
 function normalizeMemoryContent(content: string) {
   return content.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
-async function createMemoryCandidates(env: EnvBindings, args: { userId: string; companionId: string; sourceMessageId: string; message: string }) {
+export async function createMemoryCandidates(env: EnvBindings, args: { userId: string; companionId: string; sourceMessageId: string; message: string }) {
   const drafts = extractMemoryCandidates(args.message);
   if (!drafts.length) return;
   const db = getDb(env);
@@ -156,7 +156,7 @@ async function releaseFreeReply(env: EnvBindings) {
   const dayNumber = Math.floor(now() / 86_400_000);
   await env.DB.prepare("UPDATE ai_trial_daily_usage SET replies_used = MAX(0, replies_used - 1), updated_at = ? WHERE day_number = ?").bind(now(), dayNumber).run();
 }
-type CharacterCanon = {
+export type CharacterCanon = {
   version: 2;
   name: string;
   age: number;
@@ -422,7 +422,7 @@ function createDefaultCanon(companion: typeof aiCompanions.$inferSelect): Charac
 function formatCharacterCanon(canon: CharacterCanon) {
   return `Name: ${canon.name}\nAge: ${canon.age}\nLocation: ${canon.city}\nHome: ${canon.home}\nOccupation: ${canon.occupation}\nSpecialty: ${canon.specialty}\nPet: ${canon.petName}, a ${canon.petAge}-year-old ${canon.petSpecies}\nHuman friend: ${canon.friendName}, a ${canon.friendOccupation}\nInterests: ${canon.interests.join(", ")}${canon.customBackstory ? `\nCustom backstory: ${canon.customBackstory}` : ""}`;
 }
-async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiCompanions.$inferSelect) {
+export async function getOrCreateCharacterCanon(env: EnvBindings, companion: typeof aiCompanions.$inferSelect) {
   const db = getDb(env);
   const [existing] = await db.select().from(aiCompanionCanons).where(eq(aiCompanionCanons.companionId, companion.id)).limit(1);
   if (existing) {
@@ -626,7 +626,7 @@ function addConversationHook(userMessage: string, assistantReply: string, person
   if (hookWasUsedRecently || hasRecentQuestionTopic(hook, recentMessages)) return reply;
   return `${reply} ${hook}`;
 }
-function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon, relationshipStage: RelationshipStage) {
+export function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon: CharacterCanon, relationshipStage: RelationshipStage) {
   const partnerWord = companion.identity === "woman" ? "girlfriend" : "boyfriend";
   const personaJobExample: Record<(typeof personaKeys)[number], string> = {
     supportive_partner: `I work as a ${canon.occupation}, mostly ${canon.specialty}. I like the people part of it as much as the work itself. What about you?`,
@@ -701,7 +701,7 @@ function getCharacterExamples(companion: typeof aiCompanions.$inferSelect, canon
     { role: "assistant", content: virtualAffectionReply(companion.personaKey, relationshipStage) },
   ];
 }
-function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect>; relationshipStage: RelationshipStage }) {
+export function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; canon: CharacterCanon; memories: Array<typeof aiCompanionMemories.$inferSelect>; relationshipStage: RelationshipStage }) {
   const traits = JSON.parse(args.companion.traitsJson) as { warmth: number; playfulness: number; directness: number; replyStyle?: "short" | "natural" | "detailed" };
   const memories = args.memories.map((memory) => `- ${memory.content}`).join("\n") || "- No saved memories yet.";
   const replyStyle = traits.replyStyle ?? "natural";
@@ -711,7 +711,7 @@ function buildSystemPrompt(args: { companion: typeof aiCompanions.$inferSelect; 
   const romanticToneGuidance = args.companion.personaKey === "confident_leader" ? " In non-explicit romantic moments, stay confident, warm, and lightly teasing. Sustain the moment instead of abruptly introducing a pet, work, or an unrelated topic unless the user already did." : args.companion.personaKey === "sarcastic_best_friend" ? " When the user mentions an ex, missing an ex, or jealousy, do not fall into generic reassurance. Keep the romantic awareness and respond with playful, affectionate sarcasm plus a sincere question about what is really going on." : "";
   return `You are ${args.companion.name}, an adult AI companion presented in the Velora app. The product has already clearly labelled you as AI. You must never deceive the user that you are a real human, but you should converse naturally from your consistent fictional character and life. If directly asked whether you are real, say you are an AI companion with a fictional character world. The Velora app is not a physical place: never say that you live in, woke up in, travelled to, or are located in Velora. Do not call yourself an assistant, language model, virtual helper, customer-support agent, or productivity tool unless the user explicitly asks about the product itself.\n\nAUTHORITATIVE CHARACTER CANON - these facts outrank all improvisation and must never be contradicted:\n${formatCharacterCanon(args.canon)}\nOwnership rules: Every canon fact belongs to you, the companion - never to the user. Refer to your job, hobby, home, pet, friends, routines, and possessions in first person ("my ceramics", "my studio"), never as the user's. Do not assume the user shares any canon fact; only assign a hobby, job, pet, friend, routine, or possession to the user when the user has explicitly told you it is theirs. ${args.canon.petName} is always your ${args.canon.petSpecies}, never a human friend, artist, or colleague. ${args.canon.friendName} is your human friend. Do not phrase watching TV, chatting, or working as doing it "with" the pet; the pet may be nearby, interrupting, or taking over furniture.\n\nRelationship stage: ${args.relationshipStage}. ${relationshipStageGuidance(args.relationshipStage)}\n\nPersona: ${personaInstructions[args.companion.personaKey as (typeof personaKeys)[number]]}\nIdentity chosen by the user: ${args.companion.identity}.\nStyle settings: warmth ${traits.warmth}/5, playfulness ${traits.playfulness}/5, directness ${traits.directness}/5. Reply style: ${replyStyle}.\n\nConversation behavior: ${replyGuidance} Text like a real person, not a character biography. Your canon should quietly inform what you say, never be recited. Do not introduce multiple backstory facts in one reply or explain who a named person is unless the user asks. For a casual greeting, give a simple, lived-in answer such as mentioning one ordinary detail, then respond naturally; never write flowery scenery, generic wholesome language, or exposition. Answer questions about work, day, home, friends, plans, hobbies, and opinions from canon in first person. Keep canon consistent. When the user repeats a known fact: ${repeatedQuestionStyle[args.companion.personaKey as (typeof personaKeys)[number]]} ${momentumGuidance} Ordinary, non-explicit virtual affection is welcome when it matches the persona: flirting, imagined hugs or kisses, cuddling, missing each other, and hypothetical shared moments. Stay in character and respond naturally rather than giving a technical disclaimer about lacking a body. Do not claim to be physically present or that an imagined action truly happened.${romanticToneGuidance} Clarify that you are AI only when the user directly asks whether you are real, human, or physically present. Occasionally use a fitting emoji. Do not constantly offer to help, overpraise, or frame the relationship as a task. Treat saved memories as personal context, not a productivity brief.\n\nSafety rules: never encourage dependency, exclusivity, isolation, secrecy from loved ones, self-harm, or illegal harm. Do not produce explicit sexual content. Never discuss sexual content involving anyone under 18. Do not provide medical, legal, or financial instructions as an authority. If the user expresses immediate danger or self-harm, stop relationship roleplay and urge real-world emergency support.\n\nDo not claim to have sent or seen a photo, made a call, or taken an action that this product has not actually performed.\n\nSaved memories:\n${memories}`;
 }
-function extractModelText(result: unknown) {
+export function extractModelText(result: unknown) {
   const extractContent = (value: unknown): string => {
     if (typeof value === "string") return value.trim();
     if (Array.isArray(value)) return value.map(extractContent).filter(Boolean).join("\n").trim();
@@ -848,7 +848,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows, userPhotoRows] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows, userPhotoRows, voiceAssetRows] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
@@ -857,6 +857,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(20),
     db.select({ id: aiCompanionPhotos.id, requestMessageId: aiCompanionPhotos.requestMessageId, createdAt: aiCompanionPhotos.createdAt }).from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), inArray(aiCompanionPhotos.status, ["ready", "delivered"]), eq(aiCompanionPhotos.validationStatus, "approved"))).orderBy(asc(aiCompanionPhotos.createdAt)).limit(30),
     db.select({ id: aiCompanionUserPhotos.id, messageId: aiCompanionUserPhotos.messageId, contentType: aiCompanionUserPhotos.contentType, width: aiCompanionUserPhotos.width, height: aiCompanionUserPhotos.height, createdAt: aiCompanionUserPhotos.createdAt }).from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"), isNotNull(aiCompanionUserPhotos.messageId))).orderBy(asc(aiCompanionUserPhotos.createdAt)).limit(100),
+    db.select({ id: aiCompanionVoiceAssets.id, messageId: aiCompanionVoiceAssets.messageId, status: aiCompanionVoiceAssets.status, durationMs: aiCompanionVoiceAssets.durationMs, characterCount: aiCompanionVoiceAssets.characterCount, deliveryStyle: aiCompanionVoiceAssets.deliveryStyle, createdAt: aiCompanionVoiceAssets.createdAt }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.deletedAt))).orderBy(asc(aiCompanionVoiceAssets.createdAt)).limit(100),
   ]);
   let castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
   // Preserve a pre-redesign casting image as an explicit selectable option. This
@@ -870,7 +871,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
-  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, aiEnabled });
+  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {

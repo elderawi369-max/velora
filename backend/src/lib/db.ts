@@ -4,6 +4,7 @@ export type EnvBindings = {
   DB: D1Database;
   AI?: Ai;
   COMPANION_IMAGES?: R2Bucket;
+  COMPANION_AUDIO?: R2Bucket;
   APP_NAME?: string;
   ADMIN_SECRET?: string;
   VISUAL_IDENTITY_OPERATOR_TOKEN?: string;
@@ -30,6 +31,9 @@ export type EnvBindings = {
   AI_COMPANION_ENABLED?: string;
   AI_COMPANION_DAILY_TRIAL_LIMIT?: string;
   AI_COMPANION_BETA_EMAILS?: string;
+  AI_COMPANION_VOICE_ENABLED?: string;
+  AI_COMPANION_CALLS_ENABLED?: string;
+  GOOGLE_TTS_SERVICE_ACCOUNT_JSON?: string;
   COMPANION_IDENTITY_EVALUATOR_URL?: string;
   COMPANION_IDENTITY_EVALUATOR_TOKEN?: string;
   COMPANION_IDENTITY_MIN_SCORE?: string;

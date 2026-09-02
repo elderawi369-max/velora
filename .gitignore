@@ -14,3 +14,9 @@ Thumbs.db
 *.log
 test-cookies.txt
 *.tsbuildinfo
+voice-audition/audio*/
+voice-audition/audition-manifest*.json
+voice-audition/scores-*.json
+voice-audition/.analysis-deps/
+voice-audition/audio-analysis*.json
+voice-audition/prosody-references/

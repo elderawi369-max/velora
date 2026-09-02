@@ -477,6 +477,79 @@ export const aiCompanionPhotoUsage = sqliteTable("ai_companion_photo_usage", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionVoiceProfiles = sqliteTable("ai_companion_voice_profiles", {
+  companionId: text("companion_id").primaryKey().references(() => aiCompanions.id),
+  catalogName: text("catalog_name").notNull(),
+  provider: text("provider").notNull(),
+  engine: text("engine").notNull(),
+  voiceName: text("voice_name").notNull(),
+  locale: text("locale").notNull(),
+  speakingRate: real("speaking_rate").notNull(),
+  pitch: real("pitch").notNull(),
+  audioEncoding: text("audio_encoding").notNull().default("MP3"),
+  sampleRateHertz: integer("sample_rate_hertz").notNull().default(24000),
+  profileVersion: integer("profile_version").notNull().default(1),
+  status: text("status").notNull().default("locked"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionVoiceAssets = sqliteTable("ai_companion_voice_assets", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  conversationId: text("conversation_id").notNull().references(() => aiCompanionConversations.id),
+  messageId: text("message_id").references(() => aiCompanionMessages.id),
+  callId: text("call_id"),
+  requestKey: text("request_key").notNull(),
+  objectKey: text("object_key"),
+  status: text("status").notNull().default("generating"),
+  durationMs: integer("duration_ms"),
+  characterCount: integer("character_count").notNull(),
+  provider: text("provider").notNull(),
+  profileVersion: integer("profile_version").notNull(),
+  deliveryStyle: text("delivery_style").notNull().default("natural"),
+  errorCode: text("error_code"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  deletedAt: integer("deleted_at"),
+});
+
+export const aiCompanionVoiceUsage = sqliteTable("ai_companion_voice_usage", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  scope: text("scope").notNull(),
+  period: text("period").notNull(),
+  reservedCount: integer("reserved_count").notNull().default(0),
+  successfulCount: integer("successful_count").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionCalls = sqliteTable("ai_companion_calls", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  companionId: text("companion_id").notNull().references(() => aiCompanions.id),
+  conversationId: text("conversation_id").notNull().references(() => aiCompanionConversations.id),
+  status: text("status").notNull().default("calling"),
+  connectedAt: integer("connected_at"),
+  lastHeartbeatAt: integer("last_heartbeat_at"),
+  endedAt: integer("ended_at"),
+  billableSeconds: integer("billable_seconds").notNull().default(0),
+  maxSeconds: integer("max_seconds").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionCallTurns = sqliteTable("ai_companion_call_turns", {
+  id: text("id").primaryKey(),
+  callId: text("call_id").notNull().references(() => aiCompanionCalls.id),
+  userMessageId: text("user_message_id").references(() => aiCompanionMessages.id),
+  assistantMessageId: text("assistant_message_id").references(() => aiCompanionMessages.id),
+  voiceAssetId: text("voice_asset_id").references(() => aiCompanionVoiceAssets.id),
+  transcript: text("transcript").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
 // User-owned shared photos are deliberately separate from companion visual
 // identities and generated assets. They can never become catalog references.
 export const aiCompanionUserPhotos = sqliteTable("ai_companion_user_photos", {

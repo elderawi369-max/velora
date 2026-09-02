@@ -16,6 +16,8 @@
 		"RESEND_SUPPORT_FROM_EMAIL": "support@velorachat.com",
 		"SUPPORT_REPLY_TO_EMAIL": "support@velorachat.com",
 		"AI_COMPANION_ENABLED": "true",
+		"AI_COMPANION_VOICE_ENABLED": "true",
+		"AI_COMPANION_CALLS_ENABLED": "true",
 		"AI_COMPANION_DAILY_TRIAL_LIMIT": "40",
 		"AI_COMPANION_BETA_EMAILS": "elderawi369@gmail.com"
 	},
@@ -26,6 +28,10 @@
 		{
 			"binding": "COMPANION_IMAGES",
 			"bucket_name": "velora-companion-images"
+		},
+		{
+			"binding": "COMPANION_AUDIO",
+			"bucket_name": "velora-companion-audio"
 		}
 	],
 	"routes": [
