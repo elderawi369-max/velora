@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken, logout } from "../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken } from "../lib/api";
 import { useEffect, useState } from "react";
 import { clearNativeAppBadgeCount, syncNativeAppBadgeCount } from "../lib/app-badge";
 import { recoverGooglePlayPurchases } from "../lib/google-play-billing";
@@ -232,19 +232,6 @@ export function AppLayout() {
   const totalAppBadgeCount = conversationUnreadCount + notificationUnreadCount;
   const hasProfile = Boolean(sessionQuery.data?.hasProfile);
   const isLoggedIn = Boolean(sessionQuery.data?.authenticated);
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSettled: async () => {
-      clearAuthToken();
-      await clearNativeAppBadgeCount();
-      await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
-      await queryClient.invalidateQueries({ queryKey: ["session"] });
-      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      navigate("/login");
-    },
-  });
-
   useEffect(() => {
     if (!isLoggedIn) {
       void clearNativeAppBadgeCount();
@@ -255,15 +242,10 @@ export function AppLayout() {
   }, [isLoggedIn, totalAppBadgeCount]);
 
   const navItems = [
-    { to: "/", label: "Home" },
+    { to: "/", label: "AI Companion" },
     { to: "/browse", label: "Browse" },
-    { to: "/ai-companions", label: "AI Companions" },
-    { to: "/challenges", label: "Challenges" },
     { to: "/conversations", label: "Conversations" },
-    { to: "/activity", label: "Activity" },
-    { to: "/favorites", label: "Favorites" },
-    { to: hasProfile ? "/my-profile" : "/create-profile", label: hasProfile ? "My Profile" : "Create Profile" },
-    { to: "/support", label: "Support" },
+    { to: hasProfile ? "/my-profile" : "/create-profile", label: "My Profile" },
   ];
 
   return (
@@ -289,27 +271,16 @@ export function AppLayout() {
               }
             >
               <span>{item.label}</span>
-              {item.to === "/conversations" && conversationUnreadCount > 0 ? (
-                <span className="nav-badge">{conversationUnreadCount}</span>
-              ) : null}
-              {item.to === "/activity" && notificationUnreadCount > 0 ? (
-                <span className="nav-badge">{notificationUnreadCount}</span>
+              {item.to === "/conversations" && totalAppBadgeCount > 0 ? (
+                <span className="nav-badge">{totalAppBadgeCount}</span>
               ) : null}
             </NavLink>
           ))}
-          {isLoggedIn ? (
-            <button
-              className="nav-link nav-button-link"
-              type="button"
-              onClick={() => logoutMutation.mutate()}
-            >
-              <span>{logoutMutation.isPending ? "Logging out..." : "Logout"}</span>
-            </button>
-          ) : (
+          {!isLoggedIn ? (
             <NavLink to="/login" className="nav-link">
               <span>Login</span>
             </NavLink>
-          )}
+          ) : null}
         </nav>
       </header>
 

@@ -13,9 +13,7 @@ import { ChallengesPage } from "./ui/pages/challenges-page";
 import { ChallengeSessionPage } from "./ui/pages/challenge-session-page";
 import { ConversationsPage } from "./ui/pages/conversations-page";
 import { FavoritesPage } from "./ui/pages/favorites-page";
-import { HomePage } from "./ui/pages/home-page";
 import { LoginPage } from "./ui/pages/login-page";
-import { LiveTriviaPage } from "./ui/pages/live-trivia-page";
 import { MyProfilePage } from "./ui/pages/my-profile-page";
 import { NotificationsPage } from "./ui/pages/notifications-page";
 import { PaymentCancelPage } from "./ui/pages/payment-cancel-page";
@@ -24,7 +22,6 @@ import { SignupPage } from "./ui/pages/signup-page";
 import { CreateProfilePage } from "./ui/pages/create-profile-page";
 import { ChildSafetyPage } from "./ui/pages/child-safety-page";
 import { PrivacyPage } from "./ui/pages/privacy-page";
-import { SupportPage } from "./ui/pages/support-page";
 import { TermsPage } from "./ui/pages/terms-page";
 import { GuidelinesPage } from "./ui/pages/guidelines-page";
 import { ForgotPasswordPage } from "./ui/pages/forgot-password-page";
@@ -88,7 +85,7 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <HomePage />,
+        element: <AiCompanionsPage />,
       },
       {
         path: "admin",
@@ -132,7 +129,7 @@ const router = createBrowserRouter([
       },
       {
         path: "ai-companions",
-        element: <AiCompanionsPage />,
+        element: <Navigate to="/" replace />,
       },
       {
         path: "browse/:username",
@@ -152,7 +149,7 @@ const router = createBrowserRouter([
       },
       {
         path: "challenges/live",
-        element: <LiveTriviaPage />,
+        element: <Navigate to="/conversations" replace />,
       },
       {
         path: "challenges/:challengeId",
@@ -168,7 +165,7 @@ const router = createBrowserRouter([
       },
       {
         path: "support",
-        element: <SupportPage />,
+        element: <Navigate to="/my-profile#support" replace />,
       },
       {
         path: "delete-account",

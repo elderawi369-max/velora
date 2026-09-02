@@ -17,7 +17,7 @@ export function DeleteAccountPage() {
         <p>
           Use the <a href="/forgot-password">forgot password</a> flow first. If you still cannot
           access your account, contact Velora through the{" "}
-          <a href="/support">support page</a> and request account deletion using the email
+          <a href="/my-profile#support">support form in My Profile</a> and request account deletion using the email
           address tied to your account.
         </p>
 

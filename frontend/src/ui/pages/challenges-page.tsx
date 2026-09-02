@@ -80,9 +80,6 @@ export function ChallengesPage() {
         <Link className="primary-button" to="/browse">
           Start another challenge
         </Link>
-        <Link className="secondary-button" to="/challenges/live">
-          Open live trivia
-        </Link>
         <Link className="secondary-button" to="/my-profile">
           {creditBalance} credit{creditBalance === 1 ? "" : "s"} available
         </Link>

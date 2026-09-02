@@ -148,6 +148,16 @@ export function AccountSettingsPanel() {
     },
   });
 
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSettled: async () => {
+      clearAuthToken();
+      await clearNativeAppBadgeCount();
+      queryClient.clear();
+      navigate("/login");
+    },
+  });
+
   const enablePushMutation = useMutation({
     mutationFn: async () => {
       const supported = await canUsePushNotifications();
@@ -200,8 +210,18 @@ export function AccountSettingsPanel() {
     <section className="panel form-panel">
       <div className="section-copy compact-copy">
         <p className="eyebrow">Account</p>
-        <h2>Update your password or close the account.</h2>
+        <h2>Manage your session, password, and account.</h2>
       </div>
+
+      <section className="panel form-panel settings-subpanel account-session-panel">
+        <div>
+          <span className="meta-title">Current session</span>
+          <p className="status-message">Log out of Velora on this device.</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending}>
+          {logoutMutation.isPending ? "Logging out..." : "Log out"}
+        </button>
+      </section>
 
       <div className="settings-grid">
         <form
