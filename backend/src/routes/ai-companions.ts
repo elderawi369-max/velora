@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionAppearanceCatalog, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, aiEntitlements, profiles, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -848,7 +848,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const companion = await getCompanionForUser(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env); const [conversation] = await db.select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1);
   if (!conversation) return c.json({ error: "Conversation not found." }, 404);
-  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows, userPhotoRows, voiceAssetRows] = await Promise.all([
+  const [messages, memories, memoryCandidates, entitlement, visualIdentity, photoRows, deliveredPhotoRows, userPhotoRows, voiceAssetRows, callRows] = await Promise.all([
     db.select().from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(asc(aiCompanionMessages.createdAt)),
     db.select().from(aiCompanionMemories).where(and(eq(aiCompanionMemories.userId, context.userId), eq(aiCompanionMemories.companionId, companion.id))).orderBy(desc(aiCompanionMemories.pinned), desc(aiCompanionMemories.updatedAt)).limit(30),
     db.select().from(aiCompanionMemoryCandidates).where(and(eq(aiCompanionMemoryCandidates.userId, context.userId), eq(aiCompanionMemoryCandidates.companionId, companion.id), eq(aiCompanionMemoryCandidates.status, "pending"))).orderBy(desc(aiCompanionMemoryCandidates.createdAt)).limit(8),
@@ -857,8 +857,38 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
     db.select().from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), eq(aiCompanionPhotos.status, "test_review"))).orderBy(desc(aiCompanionPhotos.createdAt)).limit(20),
     db.select({ id: aiCompanionPhotos.id, requestMessageId: aiCompanionPhotos.requestMessageId, createdAt: aiCompanionPhotos.createdAt }).from(aiCompanionPhotos).where(and(eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.companionId, companion.id), inArray(aiCompanionPhotos.status, ["ready", "delivered"]), eq(aiCompanionPhotos.validationStatus, "approved"))).orderBy(asc(aiCompanionPhotos.createdAt)).limit(30),
     db.select({ id: aiCompanionUserPhotos.id, messageId: aiCompanionUserPhotos.messageId, contentType: aiCompanionUserPhotos.contentType, width: aiCompanionUserPhotos.width, height: aiCompanionUserPhotos.height, createdAt: aiCompanionUserPhotos.createdAt }).from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"), isNotNull(aiCompanionUserPhotos.messageId))).orderBy(asc(aiCompanionUserPhotos.createdAt)).limit(100),
-    db.select({ id: aiCompanionVoiceAssets.id, messageId: aiCompanionVoiceAssets.messageId, status: aiCompanionVoiceAssets.status, durationMs: aiCompanionVoiceAssets.durationMs, characterCount: aiCompanionVoiceAssets.characterCount, deliveryStyle: aiCompanionVoiceAssets.deliveryStyle, createdAt: aiCompanionVoiceAssets.createdAt }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.deletedAt))).orderBy(asc(aiCompanionVoiceAssets.createdAt)).limit(100),
+    db.select({ id: aiCompanionVoiceAssets.id, messageId: aiCompanionVoiceAssets.messageId, status: aiCompanionVoiceAssets.status, durationMs: aiCompanionVoiceAssets.durationMs, characterCount: aiCompanionVoiceAssets.characterCount, deliveryStyle: aiCompanionVoiceAssets.deliveryStyle, createdAt: aiCompanionVoiceAssets.createdAt }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.deletedAt))).orderBy(asc(aiCompanionVoiceAssets.createdAt)),
+    db.select().from(aiCompanionCalls).where(and(eq(aiCompanionCalls.userId, context.userId), eq(aiCompanionCalls.companionId, companion.id), eq(aiCompanionCalls.conversationId, conversation.id))).orderBy(asc(aiCompanionCalls.createdAt)),
   ]);
+  const callTurnRows = callRows.length
+    ? await db.select().from(aiCompanionCallTurns).where(inArray(aiCompanionCallTurns.callId, callRows.map((call) => call.id))).orderBy(asc(aiCompanionCallTurns.createdAt))
+    : [];
+  const messageById = new Map(messages.map((message) => [message.id, message]));
+  const voiceAssetById = new Map(voiceAssetRows.map((asset) => [asset.id, asset]));
+  const turnsByCallId = new Map<string, typeof callTurnRows>();
+  for (const turn of callTurnRows) turnsByCallId.set(turn.callId, [...(turnsByCallId.get(turn.callId) ?? []), turn]);
+  const callMessageIds = new Set<string>();
+  const callLogs = callRows.flatMap((call) => {
+    const turns = (turnsByCallId.get(call.id) ?? []).map((turn) => {
+      if (turn.userMessageId) callMessageIds.add(turn.userMessageId);
+      if (turn.assistantMessageId) callMessageIds.add(turn.assistantMessageId);
+      const userMessage = turn.userMessageId ? messageById.get(turn.userMessageId) : null;
+      const assistantMessage = turn.assistantMessageId ? messageById.get(turn.assistantMessageId) : null;
+      const voiceAsset = turn.voiceAssetId ? voiceAssetById.get(turn.voiceAssetId) : null;
+      return {
+        id: turn.id,
+        createdAt: turn.createdAt,
+        userMessageId: turn.userMessageId,
+        userText: userMessage?.body ?? turn.transcript,
+        assistantMessageId: turn.assistantMessageId,
+        assistantText: assistantMessage?.body ?? null,
+        assistantModerationStatus: assistantMessage?.moderationStatus ?? null,
+        voiceAsset: voiceAsset ?? null,
+      };
+    });
+    return turns.length ? [{ id: call.id, status: call.status, connectedAt: call.connectedAt, endedAt: call.endedAt, durationSeconds: call.billableSeconds, createdAt: call.createdAt, turns }] : [];
+  });
+  const ordinaryMessages = messages.filter((message) => !callMessageIds.has(message.id));
   let castingCandidates = visualIdentity ? await db.select().from(aiCompanionVisualCandidates).where(and(eq(aiCompanionVisualCandidates.userId, context.userId), eq(aiCompanionVisualCandidates.companionId, companion.id), eq(aiCompanionVisualCandidates.visualIdentityVersion, visualIdentity.version))).orderBy(asc(aiCompanionVisualCandidates.sortOrder)) : [];
   // Preserve a pre-redesign casting image as an explicit selectable option. This
   // repairs the review UI without spending any new image generations.
@@ -871,7 +901,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
-  return c.json({ companion, conversation, messages, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
+  return c.json({ companion, conversation, messages: ordinaryMessages, calls: callLogs, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {

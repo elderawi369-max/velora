@@ -972,6 +972,27 @@ export type AiCompanionVoiceAsset = {
   createdAt: number;
 };
 
+export type AiCompanionCallTurn = {
+  id: string;
+  createdAt: number;
+  userMessageId: string | null;
+  userText: string;
+  assistantMessageId: string | null;
+  assistantText: string | null;
+  assistantModerationStatus: string | null;
+  voiceAsset: AiCompanionVoiceAsset | null;
+};
+
+export type AiCompanionCallLog = {
+  id: string;
+  status: "calling" | "connected" | "ended";
+  connectedAt: number | null;
+  endedAt: number | null;
+  durationSeconds: number;
+  createdAt: number;
+  turns: AiCompanionCallTurn[];
+};
+
 export type AiCompanionVoiceCapabilities = {
   voice: { enabled: boolean; catalogName: string | null; engine: string | null; monthlyLimit: number; monthlyUsed: number; dailyLimit: number; dailyUsed: number; maxCharacters: number; maxDurationSeconds: number };
   calls: { enabled: boolean; monthlySeconds: number; transcriptionDisclosure: string };
@@ -1020,6 +1041,7 @@ export function fetchAiCompanion(companionId: string) {
     companion: AiCompanion;
     conversation: { id: string; trialRepliesUsed: number; relationshipPoints: number; relationshipStage: "new" | "familiar" | "established" };
     messages: AiCompanionMessage[];
+    calls: AiCompanionCallLog[];
     memories: AiCompanionMemory[];
     memoryCandidates: AiCompanionMemoryCandidate[];
     visualIdentity: AiCompanionVisualIdentity | null;

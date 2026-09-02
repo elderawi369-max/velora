@@ -32,9 +32,11 @@ import {
   transcribeAiCompanionVoiceInput,
   uploadAiCompanionUserPhoto,
   type AiCompanion,
+  type AiCompanionCallLog,
   type AiCompanionVoiceAsset,
 } from "../../lib/api";
 import { CompanionCallDialog } from "../components/companion-call-dialog";
+import { CompanionCallDetails } from "../components/companion-call-details";
 import { CompanionVoiceNote } from "../components/companion-voice-note";
 import "../components/companion-voice.css";
 
@@ -49,6 +51,11 @@ const personas = [
 
 function companionInitial(companion: AiCompanion) {
   return companion.name.slice(0, 1).toUpperCase();
+}
+
+function compactCallDuration(call: AiCompanionCallLog) {
+  if (call.durationSeconds < 60) return "< 1 min";
+  return `${Math.max(1, Math.round(call.durationSeconds / 60))} min`;
 }
 
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
@@ -99,6 +106,7 @@ export function AiCompanionsPage() {
   const [userPhotoError, setUserPhotoError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [callOpen, setCallOpen] = useState(false);
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTranscribing, setVoiceTranscribing] = useState(false);
   const [pendingRecordedVoice, setPendingRecordedVoice] = useState<{ asset: AiCompanionVoiceAsset; transcript: string; url: string } | null>(null);
@@ -307,10 +315,14 @@ export function AiCompanionsPage() {
 
   const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
   const detail = detailQuery.data;
+  const calls = detail?.calls ?? [];
+  const callMessageIds = new Set(calls.flatMap((call) => call.turns.flatMap((turn) => [turn.userMessageId, turn.assistantMessageId].filter((messageId): messageId is string => Boolean(messageId)))));
   const chatTimeline = detail ? [
-    ...detail.messages.map((item) => ({ kind: "message" as const, createdAt: item.createdAt, item })),
+    ...detail.messages.filter((item) => !callMessageIds.has(item.id)).map((item) => ({ kind: "message" as const, createdAt: item.createdAt, item })),
     ...detail.deliveredPhotos.map((photo) => ({ kind: "companion-photo" as const, createdAt: photo.createdAt, photo })),
+    ...calls.map((call) => ({ kind: "call" as const, createdAt: call.connectedAt ?? call.createdAt, call })),
   ].sort((left, right) => left.createdAt - right.createdAt) : [];
+  const selectedCall = calls.find((call) => call.id === selectedCallId) ?? null;
   // Casting and visual-identity review are an internal development workflow.
   // Public companion conversations must never expose these controls or states.
   const showInternalVisualIdentityControls = false;
@@ -336,7 +348,7 @@ export function AiCompanionsPage() {
     const frame = window.requestAnimationFrame(scrollToLatest);
     const timer = window.setTimeout(scrollToLatest, 80);
     return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); };
-  }, [detail?.conversation.id, detail?.messages.length, detail?.deliveredPhotos.length, Object.keys(userPhotoUrls).length, Object.keys(deliveredPhotoUrls).length, pendingUserMessage]);
+  }, [detail?.conversation.id, detail?.messages.length, detail?.deliveredPhotos.length, calls.length, Object.keys(userPhotoUrls).length, Object.keys(deliveredPhotoUrls).length, pendingUserMessage]);
 
   useEffect(() => {
     const status = detail?.visualIdentity?.status;
@@ -466,6 +478,10 @@ export function AiCompanionsPage() {
           <div className="ai-messages" ref={messagesRef}>
             {chatTimeline.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : chatTimeline.map((entry) => {
               if (entry.kind === "companion-photo") return deliveredPhotoUrls[entry.photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}><img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null;
+              if (entry.kind === "call") return <article className="ai-call-log" key={entry.call.id}>
+                <span className="ai-call-log-icon" aria-hidden="true">📞</span>
+                <div><strong>Voice call with {detail.companion.name} <span>· {compactCallDuration(entry.call)}</span></strong><button className="text-button" type="button" onClick={() => setSelectedCallId(entry.call.id)}>View transcript</button></div>
+              </article>;
               const item = entry.item;
               const attachedPhoto = userPhotoByMessageId.get(item.id);
               const voiceAsset = voiceByMessageId.get(item.id);
@@ -504,6 +520,7 @@ export function AiCompanionsPage() {
         </aside>
       </section> : null}
       {detail && callOpen && voiceQuery.data ? <CompanionCallDialog companion={detail.companion} capabilities={voiceQuery.data} onClose={() => setCallOpen(false)} onConversationChanged={() => { void queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }); void queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] }); }} /> : null}
+      {detail && selectedCall ? <CompanionCallDetails call={selectedCall} companionId={detail.companion.id} companionName={detail.companion.name} onClose={() => setSelectedCallId(null)} /> : null}
     </main>
   );
 }

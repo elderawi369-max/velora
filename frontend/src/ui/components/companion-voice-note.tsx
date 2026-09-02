@@ -6,7 +6,7 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
-export function CompanionVoiceNote({ companionId, asset, transcript, initialUrl }: { companionId: string; asset: AiCompanionVoiceAsset; transcript: string; initialUrl?: string }) {
+export function CompanionVoiceNote({ companionId, asset, transcript, initialUrl, transcriptControl = true }: { companionId: string; asset: AiCompanionVoiceAsset; transcript: string; initialUrl?: string; transcriptControl?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const urlRef = useRef<string | null>(initialUrl ?? null);
@@ -78,10 +78,10 @@ export function CompanionVoiceNote({ companionId, asset, transcript, initialUrl 
     </button>
     <div className="ai-voice-body">
       <div className="ai-voice-wave" aria-hidden="true">{[8, 14, 20, 11, 25, 17, 10, 22, 28, 16, 12, 24, 18, 9, 20, 14, 26, 11].map((height, index) => <i key={index} style={{ height: `${height}px`, opacity: currentTime / duration > index / 18 ? 1 : 0.42 }} />)}</div>
-      <div className="ai-voice-meta"><span>{formatTime(playing ? currentTime : duration)}</span><button type="button" onClick={() => setShowTranscript((shown) => !shown)}>{showTranscript ? "Hide text" : "Transcript"}</button></div>
+      <div className="ai-voice-meta"><span>{formatTime(playing ? currentTime : duration)}</span>{transcriptControl ? <button type="button" onClick={() => setShowTranscript((shown) => !shown)}>{showTranscript ? "Hide text" : "Transcript"}</button> : <span>Audio response</span>}</div>
     </div>
     <audio ref={audioRef} src={url ?? undefined} preload="metadata" onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setCurrentTime(0); }} />
     {error ? <button className="ai-voice-error" type="button" onClick={togglePlayback}>{error}</button> : null}
-    {showTranscript ? <p className="ai-voice-transcript">{transcript}</p> : null}
+    {transcriptControl && showTranscript ? <p className="ai-voice-transcript">{transcript}</p> : null}
   </div>;
 }
