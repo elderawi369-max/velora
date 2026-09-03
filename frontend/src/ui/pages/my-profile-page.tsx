@@ -15,6 +15,7 @@ export function MyProfilePage() {
     queryKey: ["ownProfile"],
     queryFn: fetchOwnProfile,
   });
+  const hasPublicProfile = Boolean(ownProfileQuery.data?.profile);
 
   useEffect(() => {
     if (location.hash !== "#support") return;
@@ -26,10 +27,11 @@ export function MyProfilePage() {
     <main className="content-section">
       <section className="section-copy">
         <p className="eyebrow">My profile</p>
-        <h1>This is the identity other people keep coming back to.</h1>
+        <h1>Your account, support, and optional public profile.</h1>
+        <p>You do not need a public profile to enjoy your AI companion. Create one only when you want to appear in Browse and connect with people.</p>
       </section>
 
-      <div className="action-row">
+      {hasPublicProfile ? <div className="action-row">
         <button
           className="secondary-button"
           type="button"
@@ -37,7 +39,7 @@ export function MyProfilePage() {
         >
           {isEditing ? "Back to profile view" : "Edit profile"}
         </button>
-      </div>
+      </div> : null}
 
       {isEditing ? (
         <ProfileForm mode="edit" initialProfile={ownProfileQuery.data?.profile ?? null} />
@@ -45,12 +47,14 @@ export function MyProfilePage() {
         <MyProfileCard />
       )}
 
-      <section className="section-copy">
-        <p className="eyebrow">Blocked users</p>
-        <h2>Undo a block if you change your mind.</h2>
-      </section>
+      {hasPublicProfile ? <>
+        <section className="section-copy">
+          <p className="eyebrow">Blocked users</p>
+          <h2>Undo a block if you change your mind.</h2>
+        </section>
 
-      <BlockedUsersList />
+        <BlockedUsersList />
+      </> : null}
 
       <section className="section-copy" id="support">
         <p className="eyebrow">Support</p>

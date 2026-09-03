@@ -8,11 +8,14 @@ type AuthMode = "signup" | "login";
 
 type AuthFormProps = {
   mode: AuthMode;
+  embedded?: boolean;
+  onSuccess?: () => void;
 };
 
-export function AuthForm({ mode }: AuthFormProps) {
+export function AuthForm({ mode, embedded = false, onSuccess }: AuthFormProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
@@ -27,17 +30,19 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "signup") {
-        const result = await signup({ email, password, turnstileToken, ageConfirmed });
+        const result = await signup({ name, email, password, turnstileToken, ageConfirmed });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["session"] });
-        navigate("/create-profile");
+        onSuccess?.();
+        navigate("/");
       } else {
         const result = await login({ email, password });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["session"] });
-        navigate(result.hasProfile ? "/my-profile" : "/create-profile");
+        onSuccess?.();
+        navigate("/");
       }
     } catch (submissionError) {
       setError(
@@ -50,18 +55,33 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
   }
 
-  return (
-    <section className="content-section narrow">
+  const content = <>
       <div className="section-copy">
         <p className="eyebrow">{mode === "signup" ? "Join Velora" : "Welcome back"}</p>
         <h1>
           {mode === "signup"
-            ? "Create your account and shape your chat identity."
+            ? "Meet the companion who gets to know you."
             : "Log back in and continue building recurring connections."}
         </h1>
+        {mode === "signup" ? <p>Just your name, email, and a password. You can create a public profile later only if you want one.</p> : null}
       </div>
 
       <form className="panel form-panel" onSubmit={handleSubmit}>
+        {mode === "signup" ? <label className="field">
+          <span>Your name</span>
+          <input
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="What should Velora call you?"
+            minLength={2}
+            maxLength={50}
+            autoComplete="name"
+            autoFocus={embedded}
+            required
+          />
+        </label> : null}
+
         <label className="field">
           <span>Email</span>
           <input
@@ -69,18 +89,20 @@ export function AuthForm({ mode }: AuthFormProps) {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@example.com"
+            autoComplete="email"
             required
           />
         </label>
 
         <label className="field">
-          <span>Password</span>
+          <span>{mode === "signup" ? "Create a password" : "Password"}</span>
           <input
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="At least 8 characters"
             minLength={8}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
             required
           />
         </label>
@@ -131,6 +153,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           </p>
         ) : null}
       </form>
-    </section>
-  );
+    </>;
+
+  return embedded ? <div className="ai-account-dialog-content">{content}</div> : <section className="content-section narrow">{content}</section>;
 }

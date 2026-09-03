@@ -10,15 +10,19 @@ export type OwnProfileContext = {
   profileId: string;
 };
 
-export async function getOwnProfileContext(
+export type AccountContext = {
+  userId: string;
+  userCreatedAt: number;
+  profileId: string | null;
+};
+
+export async function getAccountContext(
   env: EnvBindings,
   cookieHeader: string | undefined,
   authorizationHeader?: string | undefined,
-): Promise<OwnProfileContext | null> {
+): Promise<AccountContext | null> {
   const userId = await getUserIdFromSession(env, cookieHeader, authorizationHeader);
-  if (!userId) {
-    return null;
-  }
+  if (!userId) return null;
 
   const db = getDb(env);
   const [user] = await db
@@ -26,20 +30,33 @@ export async function getOwnProfileContext(
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
+  if (!user) return null;
 
   const [profile] = await db
     .select({ id: profiles.id, suspendedAt: profiles.suspendedAt })
     .from(profiles)
     .where(eq(profiles.userId, userId))
     .limit(1);
-
-  if (!user || !profile || profile.suspendedAt) {
-    return null;
-  }
+  if (profile?.suspendedAt) return null;
 
   return {
     userId,
     userCreatedAt: user.createdAt,
-    profileId: profile.id,
+    profileId: profile?.id ?? null,
+  };
+}
+
+export async function getOwnProfileContext(
+  env: EnvBindings,
+  cookieHeader: string | undefined,
+  authorizationHeader?: string | undefined,
+): Promise<OwnProfileContext | null> {
+  const account = await getAccountContext(env, cookieHeader, authorizationHeader);
+  if (!account?.profileId) return null;
+
+  return {
+    userId: account.userId,
+    userCreatedAt: account.userCreatedAt,
+    profileId: account.profileId,
   };
 }

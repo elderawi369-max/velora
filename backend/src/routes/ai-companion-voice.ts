@@ -17,7 +17,7 @@ import {
 } from "../db/schema";
 import { detectVoiceDeliveryStyle, prepareSpokenText, synthesizeCompanionSpeech, voiceForCatalogName, type LockedVoiceProfile } from "../lib/companion-voice";
 import { getDb, type EnvBindings } from "../lib/db";
-import { getOwnProfileContext } from "../lib/profile-context";
+import { getAccountContext } from "../lib/profile-context";
 import { buildSystemPrompt, containsBlockedOutput, createMemoryCandidates, extractModelText, getOrCreateCharacterCanon, isCrisisMessage, relationshipPointsForMessage, relationshipStageForPoints, safetyReply } from "./ai-companions";
 
 export const aiCompanionVoiceRoutes = new Hono<{ Bindings: EnvBindings }>();
@@ -29,7 +29,7 @@ const monthPeriod = (timestamp = now()) => new Date(timestamp).toISOString().sli
 const dayPeriod = (timestamp = now()) => new Date(timestamp).toISOString().slice(0, 10);
 
 async function contextFor(c: any) {
-  return getOwnProfileContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
+  return getAccountContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
 }
 
 async function ownedCompanion(env: EnvBindings, companionId: string, userId: string) {
@@ -186,7 +186,7 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-messages", async (c) => {
 
 aiCompanionVoiceRoutes.get("/:companionId/voice-messages/:assetId/audio", async (c) => {
   const context = await contextFor(c);
-  if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   if (!c.env.COMPANION_AUDIO) return c.json({ error: "Voice storage is unavailable." }, 503);
   const [asset] = await getDb(c.env).select().from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, c.req.param("assetId")), eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, c.req.param("companionId")), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.deletedAt))).limit(1);
   if (!asset?.objectKey) return c.json({ error: "Voice note not found." }, 404);
@@ -228,7 +228,7 @@ async function accountHeartbeat(env: EnvBindings, call: typeof aiCompanionCalls.
 
 aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/heartbeat", async (c) => {
   const context = await contextFor(c);
-  if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const call = await activeOwnedCall(c.env, c.req.param("callId"), c.req.param("companionId"), context.userId);
   if (!call) return c.json({ error: "Call not found or already ended." }, 404);
   return c.json(await accountHeartbeat(c.env, call));
@@ -350,7 +350,7 @@ aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/turns", async (c) => {
 
 aiCompanionVoiceRoutes.post("/:companionId/calls/:callId/end", async (c) => {
   const context = await contextFor(c);
-  if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const call = await activeOwnedCall(c.env, c.req.param("callId"), c.req.param("companionId"), context.userId);
   if (!call) return c.json({ ok: true, alreadyEnded: true });
   const usage = await accountHeartbeat(c.env, call);

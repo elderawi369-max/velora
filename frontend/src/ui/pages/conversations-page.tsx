@@ -1,7 +1,26 @@
 import { ConversationList } from "../components/conversation-list";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { fetchSession } from "../../lib/api";
 
 export function ConversationsPage() {
+  const sessionQuery = useQuery({ queryKey: ["session"], queryFn: fetchSession, retry: false });
+
+  if (sessionQuery.data?.authenticated && !sessionQuery.data.hasProfile) {
+    return <main className="content-section">
+      <section className="section-copy">
+        <p className="eyebrow">Conversations</p>
+        <h1>Your AI companion does not require a public profile.</h1>
+        <p>Create a public profile only when you want to browse people, join challenges, or start human conversations.</p>
+      </section>
+      <div className="panel empty-state">
+        <h2>People features are optional.</h2>
+        <p>Your private AI companion remains available from the first tab.</p>
+        <div className="action-row"><Link className="secondary-button" to="/create-profile">Create a public profile</Link><Link className="primary-button" to="/">Return to AI Companion</Link></div>
+      </div>
+    </main>;
+  }
+
   return (
     <main className="content-section">
       <section className="section-copy">

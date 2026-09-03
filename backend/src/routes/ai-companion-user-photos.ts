@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { aiCompanionAppearanceCatalog, aiCompanionConversations, aiCompanionMessages, aiCompanionUserPhotos, aiCompanions, aiEntitlements, users } from "../db/schema";
 import { getDb, type EnvBindings } from "../lib/db";
-import { getOwnProfileContext } from "../lib/profile-context";
+import { getAccountContext } from "../lib/profile-context";
 import { inspectAndSanitizeUserImage } from "../lib/user-photo-image";
 
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -14,7 +14,7 @@ type ModerationResult = { safe: boolean; adult: boolean; personCount: number; re
 export const aiCompanionUserPhotoRoutes = new Hono<{ Bindings: EnvBindings }>();
 
 async function requireContext(c: any) {
-  return getOwnProfileContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
+  return getAccountContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
 }
 
 async function getOwnedCompanion(env: EnvBindings, companionId: string, userId: string) {
@@ -190,7 +190,7 @@ async function retryPendingDeletes(env: EnvBindings, userId: string, companionId
 }
 
 aiCompanionUserPhotoRoutes.get("/:companionId/user-photo", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   await retryPendingDeletes(c.env, context.userId, companion.id);
   const [quota, monthlyUsed] = await Promise.all([
@@ -201,7 +201,7 @@ aiCompanionUserPhotoRoutes.get("/:companionId/user-photo", async (c) => {
 });
 
 aiCompanionUserPhotoRoutes.get("/:companionId/user-photo/:photoId/content", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.COMPANION_IMAGES) return c.json({ error: "Private photo storage is unavailable." }, 503);
   const [photo] = await getDb(c.env).select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.id, c.req.param("photoId")), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"))).limit(1);
@@ -212,7 +212,7 @@ aiCompanionUserPhotoRoutes.get("/:companionId/user-photo/:photoId/content", asyn
 });
 
 aiCompanionUserPhotoRoutes.post("/:companionId/user-photo", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   if (!c.env.COMPANION_IMAGES || !c.env.AI) return c.json({ error: "Private photo validation is unavailable." }, 503);
   const quota = await getUploadQuota(c.env, context.userId);
@@ -264,7 +264,7 @@ aiCompanionUserPhotoRoutes.post("/:companionId/user-photo", async (c) => {
 });
 
 aiCompanionUserPhotoRoutes.delete("/:companionId/user-photo/:photoId", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "A Velora profile is required." }, 401);
+  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const companion = await getOwnedCompanion(c.env, c.req.param("companionId"), context.userId); if (!companion) return c.json({ error: "Companion not found." }, 404);
   const db = getDb(c.env);
   const [photo] = await db.select().from(aiCompanionUserPhotos).where(and(eq(aiCompanionUserPhotos.id, c.req.param("photoId")), eq(aiCompanionUserPhotos.userId, context.userId), eq(aiCompanionUserPhotos.companionId, companion.id), eq(aiCompanionUserPhotos.status, "approved"))).limit(1);

@@ -57,12 +57,14 @@ export function AppLayout() {
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: fetchConversations,
+    enabled: Boolean(sessionQuery.data?.authenticated && sessionQuery.data.hasProfile),
     retry: false,
     refetchInterval: 8000,
   });
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
+    enabled: Boolean(sessionQuery.data?.authenticated && sessionQuery.data.hasProfile),
     retry: false,
     refetchInterval: 8000,
   });
@@ -245,7 +247,7 @@ export function AppLayout() {
     { to: "/", label: "AI Companion" },
     { to: "/browse", label: "Browse" },
     { to: "/conversations", label: "Conversations" },
-    { to: hasProfile ? "/my-profile" : "/create-profile", label: "My Profile" },
+    { to: "/my-profile", label: "My Profile" },
   ];
 
   return (

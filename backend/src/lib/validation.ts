@@ -3,6 +3,7 @@ import { z } from "zod";
 const usernameRegex = /^[a-z0-9_]{3,20}$/;
 
 export const signupSchema = z.object({
+  name: z.string().trim().min(2).max(50),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8).max(72),
   turnstileToken: z.string().trim().min(1),

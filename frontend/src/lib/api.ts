@@ -112,6 +112,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export type SignupPayload = {
+  name: string;
   email: string;
   password: string;
   turnstileToken: string;
@@ -409,14 +410,14 @@ export type LiveTriviaStatus = {
 };
 
 export function signup(payload: SignupPayload) {
-  return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
+  return request<{ user: { id: string; name: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/signup", {
     method: "POST",
     body: payload,
   });
 }
 
 export function login(payload: LoginPayload) {
-  return request<{ user: { id: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
+  return request<{ user: { id: string; name: string; email: string; emailVerified: boolean }; sessionToken: string; hasProfile: boolean }>("/api/auth/login", {
     method: "POST",
     body: payload,
   });
@@ -448,7 +449,7 @@ export function resetPassword(payload: ResetPasswordPayload) {
 export function fetchSession() {
   return request<{
     authenticated: boolean;
-    user: { id: string; email: string; emailVerified: boolean } | null;
+    user: { id: string; name: string; email: string; emailVerified: boolean } | null;
     hasProfile: boolean;
     starterCreditGrant: { credits: number; grantedAt: number } | null;
     loginStreak: {

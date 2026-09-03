@@ -84,6 +84,7 @@ authRoutes.get("/me", async (c) => {
     .select({
       id: users.id,
       email: users.email,
+      name: users.name,
       emailVerifiedAt: users.emailVerifiedAt,
     })
     .from(users)
@@ -119,6 +120,7 @@ authRoutes.get("/me", async (c) => {
     user: {
       id: user.id,
       email: user.email,
+      name: user.name ?? user.email.split("@")[0] ?? "Velora member",
       emailVerified: Boolean(user.emailVerifiedAt),
     },
     hasProfile: Boolean(profile),
@@ -164,6 +166,7 @@ authRoutes.post("/signup", async (c) => {
   await db.insert(users).values({
     id: userId,
     email: payload.data.email,
+    name: payload.data.name,
     passwordHash: hash,
     passwordSalt: salt,
     createdAt: now,
@@ -191,6 +194,7 @@ authRoutes.post("/signup", async (c) => {
     user: {
       id: userId,
       email: payload.data.email,
+      name: payload.data.name,
       emailVerified: false,
     },
     sessionToken,
@@ -244,6 +248,7 @@ authRoutes.post("/login", async (c) => {
     user: {
       id: user.id,
       email: user.email,
+      name: user.name ?? user.email.split("@")[0] ?? "Velora member",
       emailVerified: Boolean(user.emailVerifiedAt),
     },
     sessionToken,
