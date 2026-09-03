@@ -113,6 +113,7 @@ export function AiCompanionsPage() {
   const [callOpen, setCallOpen] = useState(false);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [companionSwitcherOpen, setCompanionSwitcherOpen] = useState(false);
+  const [creatingCompanion, setCreatingCompanion] = useState(false);
   const [companionMenuOpen, setCompanionMenuOpen] = useState(false);
   const [activeCompanionPanel, setActiveCompanionPanel] = useState<CompanionPanel | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -152,7 +153,7 @@ export function AiCompanionsPage() {
       setCompanionMenuOpen(false);
     };
     document.addEventListener("keydown", closeOnEscape);
-    if (activeCompanionPanel) document.body.classList.add("ai-panel-open");
+    if (activeCompanionPanel || companionSwitcherOpen) document.body.classList.add("ai-panel-open");
     return () => {
       document.removeEventListener("keydown", closeOnEscape);
       document.body.classList.remove("ai-panel-open");
@@ -185,6 +186,7 @@ export function AiCompanionsPage() {
   const createMutation = useMutation({
     mutationFn: createAiCompanion,
     onSuccess: async ({ companion }) => {
+      setCreatingCompanion(false);
       setSelectedId(companion.id);
       await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
     },
@@ -495,12 +497,13 @@ export function AiCompanionsPage() {
         <button className="primary-button" type="button" onClick={() => setSignupOpen(true)}>Create your companion</button>
       </section> : null}
 
-      {sessionQuery.data?.authenticated && canCreate && !selectedId ? (
+      {sessionQuery.data?.authenticated && canCreate && (!selectedId || creatingCompanion) ? (
         <section className="ai-create-card">
           <div>
             <p className="eyebrow">CREATE YOUR COMPANION</p>
             <h2>Start with a personality, then make it yours.</h2>
             <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos are identity-verified, and eligible plans can use private voice notes and turn-based calls.</p>
+            {creatingCompanion && detail ? <button className="secondary-button ai-create-back" type="button" onClick={() => setCreatingCompanion(false)}>Back to {detail.companion.name}</button> : null}
           </div>
           <form className="ai-create-form" onSubmit={create}>
             <fieldset className="ai-persona-fieldset"><legend>Personality</legend><div className="ai-persona-grid">{personas.map((persona) => <button type="button" key={persona.key} className={personaKey === persona.key ? "ai-persona ai-persona-selected" : "ai-persona"} onClick={() => setPersonaKey(persona.key)}><strong>{persona.title}</strong><span>{persona.description}</span></button>)}</div></fieldset>
@@ -514,18 +517,37 @@ export function AiCompanionsPage() {
         </section>
       ) : null}
 
-      {detail ? <section className="ai-companion-workspace">
+      {sessionQuery.data?.authenticated && creatingCompanion && !canCreate ? <section className="ai-create-card ai-companion-limit-card">
+        <div>
+          <p className="eyebrow">YOUR COMPANIONS</p>
+          <h2>Your current plan already includes its companion.</h2>
+          <p className="muted">You can keep chatting with {detail?.companion.name ?? "your companion"}. More companion spaces will appear here when they become available for your plan.</p>
+          <button className="secondary-button ai-create-back" type="button" onClick={() => setCreatingCompanion(false)}>Back to {detail?.companion.name ?? "chat"}</button>
+        </div>
+      </section> : null}
+
+      {detail && !creatingCompanion ? <section className="ai-companion-workspace">
         <div className="ai-chat-card">
           <header className="ai-chat-header">
             <div className="ai-companion-identity-wrap">
-              <button className="ai-chat-identity" type="button" aria-label={companionsQuery.data && companionsQuery.data.companions.length > 1 ? `Switch from ${detail.companion.name}` : `${detail.companion.name}, AI companion`} aria-expanded={(companionsQuery.data?.companions.length ?? 0) > 1 ? companionSwitcherOpen : undefined} onClick={() => { if ((companionsQuery.data?.companions.length ?? 0) > 1) { setCompanionSwitcherOpen((open) => !open); setCompanionMenuOpen(false); } }}>
+              <button className="ai-chat-identity" type="button" aria-label={`Choose companion. ${detail.companion.name} is active`} aria-expanded={companionSwitcherOpen} aria-haspopup="dialog" onClick={() => { setCompanionSwitcherOpen((open) => !open); setCompanionMenuOpen(false); }}>
                 <span className="ai-avatar">{companionInitial(detail.companion)}</span>
                 <span><small>AI COMPANION</small><strong>{detail.companion.name}</strong><em>{relationshipStageLabel[detail.conversation.relationshipStage]}</em></span>
-                {(companionsQuery.data?.companions.length ?? 0) > 1 ? <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5" /></svg> : null}
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5" /></svg>
               </button>
-              {companionSwitcherOpen ? <div className="ai-companion-switcher" role="menu" aria-label="Choose a companion">
-                {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-chip ai-companion-chip-selected" : "ai-companion-chip"} role="menuitem" type="button" key={companion.id} onClick={() => { setSelectedId(companion.id); setCompanionSwitcherOpen(false); }}><span className="ai-avatar">{companionInitial(companion)}</span><span><strong>{companion.name}</strong><small>{companion.id === selectedId ? "Current companion" : "AI companion"}</small></span></button>)}
-              </div> : null}
+              {companionSwitcherOpen ? <>
+                <div className="ai-companion-switcher-backdrop" aria-hidden="true" onMouseDown={() => setCompanionSwitcherOpen(false)} />
+                <div className="ai-companion-switcher" role="dialog" aria-modal="true" aria-labelledby="ai-companion-switcher-title">
+                  <div className="ai-companion-switcher-heading">
+                    <strong id="ai-companion-switcher-title">Your companions</strong>
+                    <button type="button" aria-label="Close companion selector" onClick={() => setCompanionSwitcherOpen(false)}>×</button>
+                  </div>
+                  <div className="ai-companion-switcher-list">
+                    {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-option ai-companion-option-selected" : "ai-companion-option"} type="button" key={companion.id} aria-current={companion.id === selectedId ? "true" : undefined} onClick={() => { setSelectedId(companion.id); setCompanionSwitcherOpen(false); }}><span className="ai-avatar">{companionInitial(companion)}</span><strong>{companion.name}</strong>{companion.id === selectedId ? <span className="ai-companion-check" aria-label="Current companion">✓</span> : null}</button>)}
+                  </div>
+                  <button className="ai-meet-companion-option" type="button" onClick={() => { createMutation.reset(); setCreatingCompanion(true); setCompanionSwitcherOpen(false); }}>+ Meet another companion</button>
+                </div>
+              </> : null}
             </div>
             <div className="ai-chat-actions">
               <span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span>

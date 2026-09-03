@@ -99,6 +99,16 @@
   box-shadow: 0 22px 58px rgba(42, 81, 125, 0.1);
 }
 
+.ai-create-back {
+  margin-top: 18px;
+}
+
+.ai-companion-limit-card {
+  grid-template-columns: minmax(0, 680px);
+  justify-content: center;
+  text-align: center;
+}
+
 .ai-account-welcome {
   display: flex;
   align-items: center;
@@ -593,6 +603,7 @@
 }
 
 .ai-chat-identity > svg {
+  flex: 0 0 auto;
   width: 18px;
   height: 18px;
   fill: none;
@@ -600,6 +611,11 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
+  transition: transform 160ms ease;
+}
+
+.ai-chat-identity[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
 }
 
 .ai-companion-switcher,
@@ -618,6 +634,107 @@
 .ai-companion-switcher {
   left: 0;
   width: min(290px, calc(100vw - 40px));
+}
+
+.ai-companion-switcher-backdrop {
+  position: fixed;
+  z-index: 19;
+  inset: 0;
+}
+
+.ai-companion-switcher-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px 7px;
+  color: #49333d;
+}
+
+.ai-companion-switcher-heading > strong {
+  font-size: 0.9rem;
+}
+
+.ai-companion-switcher-heading > button {
+  display: none;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #755b68;
+  background: #f7edf1;
+  font-family: inherit;
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ai-companion-switcher-list {
+  display: grid;
+  gap: 3px;
+}
+
+.ai-companion-option {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 24px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 14px;
+  color: #49333d;
+  text-align: left;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-companion-option:hover,
+.ai-companion-option:focus-visible,
+.ai-companion-option-selected {
+  background: #f8eef2;
+}
+
+.ai-companion-option > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-companion-check {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #b64f72;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.ai-meet-companion-option {
+  width: 100%;
+  margin-top: 7px;
+  padding: 13px 10px 10px;
+  border: 0;
+  border-top: 1px solid #eee1e6;
+  color: #9e4163;
+  text-align: left;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.ai-meet-companion-option:hover,
+.ai-meet-companion-option:focus-visible {
+  color: #79304c;
 }
 
 .ai-companion-menu {
@@ -1010,7 +1127,33 @@ body.ai-panel-open {
   .ai-chat-actions { gap: 7px; }
   .ai-call-button,
   .ai-companion-menu-button { width: 40px; height: 40px; flex-basis: 40px; }
-  .ai-companion-switcher { top: calc(100% + 8px); left: -4px; }
+  .ai-companion-switcher-backdrop {
+    z-index: 1000;
+    background: rgba(43, 31, 39, 0.34);
+    backdrop-filter: blur(4px);
+    animation: ai-panel-fade-in 180ms ease-out;
+  }
+  .ai-companion-switcher {
+    position: fixed;
+    z-index: 1001;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: min(72dvh, 560px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px 12px max(18px, env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 26px 26px 0 0;
+    animation: ai-switcher-slide-up 210ms ease-out;
+  }
+  .ai-companion-switcher-heading { padding: 7px 6px 10px 10px; }
+  .ai-companion-switcher-heading > strong { font-size: 1.05rem; }
+  .ai-companion-switcher-heading > button { display: grid; }
+  .ai-companion-option { min-height: 62px; padding: 9px 10px; }
+  .ai-meet-companion-option { min-height: 52px; padding: 15px 10px 10px; font-size: 0.94rem; }
   .ai-companion-menu { top: calc(100% + 8px); right: -4px; }
   .ai-messages { min-height: 420px; height: calc(100dvh - 280px); max-height: none; padding: 14px 12px; }
   .ai-composer { grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; }
@@ -1021,11 +1164,17 @@ body.ai-panel-open {
   .ai-companion-panel-body { padding-right: 16px; padding-left: 16px; }
 }
 
+@keyframes ai-switcher-slide-up {
+  from { transform: translateY(100%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ai-companions-page::before,
   .ai-companions-page::after,
   .ai-typing i,
   .ai-account-dialog-backdrop,
+  .ai-companion-switcher-backdrop,
+  .ai-companion-switcher,
   .ai-companion-panel-backdrop,
   .ai-companion-panel {
     animation: none;
