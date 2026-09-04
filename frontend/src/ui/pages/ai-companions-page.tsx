@@ -16,7 +16,7 @@ import {
   fetchAiCompanion,
   fetchAiCompanionAppearances,
   fetchAiCompanionPlans,
-  fetchAiCompanionAppearancePreview,
+  getAiCompanionAppearancePreviewUrl,
   fetchAiCompanions,
   fetchAiCompanionPhotoPreview,
   fetchAiCompanionDeliveredPhoto,
@@ -110,7 +110,6 @@ export function AiCompanionsPage() {
   const [name, setName] = useState("");
   const [personaKey, setPersonaKey] = useState<(typeof personas)[number]["key"]>("supportive_partner");
   const [appearanceId, setAppearanceId] = useState<string | null>(null);
-  const [appearanceUrls, setAppearanceUrls] = useState<Record<string, string>>({});
   const [replyStyle, setReplyStyle] = useState<"short" | "natural" | "detailed">("natural");
   const [backstory, setBackstory] = useState("");
   const [message, setMessage] = useState("");
@@ -532,18 +531,6 @@ export function AiCompanionsPage() {
   // Public companion conversations must never expose these controls or states.
   const showInternalVisualIdentityControls = false;
 
-  const appearanceIds = appearancesQuery.data?.appearances.map((appearance) => appearance.id).join(",") ?? "";
-  useEffect(() => {
-    if (!appearanceIds) { setAppearanceUrls({}); return; }
-    let cancelled = false;
-    const urls: string[] = [];
-    Promise.all(appearanceIds.split(",").map(async (id) => [id, await fetchAiCompanionAppearancePreview(id)] as const)).then((entries) => {
-      if (cancelled) { entries.forEach(([, url]) => URL.revokeObjectURL(url)); return; }
-      entries.forEach(([, url]) => urls.push(url)); setAppearanceUrls(Object.fromEntries(entries));
-    }).catch(() => { if (!cancelled) setAppearanceUrls({}); });
-    return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
-  }, [appearanceIds]);
-
   useEffect(() => {
     if (!detail) return;
     const scrollToLatest = () => {
@@ -662,7 +649,7 @@ export function AiCompanionsPage() {
           </div>
           <form className="ai-create-form" onSubmit={create}>
             <fieldset className="ai-persona-fieldset"><legend>Personality</legend><div className="ai-persona-grid">{personas.map((persona) => <button type="button" key={persona.key} className={personaKey === persona.key ? "ai-persona ai-persona-selected" : "ai-persona"} onClick={() => setPersonaKey(persona.key)}><strong>{persona.title}</strong><span>{persona.description}</span></button>)}</div></fieldset>
-            <fieldset className="ai-persona-fieldset"><legend>Appearance</legend><p className="muted">Choose one approved fictional adult appearance. This identity stays fixed regardless of personality or the private name you choose.</p><div className="ai-appearance-grid">{appearancesQuery.data?.appearances.map((appearance) => <button type="button" key={appearance.id} className={appearanceId === appearance.id ? "ai-appearance ai-appearance-selected" : "ai-appearance"} onClick={() => setAppearanceId(appearance.id)}>{appearanceUrls[appearance.id] ? <img src={appearanceUrls[appearance.id]} alt={`${appearance.name} appearance option`} /> : <span className="ai-appearance-loading">Loading appearance...</span>}<strong>{appearance.name}</strong></button>)}</div>{appearancesQuery.error ? <p className="form-error">Unable to load appearance options.</p> : null}</fieldset>
+            <fieldset className="ai-persona-fieldset"><legend>Appearance</legend><p className="muted">Choose one approved fictional adult appearance. This identity stays fixed regardless of personality or the private name you choose.</p><div className="ai-appearance-grid">{appearancesQuery.data?.appearances.map((appearance) => <button type="button" key={appearance.id} className={appearanceId === appearance.id ? "ai-appearance ai-appearance-selected" : "ai-appearance"} onClick={() => setAppearanceId(appearance.id)}><img src={getAiCompanionAppearancePreviewUrl(appearance.id)} alt={`${appearance.name} appearance option`} loading="lazy" decoding="async" /><strong>{appearance.name}</strong></button>)}</div>{appearancesQuery.error ? <p className="form-error">Unable to load appearance options.</p> : null}</fieldset>
             <label>Private name<input value={name} maxLength={30} placeholder="What would you like to call them?" onChange={(event) => setName(event.target.value)} /><span className="muted">This is only your label for the companion; it never changes their appearance.</span></label>
             <label>Reply style<select value={replyStyle} onChange={(event) => setReplyStyle(event.target.value as typeof replyStyle)}><option value="short">Short &amp; texty</option><option value="natural">Natural</option><option value="detailed">Detailed</option></select></label>
             <label>Short backstory <span className="muted">optional</span><textarea value={backstory} maxLength={500} placeholder="A few details that make this companion feel distinct..." onChange={(event) => setBackstory(event.target.value)} /></label>

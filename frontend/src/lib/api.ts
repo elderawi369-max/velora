@@ -1070,6 +1070,10 @@ export function fetchAiCompanionAppearancePreview(appearanceId: string) {
   return requestImageUrl(`/api/ai-companions/appearance-options/${appearanceId}/preview`);
 }
 
+export function getAiCompanionAppearancePreviewUrl(appearanceId: string) {
+  return `${apiBaseUrl}/api/ai-companions/appearance-options/${encodeURIComponent(appearanceId)}/preview`;
+}
+
 export function fetchAiCompanion(companionId: string) {
   return request<{
     companion: AiCompanion;

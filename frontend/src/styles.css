@@ -1339,8 +1339,10 @@ body.ai-panel-open {
     max-width: none;
     padding: 0 0 84px;
     border-radius: 0;
-    overflow: visible;
+    overflow: hidden;
   }
+  .ai-companions-page::before,
+  .ai-companions-page::after { display: none; }
   .ai-hero { padding: 30px 18px 24px; }
   .ai-account-welcome { align-items: stretch; flex-direction: column; margin: 0 12px 32px; padding: 22px; }
   .ai-account-welcome .primary-button { width: 100%; }
@@ -1363,11 +1365,11 @@ body.ai-panel-open {
   .ai-upgrade-highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ai-upgrade-highlights > div:last-child { grid-column: 1 / -1; min-height: 64px; }
   .ai-upgrade-plan li { font-size: 0.9rem; }
-  .ai-create-card { grid-template-columns: 1fr; padding: 22px; }
+  .ai-create-card { grid-template-columns: 1fr; padding: 22px; box-shadow: none; }
   .ai-persona-grid { grid-template-columns: 1fr; }
   .ai-appearance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ai-companion-workspace { margin: 0; }
-  .ai-chat-card { border-right: 0; border-left: 0; border-radius: 0; box-shadow: none; }
+  .ai-chat-card { border-right: 0; border-left: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }
   .ai-chat-card .ai-chat-header { align-items: center; flex-direction: row; gap: 9px; padding: 12px; }
   .ai-chat-identity { gap: 9px; }
   .ai-chat-identity .ai-avatar { width: 42px; height: 42px; flex: 0 0 42px; }
@@ -1442,6 +1444,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   background:
     radial-gradient(circle at top, rgba(244, 172, 183, 0.35), transparent 35%),
     linear-gradient(180deg, #fff9f7 0%, #f8f1eb 100%);
@@ -1449,9 +1454,11 @@ body {
 
 #root {
   min-height: 100vh;
+  max-width: 100%;
 }
 
 .page-shell {
+  width: 100%;
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px 24px 96px;
@@ -3037,12 +3044,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 20;
-    backdrop-filter: blur(16px);
-    background: linear-gradient(
-      180deg,
-      rgba(255, 249, 247, 0.92) 0%,
-      rgba(255, 249, 247, 0.72) 100%
-    );
+    background: rgba(255, 249, 247, 0.98);
   }
 
   .brand {
@@ -3061,8 +3063,11 @@ body {
 
   .topnav {
     width: 100%;
+    max-width: 100%;
     flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
     padding-bottom: 4px;
     scrollbar-width: none;
     -ms-overflow-style: none;
