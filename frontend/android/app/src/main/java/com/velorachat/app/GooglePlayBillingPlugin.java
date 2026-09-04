@@ -52,7 +52,9 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
 
     @Override
     public void load() {
-        ensureBillingClient();
+        // Billing is intentionally lazy. Initializing BillingClient while the
+        // Capacitor bridge is still starting can terminate the app on devices
+        // whose Play Store service is unavailable or still binding.
     }
 
     @Override
@@ -209,7 +211,13 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
     }
 
     private void withReadyBillingClient(PluginCall call, Runnable action) {
-        ensureBillingClient();
+        try {
+            ensureBillingClient();
+        } catch (Throwable error) {
+            Log.e(LOG_TAG, "Unable to create the Google Play Billing client.", error);
+            call.reject("Google Play Billing is unavailable on this device right now.");
+            return;
+        }
 
         if (billingClient.isReady()) {
             runClientActionSafely(call, action);

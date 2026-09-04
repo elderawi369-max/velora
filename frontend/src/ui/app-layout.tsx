@@ -2,8 +2,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken } from "../lib/api";
 import { useEffect, useState } from "react";
-import { clearNativeAppBadgeCount, syncNativeAppBadgeCount } from "../lib/app-badge";
-import { syncPushNotificationsIfGranted } from "../lib/push";
 import { canPromptForAndroidRating, openVeloraPlayStoreRating } from "../lib/rate-app";
 import { VeloraLogo } from "./components/velora-logo";
 
@@ -74,14 +72,6 @@ export function AppLayout() {
       void queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
     }
   }, [queryClient, sessionQuery.data]);
-
-  useEffect(() => {
-    if (!sessionQuery.data?.authenticated) {
-      return;
-    }
-
-    void syncPushNotificationsIfGranted().catch(() => undefined);
-  }, [sessionQuery.data?.authenticated]);
 
   useEffect(() => {
     const grant = sessionQuery.data?.starterCreditGrant;
@@ -186,14 +176,6 @@ export function AppLayout() {
   const totalAppBadgeCount = conversationUnreadCount + notificationUnreadCount;
   const hasProfile = Boolean(sessionQuery.data?.hasProfile);
   const isLoggedIn = Boolean(sessionQuery.data?.authenticated);
-  useEffect(() => {
-    if (!isLoggedIn) {
-      void clearNativeAppBadgeCount();
-      return;
-    }
-
-    void syncNativeAppBadgeCount(totalAppBadgeCount);
-  }, [isLoggedIn, totalAppBadgeCount]);
 
   const navItems = [
     { to: "/", label: "AI Companion" },

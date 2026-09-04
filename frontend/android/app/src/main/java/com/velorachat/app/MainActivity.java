@@ -27,20 +27,27 @@ public class MainActivity extends BridgeActivity {
         // Apply the same edge-to-edge behavior on older Android versions as
         // Android 15+ while the listener below keeps controls clear of bars,
         // gesture areas, and display cutouts.
-        WindowCompat.enableEdgeToEdge(getWindow());
+        try {
+            WindowCompat.enableEdgeToEdge(getWindow());
 
-        View contentView = findViewById(android.R.id.content);
-        ViewCompat.setOnApplyWindowInsetsListener(contentView, (view, windowInsets) -> {
-            Insets systemBarsInsets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(
-                systemBarsInsets.left,
-                systemBarsInsets.top,
-                systemBarsInsets.right,
-                systemBarsInsets.bottom
-            );
-            return windowInsets;
-        });
-        ViewCompat.requestApplyInsets(contentView);
+            View contentView = findViewById(android.R.id.content);
+            if (contentView != null) {
+                ViewCompat.setOnApplyWindowInsetsListener(contentView, (view, windowInsets) -> {
+                    Insets systemBarsInsets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+                    view.setPadding(
+                        systemBarsInsets.left,
+                        systemBarsInsets.top,
+                        systemBarsInsets.right,
+                        systemBarsInsets.bottom
+                    );
+                    return windowInsets;
+                });
+                ViewCompat.requestApplyInsets(contentView);
+            }
+        } catch (RuntimeException ignored) {
+            // The web view can still start safely if a vendor-specific window
+            // implementation rejects edge-to-edge initialization.
+        }
     }
 
     private void ensureNotificationChannel() {
