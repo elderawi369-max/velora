@@ -130,6 +130,8 @@ export function AiCompanionsPage() {
   const [castingCandidateUrls, setCastingCandidateUrls] = useState<Record<string, string>>({});
   const [lifestyleTestUrls, setLifestyleTestUrls] = useState<string[]>([]);
   const [deliveredPhotoUrls, setDeliveredPhotoUrls] = useState<Record<string, string>>({});
+  const [deliveredPhotoErrors, setDeliveredPhotoErrors] = useState<Set<string>>(() => new Set());
+  const [deliveredPhotoLoadRevision, setDeliveredPhotoLoadRevision] = useState(0);
   const [selectedUserPhoto, setSelectedUserPhoto] = useState<Blob | null>(null);
   const [selectedUserPhotoUrl, setSelectedUserPhotoUrl] = useState<string | null>(null);
   const [userPhotoUrls, setUserPhotoUrls] = useState<Record<string, string>>({});
@@ -603,16 +605,22 @@ export function AiCompanionsPage() {
 
   const deliveredPhotoIds = detail?.deliveredPhotos.map((photo) => photo.id).join(",") ?? "";
   useEffect(() => {
-    if (!selectedId || !deliveredPhotoIds) { setDeliveredPhotoUrls({}); return; }
+    if (!selectedId || !deliveredPhotoIds) { setDeliveredPhotoUrls({}); setDeliveredPhotoErrors(new Set()); return; }
     let cancelled = false;
     const urls: string[] = [];
-    Promise.all(deliveredPhotoIds.split(",").map(async (photoId) => [photoId, await fetchAiCompanionDeliveredPhoto(selectedId, photoId)] as const)).then((entries) => {
-      if (cancelled) { entries.forEach(([, url]) => URL.revokeObjectURL(url)); return; }
-      entries.forEach(([, url]) => urls.push(url));
-      setDeliveredPhotoUrls(Object.fromEntries(entries));
-    }).catch(() => { if (!cancelled) setDeliveredPhotoUrls({}); });
+    setDeliveredPhotoUrls({});
+    setDeliveredPhotoErrors(new Set());
+    deliveredPhotoIds.split(",").forEach((photoId) => {
+      fetchAiCompanionDeliveredPhoto(selectedId, photoId).then((url) => {
+        if (cancelled) { URL.revokeObjectURL(url); return; }
+        urls.push(url);
+        setDeliveredPhotoUrls((current) => ({ ...current, [photoId]: url }));
+      }).catch(() => {
+        if (!cancelled) setDeliveredPhotoErrors((current) => new Set(current).add(photoId));
+      });
+    });
     return () => { cancelled = true; urls.forEach((url) => URL.revokeObjectURL(url)); };
-  }, [deliveredPhotoIds, selectedId]);
+  }, [deliveredPhotoIds, deliveredPhotoLoadRevision, selectedId]);
 
   useEffect(() => {
     setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoError(null); setUserPhotoProgress(0); setPhotoMenuOpen(false);
@@ -733,13 +741,13 @@ export function AiCompanionsPage() {
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note"><button className="text-button" onClick={() => lifestyleTestMutation.mutate()}>Run lifestyle test</button><button className="text-button" onClick={() => approveVisualIdentityMutation.mutate()}>Approve canonical identity</button></div> : null}
           <div className="ai-messages" ref={messagesRef}>
             {chatTimeline.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : chatTimeline.map((entry) => {
-              if (entry.kind === "companion-photo") return deliveredPhotoUrls[entry.photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}>
+              if (entry.kind === "companion-photo") return <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}>
                 <div className="ai-photo-content">
-                  <img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} />
-                  {reportedPhotoIds.has(entry.photo.id) ? <span className="ai-photo-report-thanks">Reported — thank you</span> : <button className="ai-report-trigger ai-photo-report-trigger" type="button" aria-label="Report photo" title="Report photo" onClick={() => setReportingMessageId((current) => current === entry.photo.id ? null : entry.photo.id)}><span aria-hidden="true">i</span></button>}
+                  {deliveredPhotoUrls[entry.photo.id] ? <img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} onLoad={() => { const messages = messagesRef.current; if (messages && entry.photo.id === detail.deliveredPhotos[detail.deliveredPhotos.length - 1]?.id) messages.scrollTop = messages.scrollHeight; }} /> : deliveredPhotoErrors.has(entry.photo.id) ? <div className="ai-photo-load-state"><span>The photo could not be displayed.</span><button className="text-button" type="button" onClick={() => setDeliveredPhotoLoadRevision((revision) => revision + 1)}>Try again</button></div> : <div className="ai-photo-load-state" aria-live="polite"><span className="ai-voice-spinner" /><span>Opening photo…</span></div>}
+                  {deliveredPhotoUrls[entry.photo.id] ? reportedPhotoIds.has(entry.photo.id) ? <span className="ai-photo-report-thanks">Reported — thank you</span> : <button className="ai-report-trigger ai-photo-report-trigger" type="button" aria-label="Report photo" title="Report photo" onClick={() => setReportingMessageId((current) => current === entry.photo.id ? null : entry.photo.id)}><span aria-hidden="true">i</span></button> : null}
                 </div>
                 {reportingMessageId === entry.photo.id ? <div className="ai-report"><select aria-label="Reason for reporting this photo" value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or disturbing</option><option value="harmful">Harmful</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => photoReportMutation.mutate(entry.photo.id)} disabled={photoReportMutation.isPending}>Submit report</button></div> : null}
-              </article> : null;
+              </article>;
               if (entry.kind === "call") return <article className="ai-call-log" key={entry.call.id}>
                 <span className="ai-call-log-icon" aria-hidden="true">📞</span>
                 <div><strong>Voice call with {detail.companion.name} <span>· {compactCallDuration(entry.call)}</span></strong><button className="text-button" type="button" onClick={() => setSelectedCallId(entry.call.id)}>View transcript</button></div>
