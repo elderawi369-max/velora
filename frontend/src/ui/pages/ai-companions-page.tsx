@@ -42,7 +42,7 @@ import {
   type AiCompanionCallLog,
   type AiCompanionVoiceAsset,
 } from "../../lib/api";
-import { completeGooglePlaySubscription, fetchGooglePlaySubscriptionProducts, isNativeAndroidApp, type GooglePlayProduct } from "../../lib/google-play-billing";
+import { completeGooglePlaySubscription, fetchGooglePlaySubscriptionProducts, isNativeAndroidApp, recoverGooglePlayPurchases, type GooglePlayProduct } from "../../lib/google-play-billing";
 import { CompanionCallDialog } from "../components/companion-call-dialog";
 import { CompanionCallDetails } from "../components/companion-call-details";
 import { CompanionVoiceNote } from "../components/companion-voice-note";
@@ -143,6 +143,7 @@ export function AiCompanionsPage() {
   const [companionMenuOpen, setCompanionMenuOpen] = useState(false);
   const [activeCompanionPanel, setActiveCompanionPanel] = useState<CompanionPanel | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceTranscribing, setVoiceTranscribing] = useState(false);
   const [pendingRecordedVoice, setPendingRecordedVoice] = useState<{ asset: AiCompanionVoiceAsset; transcript: string; url: string } | null>(null);
@@ -201,11 +202,29 @@ export function AiCompanionsPage() {
   }, [signupOpen]);
 
   useEffect(() => {
-    if (!sessionQuery.data?.authenticated || !isNativeAndroidApp()) return;
+    if (!sessionQuery.data?.authenticated || !isNativeAndroidApp() || (!manualPaywallOpen && !previewPaywallReady)) return;
     let cancelled = false;
-    fetchGooglePlaySubscriptionProducts().then((products) => { if (!cancelled) setGooglePlayProducts(products); }).catch(() => { if (!cancelled) setGooglePlayProducts([]); });
+    const loadBilling = async () => {
+      try {
+        const recovery = await recoverGooglePlayPurchases();
+        if (recovery.recoveredCount) {
+          await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+          await queryClient.invalidateQueries({ queryKey: ["ai-companion"] });
+          await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice"] });
+        }
+      } catch {
+        // Product loading below can still succeed when there is nothing to restore.
+      }
+      try {
+        const products = await fetchGooglePlaySubscriptionProducts();
+        if (!cancelled) setGooglePlayProducts(products);
+      } catch {
+        if (!cancelled) setGooglePlayProducts([]);
+      }
+    };
+    void loadBilling();
     return () => { cancelled = true; };
-  }, [sessionQuery.data?.authenticated]);
+  }, [manualPaywallOpen, previewPaywallReady, queryClient, sessionQuery.data?.authenticated]);
 
   useEffect(() => {
     if (!sessionQuery.data?.authenticated || isNativeAndroidApp()) return;
@@ -240,7 +259,7 @@ export function AiCompanionsPage() {
     enabled: Boolean(selectedId),
     retry: false,
   });
-  const appearancesQuery = useQuery({ queryKey: ["ai-companion-appearances"], queryFn: fetchAiCompanionAppearances, enabled: Boolean(sessionQuery.data?.authenticated), retry: false });
+  const appearancesQuery = useQuery({ queryKey: ["ai-companion-appearances"], queryFn: fetchAiCompanionAppearances, retry: false });
   const userPhotoQuery = useQuery({ queryKey: ["ai-companion-user-photo", selectedId], queryFn: () => fetchAiCompanionUserPhoto(selectedId!), enabled: Boolean(selectedId), retry: false });
   const voiceQuery = useQuery({ queryKey: ["ai-companion-voice", selectedId], queryFn: () => fetchAiCompanionVoiceCapabilities(selectedId!), enabled: Boolean(selectedId), retry: false });
 
@@ -357,12 +376,40 @@ export function AiCompanionsPage() {
     },
   });
 
-  function create(event: FormEvent) {
-    event.preventDefault();
+  function getCompanionDraft() {
     if (!appearanceId) return;
     const appearance = appearancesQuery.data?.appearances.find((option) => option.id === appearanceId);
     if (!appearance) return;
-    createMutation.mutate({ name, identity: appearance.identity, personaKey, appearanceId, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3, replyStyle } });
+    return { name, identity: appearance.identity, personaKey, appearanceId, backstory, avatarKey: "companion-default", traits: { warmth: 4, playfulness: 3, directness: 3, replyStyle } };
+  }
+  function create(event: FormEvent) {
+    event.preventDefault();
+    const draft = getCompanionDraft();
+    if (!draft) return;
+    if (!sessionQuery.data?.authenticated) {
+      setAuthMode("signup");
+      setSignupOpen(true);
+      return;
+    }
+    createMutation.mutate(draft);
+  }
+  async function finishEmbeddedAuth() {
+    const draft = getCompanionDraft();
+    if (!draft) throw new Error("Choose your companion before continuing.");
+
+    if (authMode === "login") {
+      const existing = await fetchAiCompanions();
+      if (existing.companions.length) {
+        setSelectedId(existing.companions[0].id);
+        setCreatingCompanion(false);
+        setSignupOpen(false);
+        await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+        return;
+      }
+    }
+
+    await createMutation.mutateAsync(draft);
+    setSignupOpen(false);
   }
   function send(event: FormEvent) {
     event.preventDefault();
@@ -592,15 +639,6 @@ export function AiCompanionsPage() {
       {selectedId && detailQuery.isLoading ? <p className="status-message">Loading your companion...</p> : null}
       {selectedId && detailQuery.error ? <p className="form-error">Unable to load your companion: {detailQuery.error.message}</p> : null}
 
-      {sessionQuery.data?.authenticated === false ? <section className="ai-account-welcome">
-        <div>
-          <p className="eyebrow">YOUR PRIVATE COMPANION SPACE</p>
-          <h2>Start with a name. Build the connection naturally.</h2>
-          <p>Create a private Velora account in a few seconds. A public dating profile is optional and can wait until you choose to meet people.</p>
-        </div>
-        <button className="primary-button" type="button" onClick={() => setSignupOpen(true)}>Create your companion</button>
-      </section> : null}
-
       {detail && paywallVisible && plansQuery.data ? <AiCompanionPaywall
         companion={detail.companion}
         plans={plansQuery.data.plans}
@@ -614,12 +652,12 @@ export function AiCompanionsPage() {
 
       {detail && paywallVisible && plansQuery.isLoading ? <p className="status-message ai-upgrade-loading">Preparing your options...</p> : null}
 
-      {sessionQuery.data?.authenticated && !paywallVisible && canCreate && (!selectedId || creatingCompanion) ? (
+      {!paywallVisible && (sessionQuery.data?.authenticated === false || (sessionQuery.data?.authenticated && canCreate && (!selectedId || creatingCompanion))) ? (
         <section className="ai-create-card">
           <div>
             <p className="eyebrow">CREATE YOUR COMPANION</p>
-            <h2>Start with a personality, then make it yours.</h2>
-            <p className="muted">Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos are identity-verified, and eligible plans can use private voice notes and turn-based calls.</p>
+            <h2>{sessionQuery.data?.authenticated ? "Start with a personality, then make it yours." : "Choose who you would like to meet."}</h2>
+            <p className="muted">{sessionQuery.data?.authenticated ? "Your companion is AI, not a real person. This first preview includes up to 15 replies. Photos are identity-verified, and eligible plans can use private voice notes and turn-based calls." : "Pick their personality, appearance, and name first. When everything feels right, you can save your companion with just your name, email, and a password."}</p>
             {creatingCompanion && detail ? <button className="secondary-button ai-create-back" type="button" onClick={() => setCreatingCompanion(false)}>Back to {detail.companion.name}</button> : null}
           </div>
           <form className="ai-create-form" onSubmit={create}>
@@ -629,7 +667,8 @@ export function AiCompanionsPage() {
             <label>Reply style<select value={replyStyle} onChange={(event) => setReplyStyle(event.target.value as typeof replyStyle)}><option value="short">Short &amp; texty</option><option value="natural">Natural</option><option value="detailed">Detailed</option></select></label>
             <label>Short backstory <span className="muted">optional</span><textarea value={backstory} maxLength={500} placeholder="A few details that make this companion feel distinct..." onChange={(event) => setBackstory(event.target.value)} /></label>
             {createMutation.error ? <p className="form-error">{createMutation.error.message}</p> : null}
-            <button className="primary-button" disabled={createMutation.isPending || !appearanceId || name.trim().length < 2}>{createMutation.isPending ? "Creating..." : "Create companion"}</button>
+            <button className="primary-button" disabled={createMutation.isPending || !appearanceId || name.trim().length < 2}>{createMutation.isPending ? "Creating..." : sessionQuery.data?.authenticated ? "Create companion" : "Continue and save companion"}</button>
+            {sessionQuery.data?.authenticated === false ? <p className="ai-create-account-note">Already have a Velora account? <button type="button" className="auth-mode-link" onClick={() => { setAuthMode("login"); setSignupOpen(true); }}>Log in</button></p> : null}
           </form>
         </section>
       ) : null}
@@ -777,8 +816,8 @@ export function AiCompanionsPage() {
       {signupOpen ? <div className="ai-account-dialog-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setSignupOpen(false); }}>
         <section className="ai-account-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-account-dialog-title">
           <button className="ai-panel-close" type="button" aria-label="Close account creation" onClick={() => setSignupOpen(false)}>×</button>
-          <div id="ai-account-dialog-title" className="sr-only">Create your Velora account</div>
-          <AuthForm mode="signup" embedded onSuccess={() => setSignupOpen(false)} />
+          <div id="ai-account-dialog-title" className="sr-only">{authMode === "signup" ? "Save your companion with a Velora account" : "Log in to continue"}</div>
+          <AuthForm mode={authMode} embedded onModeChange={setAuthMode} onSuccess={finishEmbeddedAuth} />
         </section>
       </div> : null}
       {detail && callOpen && voiceQuery.data ? <CompanionCallDialog companion={detail.companion} capabilities={voiceQuery.data} onClose={() => setCallOpen(false)} onConversationChanged={() => { void queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }); void queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] }); }} /> : null}

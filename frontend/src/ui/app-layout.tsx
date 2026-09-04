@@ -3,8 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken } from "../lib/api";
 import { useEffect, useState } from "react";
 import { clearNativeAppBadgeCount, syncNativeAppBadgeCount } from "../lib/app-badge";
-import { recoverGooglePlayPurchases } from "../lib/google-play-billing";
-import { ensureNativeAndroidPushPromptedOnce, syncPushNotificationsIfGranted } from "../lib/push";
+import { syncPushNotificationsIfGranted } from "../lib/push";
 import { canPromptForAndroidRating, openVeloraPlayStoreRating } from "../lib/rate-app";
 import { VeloraLogo } from "./components/velora-logo";
 
@@ -81,58 +80,8 @@ export function AppLayout() {
       return;
     }
 
-    void ensureNativeAndroidPushPromptedOnce().catch(() => undefined);
     void syncPushNotificationsIfGranted().catch(() => undefined);
   }, [sessionQuery.data?.authenticated]);
-
-  useEffect(() => {
-    if (!sessionQuery.data?.authenticated) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const runRecovery = async () => {
-      try {
-        const result = await recoverGooglePlayPurchases();
-        if (cancelled || !result.recoveredCount) {
-          return;
-        }
-
-        await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
-        await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-        await queryClient.invalidateQueries({ queryKey: ["conversations"] });
-        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-        await queryClient.invalidateQueries({ queryKey: ["challenges"] });
-        await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
-        await queryClient.invalidateQueries({ queryKey: ["ai-companion"] });
-        await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice"] });
-      } catch {
-        return;
-      }
-    };
-
-    void runRecovery();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void runRecovery();
-      }
-    };
-
-    const handleFocus = () => {
-      void runRecovery();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [queryClient, sessionQuery.data?.authenticated]);
 
   useEffect(() => {
     const grant = sessionQuery.data?.starterCreditGrant;

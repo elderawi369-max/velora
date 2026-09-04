@@ -9,10 +9,11 @@ type AuthMode = "signup" | "login";
 type AuthFormProps = {
   mode: AuthMode;
   embedded?: boolean;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
+  onModeChange?: (mode: AuthMode) => void;
 };
 
-export function AuthForm({ mode, embedded = false, onSuccess }: AuthFormProps) {
+export function AuthForm({ mode, embedded = false, onSuccess, onModeChange }: AuthFormProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -34,14 +35,14 @@ export function AuthForm({ mode, embedded = false, onSuccess }: AuthFormProps) {
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["session"] });
-        onSuccess?.();
+        await onSuccess?.();
         navigate("/");
       } else {
         const result = await login({ email, password });
         saveAuthToken(result.sessionToken);
         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
         await queryClient.invalidateQueries({ queryKey: ["session"] });
-        onSuccess?.();
+        await onSuccess?.();
         navigate("/");
       }
     } catch (submissionError) {
@@ -142,9 +143,15 @@ export function AuthForm({ mode, embedded = false, onSuccess }: AuthFormProps) {
 
         <p className="form-hint">
           {mode === "signup" ? "Already have an account?" : "Need an account?"}{" "}
-          <Link to={mode === "signup" ? "/login" : "/signup"}>
-            {mode === "signup" ? "Log in" : "Sign up"}
-          </Link>
+          {embedded && onModeChange ? (
+            <button className="auth-mode-link" type="button" onClick={() => onModeChange(mode === "signup" ? "login" : "signup")}>
+              {mode === "signup" ? "Log in" : "Sign up"}
+            </button>
+          ) : (
+            <Link to={mode === "signup" ? "/login" : "/signup"}>
+              {mode === "signup" ? "Log in" : "Sign up"}
+            </Link>
+          )}
         </p>
 
         {mode === "login" ? (

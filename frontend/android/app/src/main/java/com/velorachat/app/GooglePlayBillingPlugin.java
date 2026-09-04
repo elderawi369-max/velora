@@ -212,7 +212,7 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         ensureBillingClient();
 
         if (billingClient.isReady()) {
-            action.run();
+            runClientActionSafely(call, action);
             return;
         }
 
@@ -223,32 +223,47 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         }
 
         isConnecting = true;
-        billingClient.startConnection(
-            new BillingClientStateListener() {
-                @Override
-                public void onBillingSetupFinished(@NonNull BillingResult billingResult) {
-                    isConnecting = false;
-                    if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
-                        rejectPendingClientActions(resolveBillingMessage(billingResult, "Google Play Billing is unavailable."));
-                        return;
+        try {
+            billingClient.startConnection(
+                new BillingClientStateListener() {
+                    @Override
+                    public void onBillingSetupFinished(@NonNull BillingResult billingResult) {
+                        isConnecting = false;
+                        if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                            rejectPendingClientActions(resolveBillingMessage(billingResult, "Google Play Billing is unavailable."));
+                            return;
+                        }
+
+                        flushPendingClientActions();
                     }
 
-                    flushPendingClientActions();
+                    @Override
+                    public void onBillingServiceDisconnected() {
+                        isConnecting = false;
+                    }
                 }
-
-                @Override
-                public void onBillingServiceDisconnected() {
-                    isConnecting = false;
-                }
-            }
-        );
+            );
+        } catch (Throwable error) {
+            isConnecting = false;
+            Log.e(LOG_TAG, "Unable to start the Google Play Billing connection.", error);
+            rejectPendingClientActions("Google Play Billing could not be started. Please try again.");
+        }
     }
 
     private void flushPendingClientActions() {
         List<PendingClientAction> actions = new ArrayList<>(pendingClientActions);
         pendingClientActions.clear();
         for (PendingClientAction action : actions) {
-            action.action.run();
+            runClientActionSafely(action.call, action.action);
+        }
+    }
+
+    private void runClientActionSafely(PluginCall call, Runnable action) {
+        try {
+            action.run();
+        } catch (Throwable error) {
+            Log.e(LOG_TAG, "Google Play Billing action failed before it could respond.", error);
+            call.reject("Google Play Billing could not complete that action. Please try again.");
         }
     }
 

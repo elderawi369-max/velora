@@ -829,7 +829,6 @@ aiCompanionRoutes.get("/", async (c) => {
 aiCompanionRoutes.get("/plans", (c) => c.json({ plans: publicAiCompanionPlans() }));
 
 aiCompanionRoutes.get("/appearance-options", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   const rows = await getDb(c.env).select({ id: aiCompanionAppearanceCatalog.id, name: aiCompanionAppearanceCatalog.displayName, lockedTraitsJson: aiCompanionAppearanceCatalog.lockedTraitsJson }).from(aiCompanionAppearanceCatalog).orderBy(asc(aiCompanionAppearanceCatalog.createdAt));
   const appearances = rows.flatMap((appearance) => {
     const traits = parseVisualTraits(appearance.lockedTraitsJson);
@@ -839,7 +838,6 @@ aiCompanionRoutes.get("/appearance-options", async (c) => {
 });
 
 aiCompanionRoutes.get("/appearance-options/:appearanceId/preview", async (c) => {
-  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
   if (!c.env.COMPANION_IMAGES) return c.json({ error: "Appearance images are unavailable." }, 503);
   const [appearance] = await getDb(c.env).select({ objectKey: aiCompanionAppearanceCatalog.canonicalObjectKey }).from(aiCompanionAppearanceCatalog).where(eq(aiCompanionAppearanceCatalog.id, c.req.param("appearanceId"))).limit(1);
   if (!appearance) return c.json({ error: "Appearance not found." }, 404);

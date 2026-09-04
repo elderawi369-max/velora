@@ -398,6 +398,32 @@
   background: rgba(255, 255, 255, 0.76);
 }
 
+.auth-mode-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #a33f63;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.auth-mode-link:hover,
+.auth-mode-link:focus-visible {
+  color: #7f2949;
+}
+
+.ai-create-account-note {
+  margin: 2px 0 0;
+  color: #725e68;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
 .ai-create-form,
 .ai-memory-card form,
 .ai-composer {
