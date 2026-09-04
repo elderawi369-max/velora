@@ -83,6 +83,7 @@ function formatDateTime(timestamp: number | null) {
 }
 
 const starterCreditCampaignDefaultSubject = "Your Velora starter credits are waiting";
+const starterCreditEmailBatchLimit = 100;
 
 const starterCreditCampaignDefaultMessage = `Hi,
 
@@ -690,15 +691,16 @@ export function AdminPage() {
   }
 
   function toggleStarterCreditRecipient(userId: string) {
-    setSelectedStarterCreditUserIds((current) => ({
-      ...current,
-      [userId]: !current[userId],
-    }));
+    setSelectedStarterCreditUserIds((current) => {
+      const isSelected = Boolean(current[userId]);
+      if (!isSelected && Object.values(current).filter(Boolean).length >= starterCreditEmailBatchLimit) return current;
+      return { ...current, [userId]: !isSelected };
+    });
   }
 
   function selectAllStarterCreditRecipients() {
     setSelectedStarterCreditUserIds(
-      Object.fromEntries(starterCreditEligibleUsers.map((user) => [user.userId, true])),
+      Object.fromEntries(starterCreditEligibleUsers.slice(0, starterCreditEmailBatchLimit).map((user) => [user.userId, true])),
     );
   }
 
@@ -1538,7 +1540,7 @@ export function AdminPage() {
               onClick={selectAllStarterCreditRecipients}
               disabled={!starterCreditEligibleUsers.length}
             >
-              Select all
+              Select first {Math.min(starterCreditEmailBatchLimit, starterCreditEligibleUsers.length)}
             </button>
             <button
               className="secondary-button"
@@ -1619,7 +1621,7 @@ export function AdminPage() {
           <section className="panel">
             <div className="meta-group">
               <span className="meta-title">Existing users</span>
-              <p>Pick exactly who you want to contact. Last emailed helps avoid repeats.</p>
+              <p>Pick exactly who you want to contact, up to {starterCreditEmailBatchLimit} at a time. Last emailed helps avoid repeats.</p>
             </div>
             <div className="admin-table-wrap">
               <table className="admin-table">
@@ -1640,6 +1642,7 @@ export function AdminPage() {
                         <input
                           type="checkbox"
                           checked={Boolean(selectedStarterCreditUserIds[user.userId])}
+                          disabled={!selectedStarterCreditUserIds[user.userId] && selectedStarterCreditRecipients.length >= starterCreditEmailBatchLimit}
                           onChange={() => toggleStarterCreditRecipient(user.userId)}
                         />
                       </td>
