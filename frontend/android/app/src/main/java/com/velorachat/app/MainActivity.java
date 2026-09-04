@@ -24,7 +24,10 @@ public class MainActivity extends BridgeActivity {
 
         ensureNotificationChannel();
 
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        // Apply the same edge-to-edge behavior on older Android versions as
+        // Android 15+ while the listener below keeps controls clear of bars,
+        // gesture areas, and display cutouts.
+        WindowCompat.enableEdgeToEdge(getWindow());
 
         View contentView = findViewById(android.R.id.content);
         ViewCompat.setOnApplyWindowInsetsListener(contentView, (view, windowInsets) -> {
