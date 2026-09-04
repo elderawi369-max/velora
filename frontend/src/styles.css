@@ -1056,6 +1056,7 @@
 .ai-composer .form-error,
 .ai-composer progress,
 .ai-composer > .ai-photo-quota,
+.ai-composer > .ai-friendly-limit-notice,
 .ai-attachment-preview { grid-column: 1 / -1; }
 .ai-composer .form-error { margin: 0; }
 .ai-composer progress { width: 100%; accent-color: #2d6f9e; }
@@ -1087,6 +1088,9 @@
 .ai-photo-picker[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
 .ai-photo-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .ai-photo-quota { width: fit-content; padding: 5px 8px; border-radius: 999px; color: #315f82; background: #eaf4fb; }
+.ai-friendly-limit-notice { display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; padding: 10px 12px; border: 1px solid #ead9c6; border-radius: 14px; color: #644b3d; background: #fff8ed; }
+.ai-friendly-limit-notice p { margin: 0; font-size: 0.88rem; line-height: 1.35; }
+.ai-friendly-limit-notice .text-button { white-space: nowrap; }
 
 .ai-memory-list {
   display: grid;

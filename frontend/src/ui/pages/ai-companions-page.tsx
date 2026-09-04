@@ -316,8 +316,10 @@ export function AiCompanionsPage() {
       await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
       await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] });
     },
-    onError: (_error, variables) => {
+    onError: (error, variables) => {
       setPendingUserMessage(null);
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (errorMessage.includes("companion photo included with your free preview")) setPhotoRequestError(errorMessage);
       if (variables.userVoiceAssetId && selectedId) void deleteAiCompanionVoiceInput(selectedId, variables.userVoiceAssetId).catch(() => undefined);
       clearPendingRecordedVoice();
     },
@@ -783,7 +785,8 @@ export function AiCompanionsPage() {
             {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}
             {userPhotoError ? <p className="form-error">{userPhotoError}</p> : null}
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
-            {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">{photoRequestError}</p> : null}
+            {messageMutation.error && !photoRequestError ? <p className="form-error">{messageMutation.error.message}</p> : null}
+            {photoRequestError ? <div className="ai-friendly-limit-notice" role="status"><span aria-hidden="true">📷</span><p>{photoRequestError}</p>{photoRequestError.includes("free preview") ? <button className="text-button" type="button" onClick={() => setManualPaywallOpen(true)}>See Pro &amp; Ultra</button> : null}</div> : null}
             {voiceError ? <p className="form-error">Voice note: {voiceError}</p> : null}
             {voiceQuery.data ? <small className="ai-voice-quota">{voiceAvailabilityText(voiceQuery.data.voice)}</small> : null}
           </form>

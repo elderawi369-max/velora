@@ -1381,6 +1381,13 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (parsed.data.voiceAssetId && !recordedVoiceAsset) return c.json({ error: "That recorded voice message is no longer available." }, 409);
   const isApprovedBeta = isApprovedBetaUser(c.env, account.email);
   const crisisMessage = isCrisisMessage(parsed.data.body);
+  const requestedPhoto = isCompanionPhotoRequest(parsed.data.body) && entitlement.photoLimit > 0;
+  if (requestedPhoto && entitlement.plan === "free") {
+    const usage = await c.env.DB.prepare("SELECT COUNT(*) AS delivered_count FROM ai_companion_photo_deliveries WHERE user_id = ?").bind(context.userId).first<{ delivered_count: number }>();
+    if (Number(usage?.delivered_count ?? 0) >= entitlement.photoLimit) {
+      return c.json({ error: "You’ve enjoyed the companion photo included with your free preview. Upgrade to Pro or Ultra whenever you’d like more photos." }, 403);
+    }
+  }
   let previewReservation: FreePreviewReservation | null = null;
   if (entitlement.plan === "free" && !crisisMessage) {
     const deviceKey = await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") });
@@ -1398,7 +1405,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
-  const photoRequested = isCompanionPhotoRequest(parsed.data.body) && entitlement.photoLimit > 0;
+  const photoRequested = requestedPhoto;
   const recentMessagesForReply = await db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(20);
   let responseBody: string; let moderationStatus = "allowed";
   if (crisisMessage) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
