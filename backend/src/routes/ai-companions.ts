@@ -5,6 +5,7 @@ import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, a
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
+import { sendPushToUser } from "../lib/push";
 import { aiCompanionPlans, getAiCompanionEntitlement, publicAiCompanionPlans } from "../lib/ai-companion-plans";
 import { aiCompanionPhotoGenerationGuardConfig, aiCompanionPhotoGenerationPlanLimit } from "../lib/ai-companion-photo-guards";
 import { bindFreePreviewAccountToDevice, completeFreePreviewReplyClaim, getFreePreviewRepliesUsed, readFreePreviewDeviceKey, releaseFreePreviewReplyClaim, reserveFreePreviewReply, type FreePreviewReservation } from "../lib/ai-companion-preview";
@@ -1503,6 +1504,16 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   // The conversation is already committed. Telemetry must not suppress the
   // response that tells the client to continue with an attached photo action.
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } }).catch(() => undefined);
+  // Notification-plus-data payloads are displayed by Android only while the
+  // app is backgrounded. The zero badge prevents the existing foreground
+  // handler from showing a redundant alert while the reply is on screen.
+  c.executionCtx.waitUntil(sendPushToUser(c.env, context.userId, {
+    title: `${companion.name} replied`,
+    body: responseBody.slice(0, 120),
+    link: "/",
+    badgeCount: 0,
+    showWhenBackground: true,
+  }).catch(() => undefined));
   const effectiveTrialRepliesUsed = entitlement.plan === "free"
     ? await getFreePreviewRepliesUsed(c.env, { userId: context.userId, deviceKey: await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") }), limit: entitlement.messageLimit })
     : trialRepliesUsed;

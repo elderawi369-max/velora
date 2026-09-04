@@ -10,6 +10,7 @@ type PushPayload = {
   body: string;
   link?: string;
   badgeCount?: number;
+  showWhenBackground?: boolean;
 };
 
 function isPushConfigured(env: EnvBindings) {
@@ -216,6 +217,14 @@ export async function sendPushToUser(
           body: JSON.stringify({
             message: {
               token: device.token,
+              ...(payload.showWhenBackground
+                ? {
+                    notification: {
+                      title: payload.title,
+                      body: payload.body,
+                    },
+                  }
+                : {}),
               data: {
                 link: payload.link ?? "/",
                 title: payload.title,
