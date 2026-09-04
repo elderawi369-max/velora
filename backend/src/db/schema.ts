@@ -478,6 +478,16 @@ export const aiCompanionPhotoUsage = sqliteTable("ai_companion_photo_usage", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionFreePreviewClaims = sqliteTable("ai_companion_free_preview_claims", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  deviceKey: text("device_key").notNull(),
+  conversationId: text("conversation_id").references(() => aiCompanionConversations.id),
+  messageId: text("message_id").references(() => aiCompanionMessages.id),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionVoiceProfiles = sqliteTable("ai_companion_voice_profiles", {
   companionId: text("companion_id").primaryKey().references(() => aiCompanions.id),
   catalogName: text("catalog_name").notNull(),

@@ -1,8 +1,10 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { apiBaseUrl } from "../config";
 
 const authTokenStorageKey = "velora-auth-token";
 const installIdStorageKey = "velora-install-id";
+const DeviceIdentity = registerPlugin<{ getId: () => Promise<{ identifier: string }> }>("DeviceIdentity");
+let nativeDeviceIdPromise: Promise<string> | null = null;
 
 function getAuthToken() {
   if (typeof window === "undefined") {
@@ -55,7 +57,15 @@ type RequestOptions = {
   body?: unknown;
 };
 
-function getClientPlatformHeaders() {
+async function getNativeDeviceId() {
+  if (Capacitor.getPlatform() !== "android" || !Capacitor.isNativePlatform()) return "";
+  nativeDeviceIdPromise ??= DeviceIdentity.getId()
+    .then((result) => result.identifier.trim())
+    .catch(() => "");
+  return nativeDeviceIdPromise;
+}
+
+async function getClientPlatformHeaders() {
   const headers: Record<string, string> = {};
 
   if (
@@ -69,6 +79,8 @@ function getClientPlatformHeaders() {
   if (installId) {
     headers["X-Velora-Install-Id"] = installId;
   }
+  const deviceId = await getNativeDeviceId();
+  if (deviceId) headers["X-Velora-Device-Id"] = deviceId;
 
   return headers;
 }
@@ -76,7 +88,7 @@ function getClientPlatformHeaders() {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getClientPlatformHeaders(),
+    ...await getClientPlatformHeaders(),
   };
 
   const authToken = getAuthToken();
@@ -424,7 +436,7 @@ export function login(payload: LoginPayload) {
 }
 
 async function requestImageUrl(path: string): Promise<string> {
-  const headers: Record<string, string> = getClientPlatformHeaders();
+  const headers: Record<string, string> = await getClientPlatformHeaders();
   const authToken = getAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", headers });
@@ -1145,14 +1157,15 @@ export function fetchAiCompanionUserPhotoContent(companionId: string, photoId: s
   return requestImageUrl(`/api/ai-companions/${companionId}/user-photo/${photoId}/content`);
 }
 
-export function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onProgress: (percent: number) => void) {
+export async function uploadAiCompanionUserPhoto(companionId: string, photo: Blob, onProgress: (percent: number) => void) {
+  const platformHeaders = await getClientPlatformHeaders();
   return new Promise<{ photo: AiCompanionUserPhoto; userMessage: AiCompanionMessage; assistantMessage: AiCompanionMessage }>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${apiBaseUrl}/api/ai-companions/${companionId}/user-photo`);
     request.withCredentials = true;
     const authToken = getAuthToken();
     if (authToken) request.setRequestHeader("Authorization", `Bearer ${authToken}`);
-    Object.entries(getClientPlatformHeaders()).forEach(([name, value]) => request.setRequestHeader(name, value));
+    Object.entries(platformHeaders).forEach(([name, value]) => request.setRequestHeader(name, value));
     request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)); };
     request.onerror = () => reject(new Error("Upload interrupted. Check your connection and retry."));
     request.onload = () => {
@@ -1182,7 +1195,7 @@ export function createAiCompanionVoiceMessage(companionId: string, messageId: st
 }
 
 export async function transcribeAiCompanionVoiceInput(companionId: string, audio: Blob, durationMs: number) {
-  const headers: Record<string, string> = getClientPlatformHeaders();
+  const headers: Record<string, string> = await getClientPlatformHeaders();
   const authToken = getAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const form = new FormData();
@@ -1217,7 +1230,7 @@ export function endAiCompanionCall(companionId: string, callId: string) {
 }
 
 export async function sendAiCompanionCallTurn(companionId: string, callId: string, audio: Blob) {
-  const headers: Record<string, string> = getClientPlatformHeaders();
+  const headers: Record<string, string> = await getClientPlatformHeaders();
   const authToken = getAuthToken();
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const form = new FormData();

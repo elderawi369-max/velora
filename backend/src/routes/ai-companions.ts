@@ -7,6 +7,7 @@ import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
 import { aiCompanionPlans, getAiCompanionEntitlement, publicAiCompanionPlans } from "../lib/ai-companion-plans";
 import { aiCompanionPhotoGenerationGuardConfig, aiCompanionPhotoGenerationPlanLimit } from "../lib/ai-companion-photo-guards";
+import { completeFreePreviewReplyClaim, getFreePreviewRepliesUsed, readFreePreviewDeviceKey, releaseFreePreviewReplyClaim, reserveFreePreviewReply, type FreePreviewReservation } from "../lib/ai-companion-preview";
 
 const trialReplies = aiCompanionPlans.free.messageLimit;
 const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_friend", "confident_leader", "quiet_romantic", "personal_growth_companion"] as const;
@@ -940,7 +941,11 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
-  return c.json({ companion, conversation, messages: ordinaryMessages, calls: callLogs, memories, memoryCandidates, entitlement, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
+  const deviceKey = entitlement.plan === "free" ? await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") }) : null;
+  const previewRepliesUsed = entitlement.plan === "free"
+    ? await getFreePreviewRepliesUsed(c.env, { userId: context.userId, deviceKey, limit: entitlement.messageLimit })
+    : conversation.trialRepliesUsed;
+  return c.json({ companion, conversation: { ...conversation, trialRepliesUsed: previewRepliesUsed }, messages: ordinaryMessages, calls: callLogs, memories, memoryCandidates, entitlement, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
@@ -1375,10 +1380,18 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const recordedVoiceAsset = parsed.data.voiceAssetId ? await db.select({ id: aiCompanionVoiceAssets.id }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, parsed.data.voiceAssetId), eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.conversationId, conversation.id), eq(aiCompanionVoiceAssets.provider, "user-recorded"), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.messageId), isNull(aiCompanionVoiceAssets.deletedAt))).limit(1).then((rows) => rows[0] ?? null) : null;
   if (parsed.data.voiceAssetId && !recordedVoiceAsset) return c.json({ error: "That recorded voice message is no longer available." }, 409);
   const isApprovedBeta = isApprovedBetaUser(c.env, account.email);
-  if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Choose Pro or Ultra whenever you are ready to keep talking." }, 403);
+  const crisisMessage = isCrisisMessage(parsed.data.body);
+  let previewReservation: FreePreviewReservation | null = null;
+  if (entitlement.plan === "free" && !crisisMessage) {
+    const deviceKey = await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") });
+    if (!deviceKey) return c.json({ error: "Velora needs to recognize this device before starting a free preview. Please reopen or update the app and try again." }, 400);
+    previewReservation = await reserveFreePreviewReply(c.env, { userId: context.userId, deviceKey, conversationId: conversation.id, limit: entitlement.messageLimit });
+    if (!previewReservation) return c.json({ error: "The free companion preview has already been used on this account or device. Choose Pro or Ultra whenever you are ready to keep talking." }, 403);
+  }
   // The shared launch cap protects a public preview, not the approved internal beta.
-  const needsReservedReply = entitlement.plan === "free" && !isApprovedBeta && !isCrisisMessage(parsed.data.body);
+  const needsReservedReply = entitlement.plan === "free" && !isApprovedBeta && !crisisMessage;
   if (needsReservedReply && !(await reserveFreeReply(c.env))) {
+    await releaseFreePreviewReplyClaim(c.env, previewReservation);
     return c.json({ error: "Today's companion preview is at capacity. Please try again tomorrow." }, 429);
   }
   const relationshipStage = relationshipStageForPoints(conversation.relationshipPoints);
@@ -1388,7 +1401,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const photoRequested = isCompanionPhotoRequest(parsed.data.body) && entitlement.photoLimit > 0;
   const recentMessagesForReply = await db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(20);
   let responseBody: string; let moderationStatus = "allowed";
-  if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
+  if (crisisMessage) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }
   else if (photoRequested) {
     const photoReplies = ["Okay—here's one for you 📸", "Fair request. Here you go 📸", "Your turn worked—photo incoming 📸", "Since you asked nicely... here 📸", "All right, you convinced me 📸"];
     const photoSeed = [...userMessage.id].reduce((total, character) => total + character.charCodeAt(0), 0);
@@ -1409,11 +1422,13 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
     try { responseBody = extractModelText(await c.env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: 90, temperature: 0.75 })); }
     catch {
       if (needsReservedReply) await releaseFreeReply(c.env);
+      await releaseFreePreviewReplyClaim(c.env, previewReservation);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "The companion could not reply just now. Please try again." }, 502);
     }
     if (!responseBody) {
       if (needsReservedReply) await releaseFreeReply(c.env);
+      await releaseFreePreviewReplyClaim(c.env, previewReservation);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "The companion model did not return a usable reply. Please try again later." }, 502);
     }
@@ -1437,6 +1452,8 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (recordedVoiceAsset) {
     const attached = await db.update(aiCompanionVoiceAssets).set({ messageId: userMessage.id, updatedAt: now() }).where(and(eq(aiCompanionVoiceAssets.id, recordedVoiceAsset.id), isNull(aiCompanionVoiceAssets.messageId)));
     if ((attached.meta.changes ?? 0) !== 1) {
+      if (needsReservedReply) await releaseFreeReply(c.env);
+      await releaseFreePreviewReplyClaim(c.env, previewReservation);
       await db.delete(aiCompanionMessages).where(eq(aiCompanionMessages.id, userMessage.id));
       return c.json({ error: "That recorded voice message could not be attached. Please try again." }, 409);
     }
@@ -1459,11 +1476,19 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   if (moderationStatus === "allowed") {
     const relationshipPoints = conversation.relationshipPoints + relationshipPointsForMessage(parsed.data.body);
     await db.update(aiCompanionConversations).set({ trialRepliesUsed, relationshipPoints, relationshipStage: relationshipStageForPoints(relationshipPoints), updatedAt: now() }).where(eq(aiCompanionConversations.id, conversation.id));
+    await completeFreePreviewReplyClaim(c.env, previewReservation, assistantMessage.id);
+  }
+  else {
+    if (needsReservedReply) await releaseFreeReply(c.env);
+    await releaseFreePreviewReplyClaim(c.env, previewReservation);
   }
   // The conversation is already committed. Telemetry must not suppress the
   // response that tells the client to continue with an attached photo action.
   await logEvent(c.env, { eventType: "ai_companion_message_sent", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id } }).catch(() => undefined);
-  return c.json({ userMessage, assistantMessage, trialRepliesUsed, photoRequested: moderationStatus === "allowed" && photoRequested });
+  const effectiveTrialRepliesUsed = entitlement.plan === "free"
+    ? await getFreePreviewRepliesUsed(c.env, { userId: context.userId, deviceKey: await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") }), limit: entitlement.messageLimit })
+    : trialRepliesUsed;
+  return c.json({ userMessage, assistantMessage, trialRepliesUsed: effectiveTrialRepliesUsed, photoRequested: moderationStatus === "allowed" && photoRequested });
 });
 
 aiCompanionRoutes.post("/messages/:messageId/report", async (c) => {

@@ -39,6 +39,7 @@ app.use(
   cors({
     origin: (origin) => resolveCorsOrigin(origin),
     credentials: true,
+    allowHeaders: ["Content-Type", "Authorization", "X-Velora-Install-Id", "X-Velora-Device-Id", "X-Velora-Client-Platform"],
   }),
 );
 
