@@ -1008,7 +1008,7 @@ export type AiCompanionCallLog = {
 };
 
 export type AiCompanionVoiceCapabilities = {
-  voice: { enabled: boolean; catalogName: string | null; engine: string | null; monthlyLimit: number; monthlyUsed: number; dailyLimit: number; dailyUsed: number; maxCharacters: number; maxDurationSeconds: number };
+  voice: { enabled: boolean; catalogName: string | null; engine: string | null; monthlyLimit: number; monthlyUsed: number; dailyLimit: number; dailyUsed: number; maxCharacters: number; maxDurationSeconds: number; freeTrialAvailable: boolean; freeTrialUsed: boolean };
   calls: { enabled: boolean; monthlySeconds: number; transcriptionDisclosure: string };
 };
 

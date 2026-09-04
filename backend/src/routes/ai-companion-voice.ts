@@ -26,6 +26,8 @@ const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const now = () => Date.now();
 const monthPeriod = (timestamp = now()) => new Date(timestamp).toISOString().slice(0, 7);
 const monthStart = (timestamp = now()) => Date.UTC(new Date(timestamp).getUTCFullYear(), new Date(timestamp).getUTCMonth(), 1);
+const freeVoiceTrialUsageId = (userId: string) => `${userId}:free-voice:lifetime`;
+const freeVoiceTrialReservationTtlMs = 10 * 60 * 1000;
 
 async function contextFor(c: any) {
   return getAccountContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
@@ -72,6 +74,37 @@ async function finishVoiceReservation(env: EnvBindings, userId: string) {
   await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = MAX(0, reserved_count - 1), updated_at = ? WHERE id = ?").bind(timestamp, `${userId}:month:${monthPeriod(timestamp)}`).run();
 }
 
+async function freeVoiceTrialState(env: EnvBindings, userId: string) {
+  const [historicalAsset, usage] = await Promise.all([
+    env.DB.prepare("SELECT 1 AS used FROM ai_companion_voice_assets WHERE user_id = ? AND status = 'ready' AND call_id IS NULL AND provider != 'user-recorded' AND deleted_at IS NULL LIMIT 1").bind(userId).first<{ used: number }>(),
+    env.DB.prepare("SELECT reserved_count, successful_count, updated_at FROM ai_companion_voice_usage WHERE id = ?").bind(freeVoiceTrialUsageId(userId)).first<{ reserved_count: number; successful_count: number; updated_at: number }>(),
+  ]);
+  const used = Boolean(historicalAsset) || Number(usage?.successful_count ?? 0) > 0;
+  const reserved = !used && Number(usage?.reserved_count ?? 0) > 0 && Number(usage?.updated_at ?? 0) >= now() - freeVoiceTrialReservationTtlMs;
+  return { used, reserved, available: !used && !reserved };
+}
+
+async function reserveFreeVoiceTrial(env: EnvBindings, userId: string) {
+  const timestamp = now();
+  const usageId = freeVoiceTrialUsageId(userId);
+  await env.DB.prepare("INSERT OR IGNORE INTO ai_companion_voice_usage (id, user_id, scope, period, reserved_count, successful_count, updated_at) VALUES (?, ?, 'free_voice_trial', 'lifetime', 0, 0, ?)").bind(usageId, userId, timestamp).run();
+  const historicalAsset = await env.DB.prepare("SELECT 1 AS used FROM ai_companion_voice_assets WHERE user_id = ? AND status = 'ready' AND call_id IS NULL AND provider != 'user-recorded' AND deleted_at IS NULL LIMIT 1").bind(userId).first<{ used: number }>();
+  if (historicalAsset) {
+    await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = 0, successful_count = 1, updated_at = ? WHERE id = ?").bind(timestamp, usageId).run();
+    return false;
+  }
+  const result = await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = 1, updated_at = ? WHERE id = ? AND successful_count = 0 AND (reserved_count = 0 OR updated_at < ?)").bind(timestamp, usageId, timestamp - freeVoiceTrialReservationTtlMs).run();
+  return (result.meta.changes ?? 0) === 1;
+}
+
+async function finishFreeVoiceTrial(env: EnvBindings, userId: string, succeeded: boolean) {
+  const timestamp = now();
+  const statement = succeeded
+    ? "UPDATE ai_companion_voice_usage SET reserved_count = 0, successful_count = 1, updated_at = ? WHERE id = ?"
+    : "UPDATE ai_companion_voice_usage SET reserved_count = 0, updated_at = ? WHERE id = ?";
+  await env.DB.prepare(statement).bind(timestamp, freeVoiceTrialUsageId(userId)).run();
+}
+
 async function lockedProfileFor(env: EnvBindings, companion: typeof aiCompanions.$inferSelect) {
   const db = getDb(env);
   const [identity] = await db.select({ catalogName: aiCompanionAppearanceCatalog.displayName })
@@ -91,16 +124,27 @@ function publicAsset(asset: typeof aiCompanionVoiceAssets.$inferSelect) {
   return { id: asset.id, messageId: asset.messageId, status: asset.status, durationMs: asset.durationMs, characterCount: asset.characterCount, deliveryStyle: asset.deliveryStyle, origin: asset.provider === "user-recorded" ? "user" : "companion", createdAt: asset.createdAt };
 }
 
-async function createVoiceAsset(args: { env: EnvBindings; userId: string; companion: typeof aiCompanions.$inferSelect; conversationId: string; messageId: string; callId?: string; requestKey: string; text: string; profile: LockedVoiceProfile; countMessageQuota: boolean; monthlyVoiceSeconds?: number }) {
+async function createVoiceAsset(args: { env: EnvBindings; userId: string; companion: typeof aiCompanions.$inferSelect; conversationId: string; messageId: string; callId?: string; requestKey: string; text: string; profile: LockedVoiceProfile; countMessageQuota: boolean; monthlyVoiceSeconds?: number; allowFreeTrial?: boolean }) {
   const db = getDb(args.env);
   const [existing] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.requestKey, args.requestKey)).limit(1);
   if (existing && existing.status !== "failed") return existing;
   if (existing?.status === "failed") await db.delete(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, existing.id), eq(aiCompanionVoiceAssets.status, "failed")));
   if (!args.env.COMPANION_AUDIO) throw new Error("voice_storage_not_configured");
-  if (args.countMessageQuota && !(await reserveVoiceMessage(args.env, args.userId, args.monthlyVoiceSeconds ?? 0))) throw new Error("voice_quota_complete");
+  const freeTrialReservation = args.countMessageQuota && (args.monthlyVoiceSeconds ?? 0) <= 0 && args.allowFreeTrial;
+  if (args.countMessageQuota) {
+    const reserved = freeTrialReservation
+      ? await reserveFreeVoiceTrial(args.env, args.userId)
+      : await reserveVoiceMessage(args.env, args.userId, args.monthlyVoiceSeconds ?? 0);
+    if (!reserved) throw new Error(freeTrialReservation ? "free_voice_trial_complete" : "voice_quota_complete");
+  }
+  const finishReservation = async (succeeded: boolean) => {
+    if (!args.countMessageQuota) return;
+    if (freeTrialReservation) await finishFreeVoiceTrial(args.env, args.userId, succeeded);
+    else await finishVoiceReservation(args.env, args.userId);
+  };
   const spoken = prepareSpokenText(args.text);
   if (!spoken) {
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
+    await finishReservation(false);
     throw new Error("voice_text_empty");
   }
   const timestamp = now();
@@ -108,7 +152,7 @@ async function createVoiceAsset(args: { env: EnvBindings; userId: string; compan
   const draft = { id: assetId, userId: args.userId, companionId: args.companion.id, conversationId: args.conversationId, messageId: args.messageId, callId: args.callId ?? null, requestKey: args.requestKey, objectKey: null, status: "generating", durationMs: null, characterCount: spoken.length, provider: args.profile.provider, profileVersion: args.profile.profileVersion, deliveryStyle: detectVoiceDeliveryStyle(spoken), errorCode: null, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
   try { await db.insert(aiCompanionVoiceAssets).values(draft); }
   catch {
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
+    await finishReservation(false);
     const [duplicate] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.requestKey, args.requestKey)).limit(1);
     if (duplicate) return duplicate;
     throw new Error("voice_asset_create_failed");
@@ -119,12 +163,12 @@ async function createVoiceAsset(args: { env: EnvBindings; userId: string; compan
     const objectKey = `voice/${args.userId}/${args.companion.id}/${assetId}/${crypto.randomUUID()}.mp3`;
     await args.env.COMPANION_AUDIO.put(objectKey, audio.bytes, { httpMetadata: { contentType: "audio/mpeg", cacheControl: "private, no-store" }, customMetadata: { profileVersion: String(args.profile.profileVersion), voiceName: args.profile.voiceName } });
     await db.update(aiCompanionVoiceAssets).set({ objectKey, status: "ready", durationMs: audio.durationMs, deliveryStyle: audio.deliveryStyle, updatedAt: now() }).where(eq(aiCompanionVoiceAssets.id, assetId));
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
+    await finishReservation(true);
     const [ready] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.id, assetId)).limit(1);
     return ready;
   } catch (error) {
     await db.update(aiCompanionVoiceAssets).set({ status: "failed", errorCode: error instanceof Error ? error.message.slice(0, 100) : "voice_generation_failed", updatedAt: now() }).where(eq(aiCompanionVoiceAssets.id, assetId));
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
+    await finishReservation(false);
     throw error;
   }
 }
@@ -145,10 +189,11 @@ async function companionContext(c: any) {
 aiCompanionVoiceRoutes.get("/:companionId/voice", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion voice is unavailable." }, 404);
-  const usage = await sharedVoiceUsage(c.env, data.context.userId);
+  const [usage, freeTrial] = await Promise.all([sharedVoiceUsage(c.env, data.context.userId), freeVoiceTrialState(c.env, data.context.userId)]);
   const voiceConfigured = c.env.AI_COMPANION_VOICE_ENABLED === "true" && Boolean(c.env.COMPANION_AUDIO && c.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON && data.profile);
   const callsConfigured = c.env.AI_COMPANION_CALLS_ENABLED === "true" && voiceConfigured && Boolean(c.env.AI);
-  return c.json({ voice: { enabled: voiceConfigured && data.entitlement.voiceMonthlySeconds > 0, catalogName: data.profile?.catalogName ?? null, engine: data.profile?.engine ?? null, monthlyLimit: data.entitlement.voiceMonthlySeconds, monthlyUsed: usage.usedSeconds, dailyLimit: 0, dailyUsed: 0, maxCharacters: 500, maxDurationSeconds: 30 }, calls: { enabled: callsConfigured && data.entitlement.voiceMonthlySeconds > 0, monthlySeconds: data.entitlement.voiceMonthlySeconds, transcriptionDisclosure: "Your recorded turn is transcribed to create a reply. Raw call audio is not retained." } });
+  const paidVoice = data.entitlement.voiceMonthlySeconds > 0;
+  return c.json({ voice: { enabled: voiceConfigured && (paidVoice || freeTrial.available), catalogName: data.profile?.catalogName ?? null, engine: data.profile?.engine ?? null, monthlyLimit: data.entitlement.voiceMonthlySeconds, monthlyUsed: usage.usedSeconds, dailyLimit: 0, dailyUsed: 0, maxCharacters: 500, maxDurationSeconds: paidVoice ? 30 : 60, freeTrialAvailable: !paidVoice && freeTrial.available, freeTrialUsed: !paidVoice && freeTrial.used }, calls: { enabled: callsConfigured && paidVoice, monthlySeconds: data.entitlement.voiceMonthlySeconds, transcriptionDisclosure: "Your recorded turn is transcribed to create a reply. Raw call audio is not retained." } });
 });
 
 aiCompanionVoiceRoutes.post("/:companionId/voice-messages", async (c) => {
@@ -157,14 +202,14 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-messages", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !data.profile || !c.env.COMPANION_AUDIO || !c.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON) return c.json({ error: "Companion voice messages are not configured yet." }, 503);
-  if (data.entitlement.voiceMonthlySeconds <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
   const [message] = await getDb(c.env).select().from(aiCompanionMessages).where(and(eq(aiCompanionMessages.id, parsed.data.messageId), eq(aiCompanionMessages.conversationId, data.conversation.id), eq(aiCompanionMessages.role, "assistant"))).limit(1);
   if (!message || message.moderationStatus !== "allowed") return c.json({ error: "That reply cannot be made into a voice note." }, 404);
   try {
-    const asset = await createVoiceAsset({ env: c.env, userId: data.context.userId, companion: data.companion, conversationId: data.conversation.id, messageId: message.id, requestKey: `message:${message.id}:profile:${data.profile.profileVersion}`, text: message.body, profile: data.profile, countMessageQuota: true, monthlyVoiceSeconds: data.entitlement.voiceMonthlySeconds });
+    const asset = await createVoiceAsset({ env: c.env, userId: data.context.userId, companion: data.companion, conversationId: data.conversation.id, messageId: message.id, requestKey: `message:${message.id}:profile:${data.profile.profileVersion}`, text: message.body, profile: data.profile, countMessageQuota: true, monthlyVoiceSeconds: data.entitlement.voiceMonthlySeconds, allowFreeTrial: true });
     return c.json({ voiceAsset: publicAsset(asset) }, asset.status === "ready" ? 201 : 202);
   } catch (error) {
     if (error instanceof Error && error.message === "voice_quota_complete") return c.json({ error: "Your voice-message allowance is complete for now." }, 429);
+    if (error instanceof Error && error.message === "free_voice_trial_complete") return c.json({ error: "You’ve used your free voice message. Velora Pro and Ultra include more voice time." }, 429);
     return c.json({ error: "The voice note could not be created. No allowance was used." }, 502);
   }
 });
@@ -245,11 +290,17 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-input/transcribe", async (c) =>
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !c.env.AI || !data.profile) return c.json({ error: "Voice messages are unavailable." }, 503);
-  if (data.entitlement.voiceMonthlySeconds <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
-  const usage = await sharedVoiceUsage(c.env, data.context.userId);
-  if (usage.usedSeconds + usage.reservedSeconds >= data.entitlement.voiceMonthlySeconds) return c.json({ error: "Your shared voice allowance is complete for this month." }, 429);
   const recording = await readRecordedAudio(c);
   if (!recording) return c.json({ error: "Record a voice message up to 4 MB." }, 400);
+  const paidVoice = data.entitlement.voiceMonthlySeconds > 0;
+  if (paidVoice) {
+    const usage = await sharedVoiceUsage(c.env, data.context.userId);
+    if (usage.usedSeconds + usage.reservedSeconds >= data.entitlement.voiceMonthlySeconds) return c.json({ error: "Your shared voice allowance is complete for this month." }, 429);
+  } else {
+    const freeTrial = await freeVoiceTrialState(c.env, data.context.userId);
+    if (!freeTrial.available) return c.json({ error: "You’ve used your free voice message. Velora Pro and Ultra include more voice time." }, 429);
+    if (recording.durationMs === null || recording.durationMs > 60_000) return c.json({ error: "Your free voice message can be up to 1 minute." }, 400);
+  }
   let transcript = "";
   try {
     transcript = await transcribeRecordedAudio(c.env.AI, recording.audio);

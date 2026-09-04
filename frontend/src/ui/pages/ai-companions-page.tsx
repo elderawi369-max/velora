@@ -77,6 +77,13 @@ function formatRemainingVoiceTime(limitSeconds: number, usedSeconds: number) {
   return `${Math.max(1, minutes)} min shared voice time left this month`;
 }
 
+function voiceAvailabilityText(voice: { enabled: boolean; monthlyLimit: number; monthlyUsed: number; freeTrialAvailable: boolean; freeTrialUsed: boolean }) {
+  if (voice.freeTrialAvailable) return "1 free voice message · up to 1 minute";
+  if (voice.freeTrialUsed) return "Free voice message used · Pro or Ultra includes more";
+  if (!voice.enabled) return "Voice messages are available with Velora Pro or Ultra";
+  return formatRemainingVoiceTime(voice.monthlyLimit, voice.monthlyUsed);
+}
+
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
 
 type CompanionPanel = "memories" | "profile" | "photos" | "settings";
@@ -151,6 +158,7 @@ export function AiCompanionsPage() {
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceRecordingStartedAtRef = useRef(0);
+  const voiceRecordingTimeoutRef = useRef<number | null>(null);
   const pendingRecordedUrlRef = useRef<string | null>(null);
   const subscriptionReturnHandledRef = useRef(false);
 
@@ -160,6 +168,7 @@ export function AiCompanionsPage() {
   }, [companionsQuery.data?.companions, selectedId]);
 
   useEffect(() => () => {
+    if (voiceRecordingTimeoutRef.current !== null) window.clearTimeout(voiceRecordingTimeoutRef.current);
     if (voiceRecorderRef.current?.state === "recording") { voiceRecorderRef.current.onstop = null; voiceRecorderRef.current.stop(); }
     voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
     if (pendingRecordedUrlRef.current) URL.revokeObjectURL(pendingRecordedUrlRef.current);
@@ -441,6 +450,8 @@ export function AiCompanionsPage() {
   async function toggleVoiceRecording() {
     const activeRecorder = voiceRecorderRef.current;
     if (activeRecorder?.state === "recording") {
+      if (voiceRecordingTimeoutRef.current !== null) window.clearTimeout(voiceRecordingTimeoutRef.current);
+      voiceRecordingTimeoutRef.current = null;
       activeRecorder.stop();
       setVoiceRecording(false);
       return;
@@ -455,9 +466,12 @@ export function AiCompanionsPage() {
       voiceChunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size) voiceChunksRef.current.push(event.data); };
       recorder.onstop = async () => {
+        if (voiceRecordingTimeoutRef.current !== null) window.clearTimeout(voiceRecordingTimeoutRef.current);
+        voiceRecordingTimeoutRef.current = null;
         voiceRecorderRef.current = null;
         stream.getTracks().forEach((track) => track.stop());
         voiceStreamRef.current = null;
+        setVoiceRecording(false);
         setVoiceTranscribing(true);
         try {
           const audio = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -474,6 +488,12 @@ export function AiCompanionsPage() {
       voiceRecordingStartedAtRef.current = Date.now();
       recorder.start();
       setVoiceRecording(true);
+      if (voiceQuery.data?.voice.freeTrialAvailable) {
+        const maximumMs = Math.max(1_000, voiceQuery.data.voice.maxDurationSeconds * 1_000 - 250);
+        voiceRecordingTimeoutRef.current = window.setTimeout(() => {
+          if (recorder.state === "recording") recorder.stop();
+        }, maximumMs);
+      }
     } catch { setVoiceError("Microphone access is needed to record a voice message."); }
   }
   function clearPendingRecordedVoice() {
@@ -749,7 +769,7 @@ export function AiCompanionsPage() {
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
             {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">{photoRequestError}</p> : null}
             {voiceError ? <p className="form-error">Voice note: {voiceError}</p> : null}
-            {voiceQuery.data?.voice.enabled ? <small className="ai-voice-quota">{formatRemainingVoiceTime(voiceQuery.data.voice.monthlyLimit, voiceQuery.data.voice.monthlyUsed)}</small> : null}
+            {voiceQuery.data ? <small className="ai-voice-quota">{voiceAvailabilityText(voiceQuery.data.voice)}</small> : null}
           </form>
         </div>
       </section> : null}
@@ -791,7 +811,7 @@ export function AiCompanionsPage() {
               <section className="ai-settings-list">
                 <div><span>Plan</span><strong>{detail.entitlement.plan === "free" ? "Velora Free" : detail.entitlement.plan === "pro" ? "Velora Pro" : "Velora Ultra"}</strong></div>
                 <div><span>Reply style</span><strong>{companionReplyStyle}</strong></div>
-                <div><span>Voice messages</span><strong>{voiceQuery.data?.voice.enabled ? "Available" : "Unavailable on this plan"}</strong></div>
+                <div><span>Voice messages</span><strong>{voiceQuery.data?.voice.freeTrialAvailable ? "1 free message · up to 1 minute" : voiceQuery.data?.voice.freeTrialUsed ? "Free message used" : voiceQuery.data?.voice.enabled ? "Available" : "Velora Pro or Ultra required"}</strong></div>
                 <div><span>Voice calls</span><strong>{voiceQuery.data?.calls.enabled ? "Available" : "Velora Pro or Ultra required"}</strong></div>
               </section>
               <div className="ai-safety-note"><strong>Always AI.</strong><span>Private chats are not a substitute for real-world emergency or professional support.</span></div>
