@@ -26,6 +26,7 @@ export function AiCompanionPaywall({ companion, plans, prices, isAndroid, pendin
       <div className="ai-upgrade-plans">
         {plans.map((plan) => {
           const ultra = plan.key === "ultra";
+          const includedInUltra = currentPlan === "ultra" && plan.key === "pro";
           const price = prices[plan.key] ?? (isAndroid ? plan.googlePlayFallbackPrice : `$${(plan.webPriceCents / 100).toFixed(2)}`);
           return <article className={ultra ? "ai-upgrade-plan ai-upgrade-plan-ultra" : "ai-upgrade-plan"} key={plan.key}>
             {ultra ? <span className="ai-upgrade-badge">BEST VALUE</span> : null}
@@ -44,14 +45,14 @@ export function AiCompanionPaywall({ companion, plans, prices, isAndroid, pendin
               <li>{ultra ? "Deeper memory and personalized check-ins" : "Proactive companion check-ins"}</li>
               <li>{ultra ? "Priority photo generation" : "Standard photo generation"}</li>
             </ul>
-            <button className={ultra ? "primary-button" : "secondary-button"} type="button" disabled={pendingPlan !== null || currentPlan === plan.key} onClick={() => onSubscribe(plan.key)}>
-              {currentPlan === plan.key ? "Current plan" : pendingPlan === plan.key ? "Opening checkout..." : ultra ? "Go Ultra" : "Continue with Pro"}
+            <button className={ultra ? "primary-button" : "secondary-button"} type="button" disabled={pendingPlan !== null || currentPlan === plan.key || includedInUltra} onClick={() => onSubscribe(plan.key)}>
+              {currentPlan === plan.key ? "Current plan" : includedInUltra ? "Included in Ultra" : pendingPlan === plan.key ? "Opening checkout..." : ultra ? "Go Ultra" : "Continue with Pro"}
             </button>
           </article>;
         })}
       </div>
       {error ? <p className="form-error ai-upgrade-error">{error}</p> : null}
-      <p className="ai-upgrade-privacy">Cancel anytime <span aria-hidden="true">•</span> Your conversations stay private</p>
+      <p className="ai-upgrade-privacy">{isAndroid ? <>Auto-renews monthly unless canceled. <a href="https://play.google.com/store/account/subscriptions?package=com.velorachat.app" target="_blank" rel="noreferrer">Manage or cancel in Google Play</a>. <span aria-hidden="true">•</span> </> : <>Cancel anytime <span aria-hidden="true">•</span> </>}Your conversations stay private</p>
     </div>
   </section>;
 }

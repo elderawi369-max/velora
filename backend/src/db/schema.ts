@@ -642,6 +642,15 @@ export const aiCompanionReports = sqliteTable("ai_companion_reports", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const aiCompanionPhotoReports = sqliteTable("ai_companion_photo_reports", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  photoId: text("photo_id").notNull().references(() => aiCompanionPhotos.id),
+  reason: text("reason").notNull(),
+  details: text("details").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const aiEntitlements = sqliteTable("ai_entitlements", {
   userId: text("user_id").primaryKey().references(() => users.id),
   plan: text("plan").notNull().default("free"),

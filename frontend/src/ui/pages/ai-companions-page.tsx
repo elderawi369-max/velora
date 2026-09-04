@@ -33,6 +33,7 @@ import {
   runAiCompanionLifestyleTest,
   selectAiCompanionVisualCandidate,
   reportAiCompanionMessage,
+  reportAiCompanionPhoto,
   requestAiCompanionPhoto,
   sendAiCompanionMessage,
   transcribeAiCompanionVoiceInput,
@@ -65,6 +66,15 @@ function companionInitial(companion: AiCompanion) {
 function compactCallDuration(call: AiCompanionCallLog) {
   if (call.durationSeconds < 60) return "< 1 min";
   return `${Math.max(1, Math.round(call.durationSeconds / 60))} min`;
+}
+
+function formatRemainingVoiceTime(limitSeconds: number, usedSeconds: number) {
+  const remainingSeconds = Math.max(0, limitSeconds - usedSeconds);
+  if (remainingSeconds <= 0) return "Shared voice allowance used for this month";
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  if (hours > 0) return `${hours} hr${minutes > 0 ? ` ${minutes} min` : ""} shared voice time left this month`;
+  return `${Math.max(1, minutes)} min shared voice time left this month`;
 }
 
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
@@ -108,6 +118,7 @@ export function AiCompanionsPage() {
   const [photoRequestError, setPhotoRequestError] = useState<string | null>(null);
   const [memory, setMemory] = useState("");
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
+  const [reportedPhotoIds, setReportedPhotoIds] = useState<Set<string>>(() => new Set());
   const [reportReason, setReportReason] = useState<"unsafe" | "harmful" | "sexual_content" | "misleading" | "other">("unsafe");
   const [visualReferenceUrls, setVisualReferenceUrls] = useState<string[]>([]);
   const [castingCandidateUrls, setCastingCandidateUrls] = useState<Record<string, string>>({});
@@ -320,6 +331,13 @@ export function AiCompanionsPage() {
   const approveVisualIdentityMutation = useMutation({
     mutationFn: () => approveAiCompanionVisualIdentity(selectedId!),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] }),
+  });
+  const photoReportMutation = useMutation({
+    mutationFn: (photoId: string) => reportAiCompanionPhoto(photoId, { reason: reportReason }),
+    onSuccess: (_result, photoId) => {
+      setReportedPhotoIds((current) => new Set(current).add(photoId));
+      setReportingMessageId(null);
+    },
   });
   const userPhotoUploadMutation = useMutation({
     mutationFn: () => uploadAiCompanionUserPhoto(selectedId!, selectedUserPhoto!, setUserPhotoProgress),
@@ -669,7 +687,13 @@ export function AiCompanionsPage() {
           {showInternalVisualIdentityControls && detail.visualIdentity?.status === "review" ? <div className="ai-disabled-note"><button className="text-button" onClick={() => lifestyleTestMutation.mutate()}>Run lifestyle test</button><button className="text-button" onClick={() => approveVisualIdentityMutation.mutate()}>Approve canonical identity</button></div> : null}
           <div className="ai-messages" ref={messagesRef}>
             {chatTimeline.length === 0 && !pendingUserMessage ? <div className="ai-empty-chat"><strong>Say hello to {detail.companion.name}.</strong><span>This is a private AI conversation. You can view and delete saved memories any time.</span></div> : chatTimeline.map((entry) => {
-              if (entry.kind === "companion-photo") return deliveredPhotoUrls[entry.photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}><img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} /></article> : null;
+              if (entry.kind === "companion-photo") return deliveredPhotoUrls[entry.photo.id] ? <article className="ai-message ai-message-assistant ai-photo-message" key={`companion-photo-${entry.photo.id}`}>
+                <div className="ai-photo-content">
+                  <img src={deliveredPhotoUrls[entry.photo.id]} alt={`${detail.companion.name} shared companion photo`} />
+                  {reportedPhotoIds.has(entry.photo.id) ? <span className="ai-photo-report-thanks">Reported — thank you</span> : <button className="ai-report-trigger ai-photo-report-trigger" type="button" aria-label="Report photo" title="Report photo" onClick={() => setReportingMessageId((current) => current === entry.photo.id ? null : entry.photo.id)}><span aria-hidden="true">i</span></button>}
+                </div>
+                {reportingMessageId === entry.photo.id ? <div className="ai-report"><select aria-label="Reason for reporting this photo" value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="unsafe">Unsafe or disturbing</option><option value="harmful">Harmful</option><option value="sexual_content">Sexual content</option><option value="misleading">Misleading</option><option value="other">Other</option></select><button className="secondary-button" onClick={() => photoReportMutation.mutate(entry.photo.id)} disabled={photoReportMutation.isPending}>Submit report</button></div> : null}
+              </article> : null;
               if (entry.kind === "call") return <article className="ai-call-log" key={entry.call.id}>
                 <span className="ai-call-log-icon" aria-hidden="true">📞</span>
                 <div><strong>Voice call with {detail.companion.name} <span>· {compactCallDuration(entry.call)}</span></strong><button className="text-button" type="button" onClick={() => setSelectedCallId(entry.call.id)}>View transcript</button></div>
@@ -699,7 +723,7 @@ export function AiCompanionsPage() {
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
             {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">{photoRequestError}</p> : null}
             {voiceError ? <p className="form-error">Voice note: {voiceError}</p> : null}
-            {voiceQuery.data?.voice.enabled ? <small className="ai-voice-quota">{Math.max(0, voiceQuery.data.voice.dailyLimit - voiceQuery.data.voice.dailyUsed)} voice notes left today · {Math.max(0, voiceQuery.data.voice.monthlyLimit - voiceQuery.data.voice.monthlyUsed)} this month</small> : null}
+            {voiceQuery.data?.voice.enabled ? <small className="ai-voice-quota">{formatRemainingVoiceTime(voiceQuery.data.voice.monthlyLimit, voiceQuery.data.voice.monthlyUsed)}</small> : null}
           </form>
         </div>
       </section> : null}

@@ -223,6 +223,14 @@ export function AccountSettingsPanel() {
         </button>
       </section>
 
+      {nativeAndroid ? <section className="panel form-panel settings-subpanel account-session-panel">
+        <div>
+          <span className="meta-title">AI Companion subscription</span>
+          <p className="status-message">View your plan or cancel its automatic monthly renewal through Google Play.</p>
+        </div>
+        <a className="secondary-button" href="https://play.google.com/store/account/subscriptions?package=com.velorachat.app" target="_blank" rel="noreferrer">Manage subscription</a>
+      </section> : null}
+
       <div className="settings-grid">
         <form
           className="panel form-panel settings-subpanel"

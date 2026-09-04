@@ -1243,3 +1243,7 @@ export function dismissAiCompanionMemoryCandidate(companionId: string, candidate
 export function reportAiCompanionMessage(messageId: string, payload: { reason: "unsafe" | "harmful" | "sexual_content" | "misleading" | "other"; details?: string }) {
   return request<{ ok: true }>(`/api/ai-companions/messages/${messageId}/report`, { method: "POST", body: payload });
 }
+
+export function reportAiCompanionPhoto(photoId: string, payload: { reason: "unsafe" | "harmful" | "sexual_content" | "misleading" | "other"; details?: string }) {
+  return request<{ ok: true }>(`/api/ai-companions/photos/${photoId}/report`, { method: "POST", body: payload });
+}

@@ -77,12 +77,14 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         String productType = call.getString("productType", "inapp");
         String offerToken = call.getString("offerToken");
         String obfuscatedAccountId = call.getString("obfuscatedAccountId");
+        String oldPurchaseToken = call.getString("oldPurchaseToken");
+        Integer replacementMode = call.getInt("replacementMode");
         if (productId.isEmpty()) {
             call.reject("productId is required.");
             return;
         }
 
-        withReadyBillingClient(call, () -> querySingleProductAndLaunch(call, productId, productType, offerToken, obfuscatedAccountId));
+        withReadyBillingClient(call, () -> querySingleProductAndLaunch(call, productId, productType, offerToken, obfuscatedAccountId, oldPurchaseToken, replacementMode));
     }
 
     @PluginMethod
@@ -263,11 +265,13 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         String productId,
         String productType,
         @Nullable String offerToken,
-        @Nullable String obfuscatedAccountId
+        @Nullable String obfuscatedAccountId,
+        @Nullable String oldPurchaseToken,
+        @Nullable Integer replacementMode
     ) {
         ProductDetails cachedProduct = productDetailsCache.get(productType + ":" + productId);
         if (cachedProduct != null) {
-            launchPurchaseFlow(call, cachedProduct, offerToken, obfuscatedAccountId);
+            launchPurchaseFlow(call, cachedProduct, offerToken, obfuscatedAccountId, oldPurchaseToken, replacementMode);
             return;
         }
 
@@ -293,7 +297,7 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
 
                 ProductDetails productDetails = productDetailsList.get(0);
                 productDetailsCache.put(productType + ":" + productId, productDetails);
-                launchPurchaseFlow(call, productDetails, offerToken, obfuscatedAccountId);
+                launchPurchaseFlow(call, productDetails, offerToken, obfuscatedAccountId, oldPurchaseToken, replacementMode);
             }
         );
     }
@@ -302,7 +306,9 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         PluginCall call,
         ProductDetails productDetails,
         @Nullable String requestedOfferToken,
-        @Nullable String obfuscatedAccountId
+        @Nullable String obfuscatedAccountId,
+        @Nullable String oldPurchaseToken,
+        @Nullable Integer replacementMode
     ) {
         saveCall(call);
 
@@ -320,6 +326,16 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
 
         if (obfuscatedAccountId != null && !obfuscatedAccountId.trim().isEmpty()) {
             paramsBuilder.setObfuscatedAccountId(obfuscatedAccountId.trim());
+        }
+
+        if (oldPurchaseToken != null && !oldPurchaseToken.trim().isEmpty()) {
+            BillingFlowParams.SubscriptionUpdateParams.Builder updateParamsBuilder =
+                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                    .setOldPurchaseToken(oldPurchaseToken.trim());
+            if (replacementMode != null) {
+                updateParamsBuilder.setSubscriptionReplacementMode(replacementMode);
+            }
+            paramsBuilder.setSubscriptionUpdateParams(updateParamsBuilder.build());
         }
 
         getActivity().runOnUiThread(() -> {

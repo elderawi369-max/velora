@@ -10,6 +10,8 @@ type PurchaseProductOptions = {
   productType?: "inapp" | "subs";
   offerToken?: string;
   obfuscatedAccountId?: string;
+  oldPurchaseToken?: string;
+  replacementMode?: number;
 };
 
 type PurchaseProductResult = {
@@ -254,7 +256,22 @@ export async function fetchGooglePlaySubscriptionProducts() {
 
 export async function completeGooglePlaySubscription(plan: "pro" | "ultra", product?: GooglePlayProduct) {
   const productId = googlePlaySubscriptionProductIds[plan];
-  const purchase = await GooglePlayBilling.purchaseProduct({ productId, productType: "subs", offerToken: product?.offerToken });
+  const activeSubscriptions = await GooglePlayBilling.queryActivePurchases({ productType: "subs" });
+  const subscriptionProductIds = new Set<string>(Object.values(googlePlaySubscriptionProductIds));
+  const subscriptionBeingReplaced = (activeSubscriptions.purchases ?? []).find((candidate) =>
+    candidate.purchaseState === "purchased" &&
+    Boolean(candidate.purchaseToken) &&
+    candidate.productIds?.some((candidateProductId) => subscriptionProductIds.has(candidateProductId) && candidateProductId !== productId),
+  );
+  const purchase = await GooglePlayBilling.purchaseProduct({
+    productId,
+    productType: "subs",
+    offerToken: product?.offerToken,
+    oldPurchaseToken: subscriptionBeingReplaced?.purchaseToken,
+    // Google Play's CHARGE_PRORATED_PRICE replacement mode switches the user
+    // immediately and credits the unused value of the previous subscription.
+    replacementMode: subscriptionBeingReplaced ? 2 : undefined,
+  });
   if (purchase.cancelled) return { cancelled: true as const };
   if (!purchase.purchaseToken || !purchase.packageName || !purchase.productId) throw new Error("Google Play did not return a complete subscription token.");
   const result = await verifyGoogleAiCompanionSubscription({ plan, purchaseToken: purchase.purchaseToken, packageName: purchase.packageName, productId: purchase.productId, orderId: purchase.orderId ?? undefined });

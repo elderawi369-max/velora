@@ -241,7 +241,7 @@ async function getOverview(env: EnvBindings) {
         (SELECT COUNT(*) FROM profiles) AS totalProfiles,
         (SELECT COUNT(*) FROM profiles WHERE verified_human_at IS NOT NULL) AS verifiedProfiles,
         (SELECT COUNT(*) FROM support_tickets WHERE status = 'open') AS openSupportTickets,
-        (SELECT COUNT(*) FROM reports) AS totalReports,
+        ((SELECT COUNT(*) FROM reports) + (SELECT COUNT(*) FROM ai_companion_reports) + (SELECT COUNT(*) FROM ai_companion_photo_reports)) AS totalReports,
         (SELECT COUNT(*) FROM boosts WHERE expires_at > ?) AS activeBoosts,
         (SELECT COUNT(*) FROM purchases WHERE status = 'fulfilled') AS fulfilledPurchases,
         (SELECT COALESCE(SUM(amount_cents), 0) FROM purchases WHERE status = 'fulfilled') AS revenueUsdCents
@@ -1143,6 +1143,71 @@ adminRoutes.get("/reports", async (c) => {
   );
 
   return c.json({ reports: items });
+});
+
+adminRoutes.get("/ai-companion-reports", async (c) => {
+  const reports = await queryAll<{
+    id: string;
+    contentType: "response" | "photo";
+    userId: string;
+    userName: string | null;
+    userEmail: string;
+    companionId: string;
+    companionName: string;
+    contentId: string;
+    content: string;
+    reason: string;
+    details: string;
+    createdAt: number;
+  }>(
+    c.env,
+    `
+      SELECT * FROM (
+        SELECT
+          ar.id AS id,
+          'response' AS contentType,
+          ar.user_id AS userId,
+          u.name AS userName,
+          u.email AS userEmail,
+          ac.id AS companionId,
+          ac.name AS companionName,
+          am.id AS contentId,
+          am.body AS content,
+          ar.reason AS reason,
+          ar.details AS details,
+          ar.created_at AS createdAt
+        FROM ai_companion_reports ar
+        INNER JOIN users u ON u.id = ar.user_id
+        INNER JOIN ai_companion_messages am ON am.id = ar.message_id
+        INNER JOIN ai_companion_conversations aconv ON aconv.id = am.conversation_id
+        INNER JOIN ai_companions ac ON ac.id = aconv.companion_id
+
+        UNION ALL
+
+        SELECT
+          apr.id AS id,
+          'photo' AS contentType,
+          apr.user_id AS userId,
+          u.name AS userName,
+          u.email AS userEmail,
+          ac.id AS companionId,
+          ac.name AS companionName,
+          ap.id AS contentId,
+          ap.prompt AS content,
+          apr.reason AS reason,
+          apr.details AS details,
+          apr.created_at AS createdAt
+        FROM ai_companion_photo_reports apr
+        INNER JOIN users u ON u.id = apr.user_id
+        INNER JOIN ai_companion_photos ap ON ap.id = apr.photo_id
+        INNER JOIN ai_companions ac ON ac.id = ap.companion_id
+      )
+      ORDER BY createdAt DESC
+      LIMIT 200
+    `,
+  );
+
+  return c.json({ reports });
 });
 
 adminRoutes.get("/support-tickets", async (c) => {

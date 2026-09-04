@@ -70,6 +70,21 @@ export type AdminReport = {
   riskLevel: "low" | "watch" | "high";
 };
 
+export type AdminAiCompanionReport = {
+  id: string;
+  contentType: "response" | "photo";
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  companionId: string;
+  companionName: string;
+  contentId: string;
+  content: string;
+  reason: string;
+  details: string;
+  createdAt: number;
+};
+
 export type SupportTicket = {
   id: string;
   profileId: string | null;
@@ -296,6 +311,10 @@ export function fetchAdminAnalytics(adminKey: string) {
 
 export function fetchAdminReports(adminKey: string) {
   return adminRequest<{ reports: AdminReport[] }>("/api/admin/reports", adminKey);
+}
+
+export function fetchAdminAiCompanionReports(adminKey: string) {
+  return adminRequest<{ reports: AdminAiCompanionReport[] }>("/api/admin/ai-companion-reports", adminKey);
 }
 
 export function suspendProfile(adminKey: string, profileId: string) {

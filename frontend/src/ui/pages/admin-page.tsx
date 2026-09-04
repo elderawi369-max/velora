@@ -4,6 +4,7 @@ import {
   fetchAdminProfileByUsername,
   fetchAdminConversation,
   fetchAdminAnalytics,
+  fetchAdminAiCompanionReports,
   fetchAdminReports,
   fetchStarterCreditEligibleUsers,
   fetchSupportTickets,
@@ -477,6 +478,11 @@ export function AdminPage() {
     queryFn: () => fetchAdminReports(activeAdminKey),
     enabled: Boolean(activeAdminKey),
   });
+  const aiCompanionReportsQuery = useQuery({
+    queryKey: ["adminAiCompanionReports", activeAdminKey],
+    queryFn: () => fetchAdminAiCompanionReports(activeAdminKey),
+    enabled: Boolean(activeAdminKey),
+  });
   const analyticsQuery = useQuery({
     queryKey: ["adminAnalytics", activeAdminKey],
     queryFn: () => fetchAdminAnalytics(activeAdminKey),
@@ -635,6 +641,7 @@ export function AdminPage() {
   });
 
   const reports = useMemo(() => reportsQuery.data?.reports ?? [], [reportsQuery.data]);
+  const aiCompanionReports = useMemo(() => aiCompanionReportsQuery.data?.reports ?? [], [aiCompanionReportsQuery.data]);
   const tickets = useMemo(() => ticketsQuery.data?.tickets ?? [], [ticketsQuery.data]);
   const starterCreditEligibleUsers = useMemo(
     () => starterCreditEligibleUsersQuery.data?.users ?? [],
@@ -1358,10 +1365,35 @@ export function AdminPage() {
 
       {activeAdminKey && !reportsQuery.isLoading && !reportsQuery.error && reports.length === 0 ? (
         <section className="panel empty-state">
-          <h2>No reports yet.</h2>
-          <p>That is good news for now. This page will light up once users start reporting.</p>
+          <h2>No profile reports yet.</h2>
+          <p>This section will light up when users report another member or conversation.</p>
         </section>
       ) : null}
+
+      {activeAdminKey ? <section className="content-section">
+        <section className="section-copy compact-copy">
+          <p className="eyebrow">AI companion safety</p>
+          <h2>Reported companion responses and photos.</h2>
+          <p>Review the exact response text or the prompt behind a reported generated photo.</p>
+        </section>
+        {aiCompanionReportsQuery.isLoading ? <p className="status-message">Loading AI companion reports...</p> : null}
+        {aiCompanionReportsQuery.error ? <p className="error-message">{aiCompanionReportsQuery.error instanceof Error ? aiCompanionReportsQuery.error.message : "Unable to load AI companion reports."}</p> : null}
+        {!aiCompanionReportsQuery.isLoading && !aiCompanionReportsQuery.error && aiCompanionReports.length === 0 ? <section className="panel empty-state"><h2>No AI companion reports yet.</h2><p>Reported responses and generated photos will appear here.</p></section> : null}
+        <section className="card-grid">
+          {aiCompanionReports.map((report) => <article className="card profile-card" key={report.id}>
+            <div className="chip-row">
+              <span className="chip">{report.contentType === "photo" ? "Generated photo" : "Companion response"}</span>
+              <span className="chip chip-muted">{report.reason.replaceAll("_", " ")}</span>
+              <span className="chip chip-muted">{formatRelativeTime(report.createdAt)}</span>
+            </div>
+            <div className="meta-group"><span className="meta-title">Companion</span><p>{report.companionName}</p></div>
+            <div className="meta-group"><span className="meta-title">Reported by</span><p>{report.userName ? `${report.userName} · ` : ""}{report.userEmail}</p></div>
+            <div className="meta-group"><span className="meta-title">{report.contentType === "photo" ? "Photo prompt" : "Response text"}</span><p>{report.content}</p></div>
+            {report.details ? <div className="meta-group"><span className="meta-title">Extra details</span><p>{report.details}</p></div> : null}
+            <div className="meta-group"><span className="meta-title">Content ID</span><p>{report.contentId}</p></div>
+          </article>)}
+        </section>
+      </section> : null}
 
       <section className="card-grid">
         {reports.map((report) => {

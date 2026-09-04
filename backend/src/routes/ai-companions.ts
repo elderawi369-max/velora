@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotoReports, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
@@ -1375,7 +1375,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const recordedVoiceAsset = parsed.data.voiceAssetId ? await db.select({ id: aiCompanionVoiceAssets.id }).from(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, parsed.data.voiceAssetId), eq(aiCompanionVoiceAssets.userId, context.userId), eq(aiCompanionVoiceAssets.companionId, companion.id), eq(aiCompanionVoiceAssets.conversationId, conversation.id), eq(aiCompanionVoiceAssets.provider, "user-recorded"), eq(aiCompanionVoiceAssets.status, "ready"), isNull(aiCompanionVoiceAssets.messageId), isNull(aiCompanionVoiceAssets.deletedAt))).limit(1).then((rows) => rows[0] ?? null) : null;
   if (parsed.data.voiceAssetId && !recordedVoiceAsset) return c.json({ error: "That recorded voice message is no longer available." }, 409);
   const isApprovedBeta = isApprovedBetaUser(c.env, account.email);
-  if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Subscription plans are coming soon." }, 403);
+  if (entitlement.plan === "free" && conversation.trialRepliesUsed >= entitlement.messageLimit) return c.json({ error: "Your free conversation preview is complete. Choose Pro or Ultra whenever you are ready to keep talking." }, 403);
   // The shared launch cap protects a public preview, not the approved internal beta.
   const needsReservedReply = entitlement.plan === "free" && !isApprovedBeta && !isCrisisMessage(parsed.data.body);
   if (needsReservedReply && !(await reserveFreeReply(c.env))) {
@@ -1473,4 +1473,18 @@ aiCompanionRoutes.post("/messages/:messageId/report", async (c) => {
   if (!message) return c.json({ error: "Message not found." }, 404);
   await db.insert(aiCompanionReports).values({ id: id("aireport"), userId: context.userId, messageId: message.id, reason: parsed.data.reason, details: parsed.data.details, createdAt: now() });
   await logEvent(c.env, { eventType: "ai_companion_message_reported", userId: context.userId, profileId: context.profileId, eventData: { reason: parsed.data.reason } }); return c.json({ ok: true });
+});
+
+aiCompanionRoutes.post("/photos/:photoId/report", async (c) => {
+  const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
+  const parsed = reportSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Please select a report reason." }, 400);
+  const db = getDb(c.env);
+  const [photo] = await db.select({ id: aiCompanionPhotos.id, companionId: aiCompanionPhotos.companionId })
+    .from(aiCompanionPhotos)
+    .where(and(eq(aiCompanionPhotos.id, c.req.param("photoId")), eq(aiCompanionPhotos.userId, context.userId), eq(aiCompanionPhotos.status, "delivered")))
+    .limit(1);
+  if (!photo) return c.json({ error: "Companion photo not found." }, 404);
+  await db.insert(aiCompanionPhotoReports).values({ id: id("aiphotoreport"), userId: context.userId, photoId: photo.id, reason: parsed.data.reason, details: parsed.data.details, createdAt: now() });
+  await logEvent(c.env, { eventType: "ai_companion_photo_reported", userId: context.userId, profileId: context.profileId, eventData: { companionId: photo.companionId, photoId: photo.id, reason: parsed.data.reason } });
+  return c.json({ ok: true });
 });
