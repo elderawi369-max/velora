@@ -45,6 +45,13 @@ async function seedLegacyAccountUsage(
   ).bind(`legacy:${userId}:${index + 1}`, userId, deviceKey, timestamp, timestamp)));
 }
 
+export async function bindFreePreviewAccountToDevice(
+  env: EnvBindings,
+  input: { userId: string; deviceKey: string; limit: number },
+) {
+  await seedLegacyAccountUsage(env, input.userId, input.deviceKey, input.limit);
+}
+
 export async function reserveFreePreviewReply(
   env: EnvBindings,
   input: { userId: string; deviceKey: string; conversationId: string; limit: number },

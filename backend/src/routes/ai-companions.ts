@@ -7,7 +7,7 @@ import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
 import { aiCompanionPlans, getAiCompanionEntitlement, publicAiCompanionPlans } from "../lib/ai-companion-plans";
 import { aiCompanionPhotoGenerationGuardConfig, aiCompanionPhotoGenerationPlanLimit } from "../lib/ai-companion-photo-guards";
-import { completeFreePreviewReplyClaim, getFreePreviewRepliesUsed, readFreePreviewDeviceKey, releaseFreePreviewReplyClaim, reserveFreePreviewReply, type FreePreviewReservation } from "../lib/ai-companion-preview";
+import { bindFreePreviewAccountToDevice, completeFreePreviewReplyClaim, getFreePreviewRepliesUsed, readFreePreviewDeviceKey, releaseFreePreviewReplyClaim, reserveFreePreviewReply, type FreePreviewReservation } from "../lib/ai-companion-preview";
 
 const trialReplies = aiCompanionPlans.free.messageLimit;
 const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_friend", "confident_leader", "quiet_romantic", "personal_growth_companion"] as const;
@@ -942,6 +942,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
   const deviceKey = entitlement.plan === "free" ? await readFreePreviewDeviceKey({ deviceId: c.req.header("X-Velora-Device-Id"), installId: c.req.header("X-Velora-Install-Id") }) : null;
+  if (deviceKey && entitlement.plan === "free") await bindFreePreviewAccountToDevice(c.env, { userId: context.userId, deviceKey, limit: entitlement.messageLimit });
   const previewRepliesUsed = entitlement.plan === "free"
     ? await getFreePreviewRepliesUsed(c.env, { userId: context.userId, deviceKey, limit: entitlement.messageLimit })
     : conversation.trialRepliesUsed;
