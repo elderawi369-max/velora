@@ -222,11 +222,12 @@ export type GooglePlayBillingPurchase = {
 };
 
 export type StarterCreditEligibleUser = {
-  profileId: string;
+  profileId: string | null;
   userId: string;
   email: string;
-  username: string;
-  displayName: string;
+  name: string | null;
+  username: string | null;
+  displayName: string | null;
   challengeCredits: number;
   userCreatedAt: number;
   lastEmailSentAt: number | null;
@@ -347,7 +348,7 @@ export function fetchStarterCreditEligibleUsers(adminKey: string) {
 export function sendStarterCreditEmailBatch(
   adminKey: string,
   payload: {
-    profileIds: string[];
+    userIds: string[];
     subject: string;
     message: string;
   },

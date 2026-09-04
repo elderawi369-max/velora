@@ -140,10 +140,11 @@ const adminSupportReplySchema = z.object({
 });
 
 const adminStarterCreditEmailSchema = z.object({
-  profileIds: z.array(z.string().trim().min(1)).min(1).max(100),
+  userIds: z.array(z.string().trim().min(1)).min(1).max(100).optional(),
+  profileIds: z.array(z.string().trim().min(1)).min(1).max(100).optional(),
   subject: z.string().trim().min(4).max(160),
   message: z.string().trim().min(20).max(4000),
-});
+}).refine((payload) => Boolean(payload.userIds?.length || payload.profileIds?.length));
 
 adminRoutes.use("*", async (c, next) => {
   await requireFounderAdmin(c);
@@ -178,13 +179,13 @@ async function queryFirst<T extends Record<string, unknown>>(
 }
 
 async function getStarterCreditEligibleUsers(env: EnvBindings) {
-  const now = Date.now();
   return queryAll<{
-    profileId: string;
+    profileId: string | null;
     userId: string;
     email: string;
-    username: string;
-    displayName: string;
+    name: string | null;
+    username: string | null;
+    displayName: string | null;
     challengeCredits: number;
     userCreatedAt: number;
     lastEmailSentAt: number | null;
@@ -195,30 +196,21 @@ async function getStarterCreditEligibleUsers(env: EnvBindings) {
         p.id AS profileId,
         u.id AS userId,
         u.email AS email,
+        u.name AS name,
         p.username AS username,
         p.display_name AS displayName,
-        p.challenge_credits AS challengeCredits,
+        COALESCE(p.challenge_credits, 0) AS challengeCredits,
         u.created_at AS userCreatedAt,
         (
           SELECT MAX(el.created_at)
           FROM event_logs el
-          WHERE el.profile_id = p.id
+          WHERE el.user_id = u.id
             AND el.event_type = 'starter_credit_reengagement_email_sent'
         ) AS lastEmailSentAt
       FROM users u
-      INNER JOIN profiles p ON p.user_id = u.id
-      WHERE p.starter_credits_granted_at IS NULL
-        AND LENGTH(TRIM(p.username)) >= 3
-        AND LENGTH(TRIM(p.display_name)) >= 2
-        AND LENGTH(TRIM(p.personality_type)) >= 1
-        AND LENGTH(TRIM(p.identity)) >= 1
-        AND LENGTH(TRIM(p.looking_for)) >= 1
-        AND LENGTH(TRIM(p.bio)) >= 10
-        AND LENGTH(TRIM(p.avatar_preset)) >= 1
-        AND u.created_at <= ?
+      LEFT JOIN profiles p ON p.user_id = u.id
       ORDER BY COALESCE(lastEmailSentAt, 0) ASC, u.created_at DESC
     `,
-    [now - 1000 * 60 * 60 * 48],
   );
 }
 
@@ -1233,17 +1225,20 @@ adminRoutes.post("/starter-credit-eligible-users/send-email", async (c) => {
     return c.json({ error: "Invalid starter credit email payload." }, 400);
   }
 
-  const eligibleUsers = await getStarterCreditEligibleUsers(c.env);
-  const eligibleByProfileId = new Map(
-    eligibleUsers.map((user) => [user.profileId, user]),
+  const existingUsers = await getStarterCreditEligibleUsers(c.env);
+  const existingByRecipientId = new Map(
+    existingUsers.flatMap((user) => [
+      [user.userId, user] as const,
+      ...(user.profileId ? [[user.profileId, user] as const] : []),
+    ]),
   );
-  const uniqueProfileIds = [...new Set(payload.data.profileIds)];
-  const recipients = uniqueProfileIds
-    .map((profileId) => eligibleByProfileId.get(profileId) ?? null)
+  const uniqueRecipientIds = [...new Set([...(payload.data.userIds ?? []), ...(payload.data.profileIds ?? [])])];
+  const recipients = uniqueRecipientIds
+    .map((recipientId) => existingByRecipientId.get(recipientId) ?? null)
     .filter((recipient): recipient is NonNullable<typeof recipient> => Boolean(recipient));
 
   if (recipients.length === 0) {
-    return c.json({ error: "No currently eligible users were selected." }, 400);
+    return c.json({ error: "No existing users were selected." }, 400);
   }
 
   for (const recipient of recipients) {
@@ -1267,7 +1262,7 @@ adminRoutes.post("/starter-credit-eligible-users/send-email", async (c) => {
   return c.json({
     ok: true,
     sentCount: recipients.length,
-    skippedCount: uniqueProfileIds.length - recipients.length,
+    skippedCount: uniqueRecipientIds.length - recipients.length,
   });
 });
 

@@ -445,7 +445,7 @@ export function AdminPage() {
   const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
   const [creditGrantDrafts, setCreditGrantDrafts] = useState<Record<string, string>>({});
   const [giftDrafts, setGiftDrafts] = useState<Record<string, "rose" | "starlight" | "crown">>({});
-  const [selectedStarterCreditProfileIds, setSelectedStarterCreditProfileIds] = useState<
+  const [selectedStarterCreditUserIds, setSelectedStarterCreditUserIds] = useState<
     Record<string, boolean>
   >({});
   const [starterCreditEmailSubject, setStarterCreditEmailSubject] = useState(
@@ -609,13 +609,13 @@ export function AdminPage() {
   });
 
   const starterCreditEmailMutation = useMutation({
-    mutationFn: async (input: { profileIds: string[]; subject: string; message: string }) =>
+    mutationFn: async (input: { userIds: string[]; subject: string; message: string }) =>
       sendStarterCreditEmailBatch(activeAdminKey, input),
     onSuccess: async (_result, variables) => {
-      setSelectedStarterCreditProfileIds((current) => {
+      setSelectedStarterCreditUserIds((current) => {
         const next = { ...current };
-        for (const profileId of variables.profileIds) {
-          delete next[profileId];
+        for (const userId of variables.userIds) {
+          delete next[userId];
         }
         return next;
       });
@@ -650,8 +650,8 @@ export function AdminPage() {
   const analytics = analyticsQuery.data;
   const selectedStarterCreditRecipients = useMemo(
     () =>
-      starterCreditEligibleUsers.filter((user) => selectedStarterCreditProfileIds[user.profileId]),
-    [selectedStarterCreditProfileIds, starterCreditEligibleUsers],
+      starterCreditEligibleUsers.filter((user) => selectedStarterCreditUserIds[user.userId]),
+    [selectedStarterCreditUserIds, starterCreditEligibleUsers],
   );
 
   useEffect(() => {
@@ -689,21 +689,21 @@ export function AdminPage() {
     );
   }
 
-  function toggleStarterCreditRecipient(profileId: string) {
-    setSelectedStarterCreditProfileIds((current) => ({
+  function toggleStarterCreditRecipient(userId: string) {
+    setSelectedStarterCreditUserIds((current) => ({
       ...current,
-      [profileId]: !current[profileId],
+      [userId]: !current[userId],
     }));
   }
 
   function selectAllStarterCreditRecipients() {
-    setSelectedStarterCreditProfileIds(
-      Object.fromEntries(starterCreditEligibleUsers.map((user) => [user.profileId, true])),
+    setSelectedStarterCreditUserIds(
+      Object.fromEntries(starterCreditEligibleUsers.map((user) => [user.userId, true])),
     );
   }
 
   function clearStarterCreditRecipients() {
-    setSelectedStarterCreditProfileIds({});
+    setSelectedStarterCreditUserIds({});
   }
 
   function renderProfileCleanupCard(profile: AdminProfile, summary?: React.ReactNode) {
@@ -1516,16 +1516,16 @@ export function AdminPage() {
       <section className="content-section">
         <section className="section-copy">
           <p className="eyebrow">Starter credits</p>
-          <h2>See who is ready, pick recipients, and send the re-engagement email from here.</h2>
+          <h2>Select existing Velora users and send your email from here.</h2>
         </section>
 
         {starterCreditEligibleUsersQuery.isLoading ? (
-          <p className="status-message">Loading starter-credit eligible users...</p>
+          <p className="status-message">Loading existing Velora users...</p>
         ) : null}
 
         <section className="panel">
           <div className="chip-row">
-            <span className="chip">{starterCreditEligibleUsers.length} eligible users</span>
+            <span className="chip">{starterCreditEligibleUsers.length} existing users</span>
             <span className="chip chip-muted">
               {selectedStarterCreditRecipients.length} selected for email
             </span>
@@ -1579,7 +1579,7 @@ export function AdminPage() {
               }
               onClick={() =>
                 starterCreditEmailMutation.mutate({
-                  profileIds: selectedStarterCreditRecipients.map((user) => user.profileId),
+                  userIds: selectedStarterCreditRecipients.map((user) => user.userId),
                   subject: starterCreditEmailSubject.trim(),
                   message: starterCreditEmailMessage.trim(),
                 })
@@ -1611,15 +1611,14 @@ export function AdminPage() {
         !starterCreditEligibleUsersQuery.isLoading &&
         starterCreditEligibleUsers.length === 0 ? (
           <section className="panel empty-state">
-            <h2>No starter-credit candidates right now.</h2>
-            <p>Everyone matching the current rule has either already been granted credits or does not qualify yet.</p>
+            <h2>No Velora users yet.</h2>
           </section>
         ) : null}
 
         {starterCreditEligibleUsers.length > 0 ? (
           <section className="panel">
             <div className="meta-group">
-              <span className="meta-title">Eligible users</span>
+              <span className="meta-title">Existing users</span>
               <p>Pick exactly who you want to contact. Last emailed helps avoid repeats.</p>
             </div>
             <div className="admin-table-wrap">
@@ -1636,16 +1635,16 @@ export function AdminPage() {
                 </thead>
                 <tbody>
                   {starterCreditEligibleUsers.map((user: StarterCreditEligibleUser) => (
-                    <tr key={user.profileId}>
+                    <tr key={user.userId}>
                       <td>
                         <input
                           type="checkbox"
-                          checked={Boolean(selectedStarterCreditProfileIds[user.profileId])}
-                          onChange={() => toggleStarterCreditRecipient(user.profileId)}
+                          checked={Boolean(selectedStarterCreditUserIds[user.userId])}
+                          onChange={() => toggleStarterCreditRecipient(user.userId)}
                         />
                       </td>
                       <td>
-                        {user.displayName} (@{user.username})
+                        {user.displayName ?? user.name ?? "Velora member"}{user.username ? ` (@${user.username})` : " (no profile)"}
                       </td>
                       <td>{user.email}</td>
                       <td>{formatDateTime(user.userCreatedAt)}</td>
