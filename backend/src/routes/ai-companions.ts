@@ -122,7 +122,17 @@ async function isChatEnabledForUser(env: EnvBindings, userId: string) {
   return Boolean(user);
 }
 function isCompanionPhotoRequest(message: string) {
-  return /\b(?:send|show|share|give|see|want|take)\b[\s\S]{0,60}\b(?:photo|picture|pic|selfie|image)\b|\b(?:photo|picture|pic|selfie|image)\b[\s\S]{0,40}\b(?:of you|yourself|please)\b|\b(?:can|could|may)\s+i\s+(?:see|get (?:a )?look at)\s+you\b|\bshow\s+me\s+(?:you|yourself)\b/i.test(message);
+  const photoNoun = "(?:photos?|pictures?|pics?|selfies?|images?)";
+  if (new RegExp(`\\b(?:do not|don't|dont|never|stop)\\s+(?:send|show|share|give|get|take)\\b[\\s\\S]{0,60}\\b${photoNoun}\\b`, "i").test(message)) return false;
+  return [
+    new RegExp(`\\b(?:send|show|share|give|get|see|want|take)\\b[\\s\\S]{0,60}\\b${photoNoun}\\b`, "i"),
+    new RegExp(`\\b${photoNoun}\\b[\\s\\S]{0,40}\\b(?:of you|yourself|please)\\b`, "i"),
+    new RegExp(`\\b(?:please|pls)\\b[\\s\\S]{0,40}\\b(?:(?:one|1)\\s+more\\s+|another\\s+|a\\s+|some\\s+)?${photoNoun}\\b`, "i"),
+    new RegExp(`\\b(?:(?:one|1)\\s+more|another)\\s+${photoNoun}\\b(?:\\s+(?:please|pls))?(?:[.!?]|\\s*$)`, "i"),
+    new RegExp(`\\b(?:can|could|may)\\s+i\\s+(?:have|receive)\\b[\\s\\S]{0,40}\\b${photoNoun}\\b`, "i"),
+    /\b(?:can|could|may)\s+i\s+(?:see|get (?:a )?look at)\s+you\b/i,
+    /\bshow\s+me\s+(?:you|yourself)\b/i,
+  ].some((pattern) => pattern.test(message));
 }
 function requestedPhotoBankFingerprint(prompt: string) {
   if (/\b(?:date|dinner|restaurant|dress|night out|rooftop)\b/i.test(prompt)) return "bank-date-night-v1";
