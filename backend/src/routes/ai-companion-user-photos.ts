@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
-import { aiCompanionAppearanceCatalog, aiCompanionConversations, aiCompanionMessages, aiCompanionUserPhotos, aiCompanions, aiEntitlements, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionConversations, aiCompanionMessages, aiCompanionUserPhotos, aiCompanions, users } from "../db/schema";
+import { getAiCompanionEntitlement } from "../lib/ai-companion-plans";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
 import { inspectAndSanitizeUserImage } from "../lib/user-photo-image";
@@ -36,12 +37,12 @@ type UploadQuota = { plan: "free" | "pro" | "ultra"; dailyLimit: number; monthly
 
 async function getUploadQuota(env: EnvBindings, userId: string): Promise<UploadQuota> {
   const db = getDb(env);
-  const [[entitlement], [user]] = await Promise.all([
-    db.select({ plan: aiEntitlements.plan }).from(aiEntitlements).where(eq(aiEntitlements.userId, userId)).limit(1),
+  const [entitlement, [user]] = await Promise.all([
+    getAiCompanionEntitlement(env, userId),
     db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1),
   ]);
   const betaEmails = (env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
-  const plan = entitlement?.plan === "pro" || entitlement?.plan === "ultra" ? entitlement.plan : "free";
+  const plan = entitlement.plan;
   // Internal beta accounts get Ultra-equivalent capacity without changing the
   // stored commercial entitlement.
   if (user && betaEmails.includes(user.email.toLowerCase())) return { plan, dailyLimit: 10, monthlyLimit: 40 };

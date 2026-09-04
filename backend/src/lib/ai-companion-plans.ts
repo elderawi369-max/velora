@@ -84,16 +84,37 @@ export function entitlementLimits(planValue: string | null | undefined) {
   };
 }
 
+function configuredEmails(value: string | undefined) {
+  return new Set((value ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+}
+
+function complimentaryPlanForEmail(env: EnvBindings, email: string | null | undefined): "pro" | "ultra" | null {
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  if (configuredEmails(env.AI_COMPANION_COMPLIMENTARY_ULTRA_EMAILS).has(normalizedEmail)) return "ultra";
+  if (configuredEmails(env.AI_COMPANION_COMPLIMENTARY_PRO_EMAILS).has(normalizedEmail)) return "pro";
+  return null;
+}
+
 export async function getAiCompanionEntitlement(env: EnvBindings, userId: string) {
   const db = getDb(env);
-  const [existing] = await db.select().from(aiEntitlements).where(eq(aiEntitlements.userId, userId)).limit(1);
+  const [[existing], [user]] = await Promise.all([
+    db.select().from(aiEntitlements).where(eq(aiEntitlements.userId, userId)).limit(1),
+    db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1),
+  ]);
+  const complimentaryPlan = complimentaryPlanForEmail(env, user?.email);
   if (existing) {
     const activePlan = existing.expiresAt && existing.expiresAt <= Date.now() ? "free" : existing.plan;
+    const planRank = { free: 0, pro: 1, ultra: 2 } as const;
+    if (complimentaryPlan && planRank[complimentaryPlan] >= planRank[normalizeAiCompanionPlan(activePlan)]) {
+      return { ...existing, source: `complimentary:${complimentaryPlan}`, expiresAt: null, ...entitlementLimits(complimentaryPlan) };
+    }
     return { ...existing, ...entitlementLimits(activePlan) };
   }
   const timestamp = Date.now();
   const entitlement = { userId, source: null, expiresAt: null, ...entitlementLimits("free"), createdAt: timestamp, updatedAt: timestamp };
   await db.insert(aiEntitlements).values(entitlement);
+  if (complimentaryPlan) return { ...entitlement, source: `complimentary:${complimentaryPlan}`, ...entitlementLimits(complimentaryPlan) };
   return entitlement;
 }
 
@@ -114,5 +135,5 @@ export async function activateAiCompanionPlan(env: EnvBindings, input: { userId:
   return { ...limits, source: input.source, expiresAt: input.expiresAt };
 }
 import { eq } from "drizzle-orm";
-import { aiEntitlements } from "../db/schema";
+import { aiEntitlements, users } from "../db/schema";
 import { getDb, type EnvBindings } from "./db";

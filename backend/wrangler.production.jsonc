@@ -24,7 +24,9 @@
 		"AI_COMPANION_PHOTO_ESTIMATED_COST_CENTS": "3",
 		"AI_COMPANION_PHOTO_MONTHLY_SPEND_CEILING_CENTS": "5000",
 		"AI_COMPANION_DAILY_TRIAL_LIMIT": "40",
-		"AI_COMPANION_BETA_EMAILS": "elderawi369@gmail.com"
+		"AI_COMPANION_BETA_EMAILS": "elderawi369@gmail.com",
+		"AI_COMPANION_COMPLIMENTARY_PRO_EMAILS": "violetverdinski@gmail.com,x6lucy9x@gmail.com",
+		"AI_COMPANION_COMPLIMENTARY_ULTRA_EMAILS": "elderawi369@gmail.com"
 	},
 	"ai": {
 		"binding": "AI"
