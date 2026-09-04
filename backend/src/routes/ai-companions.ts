@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, aiEntitlements, users } from "../db/schema";
+import { aiCompanionAppearanceCatalog, aiCompanionCalls, aiCompanionCallTurns, aiCompanionCanons, aiCompanionConversations, aiCompanionMemories, aiCompanionMemoryCandidates, aiCompanionMessages, aiCompanionPhotoAssets, aiCompanionPhotoDeliveries, aiCompanionPhotos, aiCompanionReports, aiCompanionUserPhotos, aiCompanionVisualCandidates, aiCompanionVisualIdentities, aiCompanionVisualStates, aiCompanionVoiceAssets, aiCompanions, users } from "../db/schema";
 import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
+import { aiCompanionPlans, getAiCompanionEntitlement, publicAiCompanionPlans } from "../lib/ai-companion-plans";
 
-const trialReplies = 15;
+const trialReplies = aiCompanionPlans.free.messageLimit;
 const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_friend", "confident_leader", "quiet_romantic", "personal_growth_companion"] as const;
 const personaInstructions: Record<(typeof personaKeys)[number], string> = {
   supportive_partner: "Warm, considerate, and encouraging. Listen closely without becoming dependent or exclusive.",
@@ -111,24 +112,12 @@ async function getCompanionForUser(env: EnvBindings, companionId: string, userId
   return row?.companion ?? null;
 }
 async function getOrCreateEntitlement(env: EnvBindings, userId: string) {
-  const db = getDb(env);
-  const [existing] = await db.select().from(aiEntitlements).where(eq(aiEntitlements.userId, userId)).limit(1);
-  if (existing) return existing;
-  const timestamp = now();
-  const entitlement = { userId, plan: "free", source: null, expiresAt: null, messageLimit: trialReplies, photoLimit: 0, companionLimit: 1, createdAt: timestamp, updatedAt: timestamp };
-  await db.insert(aiEntitlements).values(entitlement);
-  return entitlement;
+  return getAiCompanionEntitlement(env, userId);
 }
 async function isChatEnabledForUser(env: EnvBindings, userId: string) {
   if (env.AI_COMPANION_ENABLED !== "true" || !env.AI) return false;
   const [user] = await getDb(env).select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
   return Boolean(user);
-}
-function effectiveCompanionLimit(planLimit: number, isApprovedBeta: boolean) {
-  return isApprovedBeta ? Math.max(planLimit, personaKeys.length) : planLimit;
-}
-function effectivePhotoLimit(planLimit: number, isApprovedBeta: boolean) {
-  return isApprovedBeta ? Math.max(planLimit, 15) : planLimit;
 }
 function isCompanionPhotoRequest(message: string) {
   return /\b(?:send|show|share|give|see|want|take)\b[\s\S]{0,60}\b(?:photo|picture|pic|selfie|image)\b|\b(?:photo|picture|pic|selfie|image)\b[\s\S]{0,40}\b(?:of you|yourself|please)\b/i.test(message);
@@ -363,12 +352,16 @@ function productionPhotoScene(request: z.infer<typeof photoSceneSchema>, state: 
 function currentBillingPeriod(timestamp = now()) {
   return new Date(timestamp).toISOString().slice(0, 7);
 }
-async function registerSuccessfulPhotoDelivery(env: EnvBindings, args: { userId: string; companionId: string; photoId: string; photoAssetId: string; requestMessageId: string | null; photoLimit: number }) {
+async function registerSuccessfulPhotoDelivery(env: EnvBindings, args: { userId: string; companionId: string; photoId: string; photoAssetId: string; requestMessageId: string | null; photoLimit: number; plan: string }) {
   const existing = await env.DB.prepare("SELECT id FROM ai_companion_photo_deliveries WHERE photo_id = ? LIMIT 1").bind(args.photoId).first<{ id: string }>();
   if (existing) return { allowed: true, alreadyDelivered: true } as const;
   if (args.photoLimit <= 0) return { allowed: false, alreadyDelivered: false } as const;
+  if (args.plan === "free") {
+    const lifetime = await env.DB.prepare("SELECT COUNT(*) AS count FROM ai_companion_photo_deliveries WHERE user_id = ?").bind(args.userId).first<{ count: number }>();
+    if (Number(lifetime?.count ?? 0) >= args.photoLimit) return { allowed: false, alreadyDelivered: false } as const;
+  }
   const timestamp = now();
-  const period = currentBillingPeriod(timestamp);
+  const period = args.plan === "free" ? "preview" : currentBillingPeriod(timestamp);
   const reservation = await env.DB.prepare(
     "INSERT INTO ai_companion_photo_usage (user_id, billing_period, delivered_count, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(user_id, billing_period) DO UPDATE SET delivered_count = delivered_count + 1, updated_at = excluded.updated_at WHERE delivered_count < ?",
   ).bind(args.userId, period, timestamp, args.photoLimit).run();
@@ -792,8 +785,10 @@ aiCompanionRoutes.get("/", async (c) => {
     isChatEnabledForUser(c.env, context.userId),
   ]);
   const companions = companionRows.map((row) => row.companion);
-  return c.json({ companions, entitlement: { ...entitlement, companionLimit: effectiveCompanionLimit(entitlement.companionLimit, aiEnabled), photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, aiEnabled, trialReplies });
+  return c.json({ companions, entitlement, aiEnabled, trialReplies });
 });
+
+aiCompanionRoutes.get("/plans", (c) => c.json({ plans: publicAiCompanionPlans() }));
 
 aiCompanionRoutes.get("/appearance-options", async (c) => {
   const context = await requireContext(c); if (!context) return c.json({ error: "Sign in to use AI Companion." }, 401);
@@ -820,8 +815,14 @@ aiCompanionRoutes.post("/", async (c) => {
   const parsed = createCompanionSchema.safeParse(await c.req.json()); if (!parsed.success) return c.json({ error: "Please check your companion details." }, 400);
   const db = getDb(c.env); const entitlement = await getOrCreateEntitlement(c.env, context.userId);
   const existing = await db.select({ id: aiCompanions.id }).from(aiCompanions).innerJoin(aiCompanionVisualIdentities, and(eq(aiCompanionVisualIdentities.companionId, aiCompanions.id), eq(aiCompanionVisualIdentities.status, "ready"), eq(aiCompanionVisualIdentities.validationStatus, "approved"), isNotNull(aiCompanionVisualIdentities.appearanceCatalogId))).leftJoin(aiCompanionAppearanceCatalog, eq(aiCompanionAppearanceCatalog.sourceCompanionId, aiCompanions.id)).where(and(eq(aiCompanions.userId, context.userId), isNull(aiCompanionAppearanceCatalog.id)));
-  const companionLimit = effectiveCompanionLimit(entitlement.companionLimit, await isChatEnabledForUser(c.env, context.userId));
-  if (existing.length >= companionLimit) return c.json({ error: "Your current plan includes one companion. More companion slots will be available with subscription plans." }, 403);
+  if (existing.length >= entitlement.companionLimit) {
+    const error = entitlement.plan === "pro"
+      ? "Pro includes one active companion. Upgrade to Ultra to meet a second companion."
+      : entitlement.plan === "ultra"
+        ? "Ultra currently supports up to two active companions."
+        : "Your free preview includes one companion. Upgrade to Ultra to meet a second companion.";
+    return c.json({ error }, 403);
+  }
   const { appearanceId, ...companionInput } = parsed.data;
   const [appearance] = await db.select().from(aiCompanionAppearanceCatalog).where(eq(aiCompanionAppearanceCatalog.id, appearanceId)).limit(1);
   const appearanceTraits = appearance ? parseVisualTraits(appearance.lockedTraitsJson) : null;
@@ -901,7 +902,7 @@ aiCompanionRoutes.get("/:companionId", async (c) => {
   // Do not let previews from a regenerated appearance masquerade as its new test.
   const photos = visualIdentity ? photoRows.filter((photo) => photo.visualIdentityVersion === visualIdentity.version) : [];
   const aiEnabled = await isChatEnabledForUser(c.env, context.userId);
-  return c.json({ companion, conversation, messages: ordinaryMessages, calls: callLogs, memories, memoryCandidates, entitlement: { ...entitlement, photoLimit: effectivePhotoLimit(entitlement.photoLimit, aiEnabled) }, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
+  return c.json({ companion, conversation, messages: ordinaryMessages, calls: callLogs, memories, memoryCandidates, entitlement, visualIdentity, castingCandidates, photos, deliveredPhotos: deliveredPhotoRows, userPhotos: userPhotoRows, voiceAssets: voiceAssetRows, aiEnabled });
 });
 
 aiCompanionRoutes.post("/:companionId/visual-identity", async (c) => {
@@ -1195,10 +1196,13 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   // Do not replace missing references with text traits: that would create a different person.
   if (!visualIdentity?.appearanceCatalogId || visualIdentity.status !== "ready" || visualIdentity.validationStatus !== "approved" || !visualIdentity.canonicalObjectKey) return c.json({ error: "This companion's visual identity is still being verified. Photos remain unavailable until its canonical references pass review." }, 409);
   if (!conversation) return c.json({ error: "Conversation unavailable." }, 404);
-  const photoLimit = effectivePhotoLimit(entitlement.photoLimit, await isChatEnabledForUser(c.env, context.userId));
+  const photoLimit = entitlement.photoLimit;
   if (photoLimit <= 0) return c.json({ error: "Your current plan does not include companion photos." }, 403);
-  const usage = await c.env.DB.prepare("SELECT delivered_count FROM ai_companion_photo_usage WHERE user_id = ? AND billing_period = ?").bind(context.userId, currentBillingPeriod()).first<{ delivered_count: number }>();
-  if ((usage?.delivered_count ?? 0) >= photoLimit) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
+  const usagePeriod = entitlement.plan === "free" ? "preview" : currentBillingPeriod();
+  const usage = entitlement.plan === "free"
+    ? await c.env.DB.prepare("SELECT COUNT(*) AS delivered_count FROM ai_companion_photo_deliveries WHERE user_id = ?").bind(context.userId).first<{ delivered_count: number }>()
+    : await c.env.DB.prepare("SELECT delivered_count FROM ai_companion_photo_usage WHERE user_id = ? AND billing_period = ?").bind(context.userId, usagePeriod).first<{ delivered_count: number }>();
+  if ((usage?.delivered_count ?? 0) >= photoLimit) return c.json({ error: entitlement.plan === "free" ? "Your free companion photo preview has been used." : "Your companion photo allowance for this billing period is complete." }, 403);
   if (parsed.data.requestMessageId) {
     const [requestMessage] = await db.select({ id: aiCompanionMessages.id }).from(aiCompanionMessages).where(and(eq(aiCompanionMessages.id, parsed.data.requestMessageId), eq(aiCompanionMessages.conversationId, conversation.id), eq(aiCompanionMessages.role, "user"))).limit(1);
     if (!requestMessage) return c.json({ error: "Photo request message not found." }, 404);
@@ -1264,7 +1268,7 @@ aiCompanionRoutes.get("/:companionId/photos/:photoId", async (c) => {
   if (!photo?.objectKey || !photo.photoAssetId || !["ready", "delivered"].includes(photo.status) || photo.validationStatus !== "approved") return c.json({ error: "Approved companion photo not found." }, 404);
   const object = await c.env.COMPANION_IMAGES.get(photo.objectKey);
   if (!object) return c.json({ error: "Approved companion photo not found." }, 404);
-  const delivery = await registerSuccessfulPhotoDelivery(c.env, { userId: context.userId, companionId: companion.id, photoId: photo.id, photoAssetId: photo.photoAssetId, requestMessageId: photo.requestMessageId, photoLimit: effectivePhotoLimit(entitlement.photoLimit, await isChatEnabledForUser(c.env, context.userId)) });
+  const delivery = await registerSuccessfulPhotoDelivery(c.env, { userId: context.userId, companionId: companion.id, photoId: photo.id, photoAssetId: photo.photoAssetId, requestMessageId: photo.requestMessageId, photoLimit: entitlement.photoLimit, plan: entitlement.plan });
   if (!delivery.allowed) return c.json({ error: "Your companion photo allowance for this billing period is complete." }, 403);
   if (!delivery.alreadyDelivered) await db.update(aiCompanionPhotos).set({ status: "delivered", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photo.id));
   return new Response(object.body, { headers: { "Content-Type": object.httpMetadata?.contentType ?? "image/png", "Cache-Control": "private, no-store" } });
@@ -1335,7 +1339,7 @@ aiCompanionRoutes.post("/:companionId/messages", async (c) => {
   const userMessage = { id: id("aimsg"), conversationId: conversation.id, role: "user", body: parsed.data.body, moderationStatus: "allowed", createdAt: now() };
   await db.insert(aiCompanionMessages).values(userMessage);
   const directSarcasticAffectionReply = sarcasticAffectionReply(parsed.data.body, companion.personaKey, userMessage.id, relationshipStage);
-  const photoRequested = isCompanionPhotoRequest(parsed.data.body) && effectivePhotoLimit(entitlement.photoLimit, isApprovedBeta) > 0;
+  const photoRequested = isCompanionPhotoRequest(parsed.data.body) && entitlement.photoLimit > 0;
   const recentMessagesForReply = await db.select({ role: aiCompanionMessages.role, body: aiCompanionMessages.body }).from(aiCompanionMessages).where(eq(aiCompanionMessages.conversationId, conversation.id)).orderBy(desc(aiCompanionMessages.createdAt)).limit(20);
   let responseBody: string; let moderationStatus = "allowed";
   if (isCrisisMessage(parsed.data.body)) { responseBody = safetyReply(); moderationStatus = "safety_redirect"; }

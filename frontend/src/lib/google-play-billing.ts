@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { verifyGoogleMobilePurchase } from "./api";
+import { verifyGoogleAiCompanionSubscription, verifyGoogleMobilePurchase } from "./api";
 
 type BillingAvailability = {
   available: boolean;
@@ -7,6 +7,8 @@ type BillingAvailability = {
 
 type PurchaseProductOptions = {
   productId: string;
+  productType?: "inapp" | "subs";
+  offerToken?: string;
   obfuscatedAccountId?: string;
 };
 
@@ -30,11 +32,23 @@ type QueryActivePurchasesResult = {
   purchases: PurchaseProductResult[];
 };
 
+export type GooglePlayProduct = {
+  productId: string;
+  title?: string;
+  description?: string;
+  formattedPrice?: string;
+  priceAmountMicros?: number;
+  currencyCode?: string;
+  offerToken?: string;
+};
+
 type GooglePlayBillingPlugin = {
   isAvailable(): Promise<BillingAvailability>;
   purchaseProduct(options: PurchaseProductOptions): Promise<PurchaseProductResult>;
   consumePurchase(options: { purchaseToken: string }): Promise<ConsumePurchaseResult>;
-  queryActivePurchases(): Promise<QueryActivePurchasesResult>;
+  acknowledgePurchase(options: { purchaseToken: string }): Promise<ConsumePurchaseResult>;
+  queryProducts(options: { productIds: string[]; productType: "inapp" | "subs" }): Promise<{ products: GooglePlayProduct[] }>;
+  queryActivePurchases(options?: { productType?: "inapp" | "subs" }): Promise<QueryActivePurchasesResult>;
 };
 
 const GooglePlayBilling = registerPlugin<GooglePlayBillingPlugin>("GooglePlayBilling");
@@ -47,6 +61,11 @@ const googlePlayProductIds = {
   spotlight: "spotlight_boost",
   challenge_pack_3: "challenge_credits_3",
   challenge_pack_10: "challenge_credits_10",
+} as const;
+
+const googlePlaySubscriptionProductIds = {
+  pro: "velora_ai_pro_monthly",
+  ultra: "velora_ai_ultra_monthly",
 } as const;
 
 type GooglePlayPurchaseContext = {
@@ -227,6 +246,25 @@ export async function completeGooglePlayPurchase(input: {
   };
 }
 
+export async function fetchGooglePlaySubscriptionProducts() {
+  if (!(await shouldUseGooglePlayBilling())) return [];
+  const result = await GooglePlayBilling.queryProducts({ productIds: Object.values(googlePlaySubscriptionProductIds), productType: "subs" });
+  return result.products ?? [];
+}
+
+export async function completeGooglePlaySubscription(plan: "pro" | "ultra", product?: GooglePlayProduct) {
+  const productId = googlePlaySubscriptionProductIds[plan];
+  const purchase = await GooglePlayBilling.purchaseProduct({ productId, productType: "subs", offerToken: product?.offerToken });
+  if (purchase.cancelled) return { cancelled: true as const };
+  if (!purchase.purchaseToken || !purchase.packageName || !purchase.productId) throw new Error("Google Play did not return a complete subscription token.");
+  const result = await verifyGoogleAiCompanionSubscription({ plan, purchaseToken: purchase.purchaseToken, packageName: purchase.packageName, productId: purchase.productId, orderId: purchase.orderId ?? undefined });
+  if (!purchase.acknowledged) {
+    try { await GooglePlayBilling.acknowledgePurchase({ purchaseToken: purchase.purchaseToken }); }
+    catch (error) { console.warn("Unable to acknowledge Google Play subscription after verification.", error); }
+  }
+  return { cancelled: false as const, entitlement: result.entitlement };
+}
+
 export async function recoverGooglePlayPurchases() {
   if (!isNativeAndroidApp() || !Capacitor.isPluginAvailable("GooglePlayBilling")) {
     return { recoveredCount: 0 };
@@ -237,7 +275,7 @@ export async function recoverGooglePlayPurchases() {
     return { recoveredCount: 0 };
   }
 
-  const result = await GooglePlayBilling.queryActivePurchases();
+  const result = await GooglePlayBilling.queryActivePurchases({ productType: "inapp" });
   const purchases = result.purchases ?? [];
   let recoveredCount = 0;
 
@@ -299,6 +337,18 @@ export async function recoverGooglePlayPurchases() {
     if (verified) {
       continue;
     }
+  }
+
+  const subscriptions = await GooglePlayBilling.queryActivePurchases({ productType: "subs" });
+  for (const purchase of subscriptions.purchases ?? []) {
+    if (purchase.cancelled || purchase.purchaseState !== "purchased" || !purchase.purchaseToken || !purchase.packageName || !purchase.productId) continue;
+    const plan = Object.entries(googlePlaySubscriptionProductIds).find(([, productId]) => productId === purchase.productId)?.[0] as "pro" | "ultra" | undefined;
+    if (!plan) continue;
+    try {
+      await verifyGoogleAiCompanionSubscription({ plan, purchaseToken: purchase.purchaseToken, packageName: purchase.packageName, productId: purchase.productId, orderId: purchase.orderId ?? undefined });
+      if (!purchase.acknowledged) await GooglePlayBilling.acknowledgePurchase({ purchaseToken: purchase.purchaseToken });
+      recoveredCount += 1;
+    } catch (error) { console.warn("Unable to recover Google Play subscription.", error); }
   }
 
   return { recoveredCount };

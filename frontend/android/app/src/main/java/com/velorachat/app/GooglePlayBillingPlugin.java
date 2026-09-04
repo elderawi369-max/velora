@@ -9,6 +9,7 @@ import com.android.billingclient.api.BillingClient;
 import com.android.billingclient.api.BillingClientStateListener;
 import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
+import com.android.billingclient.api.AcknowledgePurchaseParams;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
 import com.android.billingclient.api.PendingPurchasesParams;
@@ -73,13 +74,65 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
     @PluginMethod
     public void purchaseProduct(PluginCall call) {
         String productId = call.getString("productId", "").trim();
+        String productType = call.getString("productType", "inapp");
+        String offerToken = call.getString("offerToken");
         String obfuscatedAccountId = call.getString("obfuscatedAccountId");
         if (productId.isEmpty()) {
             call.reject("productId is required.");
             return;
         }
 
-        withReadyBillingClient(call, () -> querySingleProductAndLaunch(call, productId, obfuscatedAccountId));
+        withReadyBillingClient(call, () -> querySingleProductAndLaunch(call, productId, productType, offerToken, obfuscatedAccountId));
+    }
+
+    @PluginMethod
+    public void queryProducts(PluginCall call) {
+        JSArray productIds = call.getArray("productIds", new JSArray());
+        String productType = call.getString("productType", "inapp");
+        if (productIds.length() == 0) {
+            call.reject("productIds is required.");
+            return;
+        }
+        withReadyBillingClient(call, () -> {
+            List<QueryProductDetailsParams.Product> products = new ArrayList<>();
+            for (int index = 0; index < productIds.length(); index++) {
+                String productId = productIds.optString(index, "").trim();
+                if (!productId.isEmpty()) products.add(QueryProductDetailsParams.Product.newBuilder().setProductId(productId).setProductType(resolveProductType(productType)).build());
+            }
+            billingClient.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(products).build(), (billingResult, detailsResult) -> {
+                if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                    call.reject(resolveBillingMessage(billingResult, "Unable to load Google Play products."));
+                    return;
+                }
+                JSArray items = new JSArray();
+                for (ProductDetails details : detailsResult.getProductDetailsList()) {
+                    productDetailsCache.put(productType + ":" + details.getProductId(), details);
+                    items.put(serializeProductDetails(details));
+                }
+                JSObject result = new JSObject();
+                result.put("products", items);
+                call.resolve(result);
+            });
+        });
+    }
+
+    @PluginMethod
+    public void acknowledgePurchase(PluginCall call) {
+        String purchaseToken = call.getString("purchaseToken", "").trim();
+        if (purchaseToken.isEmpty()) {
+            call.reject("purchaseToken is required.");
+            return;
+        }
+        withReadyBillingClient(call, () -> billingClient.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchaseToken).build(), billingResult -> {
+            if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+                call.reject(resolveBillingMessage(billingResult, "Unable to acknowledge Google Play subscription."));
+                return;
+            }
+            JSObject result = new JSObject();
+            result.put("ok", true);
+            result.put("purchaseToken", purchaseToken);
+            call.resolve(result);
+        }));
     }
 
     @PluginMethod
@@ -113,10 +166,11 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
 
     @PluginMethod
     public void queryActivePurchases(PluginCall call) {
+        String productType = call.getString("productType", "inapp");
         withReadyBillingClient(call, () ->
             billingClient.queryPurchasesAsync(
                 QueryPurchasesParams.newBuilder()
-                    .setProductType(BillingClient.ProductType.INAPP)
+                    .setProductType(resolveProductType(productType))
                     .build(),
                 (billingResult, purchaseList) -> {
                     if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
@@ -207,18 +261,20 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
     private void querySingleProductAndLaunch(
         PluginCall call,
         String productId,
+        String productType,
+        @Nullable String offerToken,
         @Nullable String obfuscatedAccountId
     ) {
-        ProductDetails cachedProduct = productDetailsCache.get(productId);
+        ProductDetails cachedProduct = productDetailsCache.get(productType + ":" + productId);
         if (cachedProduct != null) {
-            launchPurchaseFlow(call, cachedProduct, obfuscatedAccountId);
+            launchPurchaseFlow(call, cachedProduct, offerToken, obfuscatedAccountId);
             return;
         }
 
         QueryProductDetailsParams.Product product =
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(productId)
-                .setProductType(BillingClient.ProductType.INAPP)
+                .setProductType(resolveProductType(productType))
                 .build();
 
         billingClient.queryProductDetailsAsync(
@@ -236,8 +292,8 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
                 }
 
                 ProductDetails productDetails = productDetailsList.get(0);
-                productDetailsCache.put(productId, productDetails);
-                launchPurchaseFlow(call, productDetails, obfuscatedAccountId);
+                productDetailsCache.put(productType + ":" + productId, productDetails);
+                launchPurchaseFlow(call, productDetails, offerToken, obfuscatedAccountId);
             }
         );
     }
@@ -245,14 +301,18 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
     private void launchPurchaseFlow(
         PluginCall call,
         ProductDetails productDetails,
+        @Nullable String requestedOfferToken,
         @Nullable String obfuscatedAccountId
     ) {
         saveCall(call);
 
-        BillingFlowParams.ProductDetailsParams productParams =
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(productDetails)
-                .build();
+        BillingFlowParams.ProductDetailsParams.Builder productParamsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails);
+        String offerToken = requestedOfferToken;
+        if ((offerToken == null || offerToken.trim().isEmpty()) && productDetails.getSubscriptionOfferDetails() != null && !productDetails.getSubscriptionOfferDetails().isEmpty()) {
+            offerToken = productDetails.getSubscriptionOfferDetails().get(0).getOfferToken();
+        }
+        if (offerToken != null && !offerToken.trim().isEmpty()) productParamsBuilder.setOfferToken(offerToken);
+        BillingFlowParams.ProductDetailsParams productParams = productParamsBuilder.build();
 
         BillingFlowParams.Builder paramsBuilder =
             BillingFlowParams.newBuilder()
@@ -323,6 +383,33 @@ public class GooglePlayBillingPlugin extends Plugin implements PurchasesUpdatedL
         result.put("productIds", productIds);
         result.put("productId", products.isEmpty() ? null : products.get(0));
         return result;
+    }
+
+    private JSObject serializeProductDetails(ProductDetails details) {
+        JSObject result = new JSObject();
+        result.put("productId", details.getProductId());
+        result.put("title", details.getTitle());
+        result.put("description", details.getDescription());
+        if (details.getOneTimePurchaseOfferDetails() != null) {
+            result.put("formattedPrice", details.getOneTimePurchaseOfferDetails().getFormattedPrice());
+            result.put("priceAmountMicros", details.getOneTimePurchaseOfferDetails().getPriceAmountMicros());
+            result.put("currencyCode", details.getOneTimePurchaseOfferDetails().getPriceCurrencyCode());
+        } else if (details.getSubscriptionOfferDetails() != null && !details.getSubscriptionOfferDetails().isEmpty()) {
+            ProductDetails.SubscriptionOfferDetails offer = details.getSubscriptionOfferDetails().get(0);
+            List<ProductDetails.PricingPhase> phases = offer.getPricingPhases().getPricingPhaseList();
+            if (!phases.isEmpty()) {
+                ProductDetails.PricingPhase phase = phases.get(phases.size() - 1);
+                result.put("formattedPrice", phase.getFormattedPrice());
+                result.put("priceAmountMicros", phase.getPriceAmountMicros());
+                result.put("currencyCode", phase.getPriceCurrencyCode());
+            }
+            result.put("offerToken", offer.getOfferToken());
+        }
+        return result;
+    }
+
+    private String resolveProductType(String productType) {
+        return "subs".equalsIgnoreCase(productType) ? BillingClient.ProductType.SUBS : BillingClient.ProductType.INAPP;
     }
 
     private String purchaseStateToString(int purchaseState) {

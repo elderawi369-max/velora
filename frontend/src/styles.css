@@ -133,6 +133,212 @@
   line-height: 1.6;
 }
 
+.ai-upgrade-screen {
+  position: fixed;
+  z-index: 850;
+  inset: 0;
+  overflow-y: auto;
+  padding: 38px 22px max(38px, env(safe-area-inset-bottom));
+  color: #352730;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(114, 195, 237, 0.26), transparent 34%),
+    radial-gradient(circle at 90% 22%, rgba(240, 147, 178, 0.25), transparent 38%),
+    linear-gradient(145deg, #f2faff, #fff5f8 54%, #fff9e9);
+  animation: ai-panel-fade-in 220ms ease-out;
+}
+
+.ai-upgrade-shell {
+  display: grid;
+  width: min(980px, 100%);
+  min-height: calc(100dvh - 76px);
+  gap: 24px;
+  align-content: center;
+  margin: 0 auto;
+}
+
+.ai-upgrade-hero {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: center;
+  text-align: left;
+}
+
+.ai-upgrade-avatar {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  place-items: center;
+  border: 4px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  color: #245d7c;
+  background: radial-gradient(circle at 32% 25%, #fff, #cce8f7 58%, #99c5df);
+  box-shadow: 0 16px 38px rgba(50, 88, 117, 0.2);
+  font: 2.1rem/1 Georgia, serif;
+}
+
+.ai-upgrade-hero .eyebrow,
+.ai-upgrade-hero h1,
+.ai-upgrade-hero p:last-child {
+  margin: 0;
+}
+
+.ai-upgrade-hero h1 {
+  margin: 5px 0 6px;
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  line-height: 1.05;
+}
+
+.ai-upgrade-hero p:last-child {
+  color: #715d68;
+}
+
+.ai-upgrade-plans {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+.ai-upgrade-plan {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 20px;
+  padding: 28px;
+  border: 1px solid rgba(200, 181, 190, 0.72);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 20px 52px rgba(68, 45, 58, 0.11);
+  backdrop-filter: blur(18px);
+}
+
+.ai-upgrade-plan-ultra {
+  border-color: rgba(181, 83, 117, 0.5);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.94), rgba(255, 238, 245, 0.92));
+  box-shadow: 0 24px 64px rgba(153, 64, 99, 0.18);
+  transform: translateY(-5px);
+}
+
+.ai-upgrade-badge {
+  position: absolute;
+  top: 0;
+  right: 24px;
+  padding: 7px 13px;
+  border-radius: 0 0 12px 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #a74368, #d76e8e);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.ai-upgrade-plan-heading {
+  display: flex;
+  gap: 18px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.ai-upgrade-plan-heading .eyebrow,
+.ai-upgrade-plan-heading h2,
+.ai-upgrade-price {
+  margin: 0;
+}
+
+.ai-upgrade-plan-heading h2 {
+  max-width: 13ch;
+  margin-top: 5px;
+  font-size: 1.3rem;
+}
+
+.ai-upgrade-price {
+  display: grid;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.ai-upgrade-price strong {
+  font-size: 1.7rem;
+}
+
+.ai-upgrade-price span {
+  color: #806b75;
+  font-size: 0.76rem;
+}
+
+.ai-upgrade-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ai-upgrade-highlights > div {
+  display: grid;
+  min-height: 82px;
+  gap: 4px;
+  align-content: center;
+  padding: 10px;
+  border-radius: 15px;
+  text-align: center;
+  background: rgba(239, 246, 250, 0.82);
+}
+
+.ai-upgrade-plan-ultra .ai-upgrade-highlights > div {
+  background: rgba(249, 231, 239, 0.78);
+}
+
+.ai-upgrade-highlights strong {
+  font-size: 1rem;
+}
+
+.ai-upgrade-highlights span {
+  color: #76636d;
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+.ai-upgrade-plan ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  color: #654f5a;
+  list-style: none;
+}
+
+.ai-upgrade-plan li {
+  position: relative;
+  padding-left: 24px;
+  line-height: 1.4;
+}
+
+.ai-upgrade-plan li::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  content: "✓";
+  color: #ab4569;
+  font-weight: 800;
+}
+
+.ai-upgrade-plan > button {
+  width: 100%;
+}
+
+.ai-upgrade-privacy,
+.ai-upgrade-error,
+.ai-upgrade-loading {
+  margin: 0;
+  text-align: center;
+}
+
+.ai-upgrade-privacy {
+  color: #765f6b;
+  font-size: 0.86rem;
+}
+
 .ai-account-welcome .primary-button {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -1113,6 +1319,21 @@ body.ai-panel-open {
   .ai-account-dialog { width: 100%; max-height: 96dvh; padding: 28px 18px max(28px, env(safe-area-inset-bottom)); border: 0; border-radius: 26px 26px 0 0; }
   .ai-account-dialog-content .section-copy h1 { font-size: 2rem; }
   .ai-account-dialog-content .form-panel { padding: 18px; }
+  .ai-upgrade-screen { padding: max(22px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom)); }
+  .ai-upgrade-shell { min-height: 0; gap: 18px; align-content: start; }
+  .ai-upgrade-hero { justify-content: flex-start; gap: 13px; }
+  .ai-upgrade-avatar { width: 58px; height: 58px; flex-basis: 58px; font-size: 1.55rem; }
+  .ai-upgrade-hero h1 { font-size: 1.75rem; }
+  .ai-upgrade-hero p:last-child { font-size: 0.88rem; }
+  .ai-upgrade-plans { grid-template-columns: 1fr; gap: 16px; }
+  .ai-upgrade-plan,
+  .ai-upgrade-plan-ultra { gap: 16px; padding: 23px 18px; border-radius: 23px; transform: none; }
+  .ai-upgrade-plan-heading { align-items: start; }
+  .ai-upgrade-plan-heading h2 { font-size: 1.15rem; }
+  .ai-upgrade-price strong { font-size: 1.45rem; }
+  .ai-upgrade-highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ai-upgrade-highlights > div:last-child { grid-column: 1 / -1; min-height: 64px; }
+  .ai-upgrade-plan li { font-size: 0.9rem; }
   .ai-create-card { grid-template-columns: 1fr; padding: 22px; }
   .ai-persona-grid { grid-template-columns: 1fr; }
   .ai-appearance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1176,8 +1397,11 @@ body.ai-panel-open {
   .ai-companion-switcher-backdrop,
   .ai-companion-switcher,
   .ai-companion-panel-backdrop,
-  .ai-companion-panel {
+  .ai-companion-panel,
+  .ai-paywall,
+  .ai-paywall-card {
     animation: none;
+    transition: none;
   }
 }
 

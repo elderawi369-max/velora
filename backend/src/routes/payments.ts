@@ -132,7 +132,7 @@ function decodePemPrivateKey(privateKeyPem: string) {
   return bytes.buffer;
 }
 
-async function getGooglePlayAccessToken(env: EnvBindings) {
+export async function getGooglePlayAccessToken(env: EnvBindings) {
   if (!env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON) {
     throw new PaymentRouteError("Google Play billing is not configured yet.", 501);
   }

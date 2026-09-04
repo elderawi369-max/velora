@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
   approveAiCompanionVisualIdentity,
   approveAiCompanionMemoryCandidate,
   completeAiCompanionVisualIdentity,
   createAiCompanion,
+  createAiCompanionSubscriptionCheckout,
   createAiCompanionMemory,
   createAiCompanionVoiceMessage,
   deleteAiCompanionVoiceInput,
@@ -13,6 +15,7 @@ import {
   dismissAiCompanionMemoryCandidate,
   fetchAiCompanion,
   fetchAiCompanionAppearances,
+  fetchAiCompanionPlans,
   fetchAiCompanionAppearancePreview,
   fetchAiCompanions,
   fetchAiCompanionPhotoPreview,
@@ -23,8 +26,10 @@ import {
   fetchSession,
   fetchAiCompanionVisualCandidatePreview,
   fetchAiCompanionVisualIdentityPreview,
+  completeAiCompanionSubscriptionCheckout,
   prepareAiCompanionVisualIdentity,
   regenerateAiCompanionVisualIdentity,
+  refreshAiCompanionSubscription,
   runAiCompanionLifestyleTest,
   selectAiCompanionVisualCandidate,
   reportAiCompanionMessage,
@@ -36,10 +41,12 @@ import {
   type AiCompanionCallLog,
   type AiCompanionVoiceAsset,
 } from "../../lib/api";
+import { completeGooglePlaySubscription, fetchGooglePlaySubscriptionProducts, isNativeAndroidApp, type GooglePlayProduct } from "../../lib/google-play-billing";
 import { CompanionCallDialog } from "../components/companion-call-dialog";
 import { CompanionCallDetails } from "../components/companion-call-details";
 import { CompanionVoiceNote } from "../components/companion-voice-note";
 import { AuthForm } from "../components/auth-form";
+import { AiCompanionPaywall } from "../components/ai-companion-paywall";
 import "../components/companion-voice.css";
 
 const personas = [
@@ -63,6 +70,7 @@ function compactCallDuration(call: AiCompanionCallLog) {
 const relationshipStageLabel = { new: "Getting to know each other", familiar: "Growing closer", established: "Established connection" } as const;
 
 type CompanionPanel = "memories" | "profile" | "photos" | "settings";
+const subscriptionCheckoutStorageKey = "velora-ai-subscription-checkout";
 
 async function normalizeUserPhoto(file: File) {
   if (file.size <= 0 || file.size > 5 * 1024 * 1024) throw new Error("Choose a photo that is 5 MB or smaller.");
@@ -84,8 +92,10 @@ async function normalizeUserPhoto(file: File) {
 
 export function AiCompanionsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sessionQuery = useQuery({ queryKey: ["session"], queryFn: fetchSession, retry: false });
   const companionsQuery = useQuery({ queryKey: ["ai-companions"], queryFn: fetchAiCompanions, enabled: Boolean(sessionQuery.data?.authenticated), retry: false });
+  const plansQuery = useQuery({ queryKey: ["ai-companion-plans"], queryFn: fetchAiCompanionPlans, retry: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [personaKey, setPersonaKey] = useState<(typeof personas)[number]["key"]>("supportive_partner");
@@ -114,6 +124,11 @@ export function AiCompanionsPage() {
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [companionSwitcherOpen, setCompanionSwitcherOpen] = useState(false);
   const [creatingCompanion, setCreatingCompanion] = useState(false);
+  const [manualPaywallOpen, setManualPaywallOpen] = useState(false);
+  const [previewPaywallReady, setPreviewPaywallReady] = useState(false);
+  const [pendingSubscriptionPlan, setPendingSubscriptionPlan] = useState<"pro" | "ultra" | null>(null);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [googlePlayProducts, setGooglePlayProducts] = useState<GooglePlayProduct[]>([]);
   const [companionMenuOpen, setCompanionMenuOpen] = useState(false);
   const [activeCompanionPanel, setActiveCompanionPanel] = useState<CompanionPanel | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -126,6 +141,7 @@ export function AiCompanionsPage() {
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceRecordingStartedAtRef = useRef(0);
   const pendingRecordedUrlRef = useRef<string | null>(null);
+  const subscriptionReturnHandledRef = useRef(false);
 
   useEffect(() => {
     const first = companionsQuery.data?.companions[0];
@@ -172,6 +188,40 @@ export function AiCompanionsPage() {
       document.body.classList.remove("ai-panel-open");
     };
   }, [signupOpen]);
+
+  useEffect(() => {
+    if (!sessionQuery.data?.authenticated || !isNativeAndroidApp()) return;
+    let cancelled = false;
+    fetchGooglePlaySubscriptionProducts().then((products) => { if (!cancelled) setGooglePlayProducts(products); }).catch(() => { if (!cancelled) setGooglePlayProducts([]); });
+    return () => { cancelled = true; };
+  }, [sessionQuery.data?.authenticated]);
+
+  useEffect(() => {
+    if (!sessionQuery.data?.authenticated || isNativeAndroidApp()) return;
+    refreshAiCompanionSubscription().then(async ({ entitlement }) => {
+      if (!entitlement) return;
+      await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion"] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice"] });
+    }).catch(() => undefined);
+  }, [queryClient, sessionQuery.data?.authenticated]);
+
+  useEffect(() => {
+    if (subscriptionReturnHandledRef.current || !searchParams.get("subscription_return")) return;
+    const checkoutId = searchParams.get("subscription_id") ?? searchParams.get("session_id") ?? searchParams.get("token") ?? window.sessionStorage.getItem(subscriptionCheckoutStorageKey);
+    if (!checkoutId) { setSubscriptionError("We could not find this subscription checkout. Please try again."); return; }
+    subscriptionReturnHandledRef.current = true;
+    setPendingSubscriptionPlan("pro");
+    completeAiCompanionSubscriptionCheckout(checkoutId).then(async () => {
+      window.sessionStorage.removeItem(subscriptionCheckoutStorageKey);
+      setManualPaywallOpen(false);
+      setPreviewPaywallReady(false);
+      await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] });
+      setSearchParams({}, { replace: true });
+    }).catch((error) => setSubscriptionError(error instanceof Error ? error.message : "Unable to confirm subscription.")).finally(() => setPendingSubscriptionPlan(null));
+  }, [queryClient, searchParams, selectedId, setSearchParams]);
 
   const detailQuery = useQuery({
     queryKey: ["ai-companion", selectedId],
@@ -300,6 +350,30 @@ export function AiCompanionsPage() {
     event.preventDefault();
     if (message.trim() && !messageMutation.isPending) messageMutation.mutate({ outgoingMessage: message, requestVoice: /\b(?:send|leave|record)\b[\s\S]{0,30}\bvoice (?:message|note)\b/i.test(message) });
   }
+  async function subscribe(plan: "pro" | "ultra") {
+    setPendingSubscriptionPlan(plan);
+    setSubscriptionError(null);
+    try {
+      if (isNativeAndroidApp()) {
+        const product = googlePlayProducts.find((item) => item.productId === plansQuery.data?.plans.find((candidate) => candidate.key === plan)?.googlePlayProductId);
+        const result = await completeGooglePlaySubscription(plan, product);
+        if (result.cancelled) return;
+        setManualPaywallOpen(false);
+        setPreviewPaywallReady(false);
+        await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-companion", selectedId] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice", selectedId] });
+        return;
+      }
+      const checkout = await createAiCompanionSubscriptionCheckout(plan);
+      window.sessionStorage.setItem(subscriptionCheckoutStorageKey, checkout.checkoutId);
+      window.location.assign(checkout.checkoutUrl);
+    } catch (error) {
+      setSubscriptionError(error instanceof Error ? error.message : "Unable to open subscription checkout.");
+    } finally {
+      setPendingSubscriptionPlan(null);
+    }
+  }
   async function toggleVoiceRecording() {
     const activeRecorder = voiceRecorderRef.current;
     if (activeRecorder?.state === "recording") {
@@ -361,6 +435,18 @@ export function AiCompanionsPage() {
 
   const canCreate = (companionsQuery.data?.companions.length ?? 0) < (companionsQuery.data?.entitlement.companionLimit ?? 1);
   const detail = detailQuery.data;
+  const previewComplete = detail?.entitlement.plan === "free" && detail.conversation.trialRepliesUsed >= detail.entitlement.messageLimit;
+  const paywallVisible = Boolean(detail && (manualPaywallOpen || previewPaywallReady));
+  useEffect(() => {
+    if (!previewComplete) { setPreviewPaywallReady(false); return; }
+    const timer = window.setTimeout(() => setPreviewPaywallReady(true), 1400);
+    return () => window.clearTimeout(timer);
+  }, [detail?.companion.id, previewComplete]);
+  useEffect(() => {
+    if (!paywallVisible) return;
+    document.body.classList.add("ai-panel-open");
+    return () => document.body.classList.remove("ai-panel-open");
+  }, [paywallVisible]);
   const companionPersona = personas.find((persona) => persona.key === detail?.companion.personaKey);
   let companionReplyStyle = "Natural";
   if (detail?.companion.traitsJson) {
@@ -497,7 +583,20 @@ export function AiCompanionsPage() {
         <button className="primary-button" type="button" onClick={() => setSignupOpen(true)}>Create your companion</button>
       </section> : null}
 
-      {sessionQuery.data?.authenticated && canCreate && (!selectedId || creatingCompanion) ? (
+      {detail && paywallVisible && plansQuery.data ? <AiCompanionPaywall
+        companion={detail.companion}
+        plans={plansQuery.data.plans}
+        prices={Object.fromEntries(plansQuery.data.plans.map((plan) => [plan.key, googlePlayProducts.find((product) => product.productId === plan.googlePlayProductId)?.formattedPrice]).filter((entry): entry is ["pro" | "ultra", string] => Boolean(entry[1])))}
+        isAndroid={isNativeAndroidApp()}
+        pendingPlan={pendingSubscriptionPlan}
+        currentPlan={detail.entitlement.plan}
+        error={subscriptionError}
+        onSubscribe={(plan) => { void subscribe(plan); }}
+      /> : null}
+
+      {detail && paywallVisible && plansQuery.isLoading ? <p className="status-message ai-upgrade-loading">Preparing your options...</p> : null}
+
+      {sessionQuery.data?.authenticated && !paywallVisible && canCreate && (!selectedId || creatingCompanion) ? (
         <section className="ai-create-card">
           <div>
             <p className="eyebrow">CREATE YOUR COMPANION</p>
@@ -517,16 +616,16 @@ export function AiCompanionsPage() {
         </section>
       ) : null}
 
-      {sessionQuery.data?.authenticated && creatingCompanion && !canCreate ? <section className="ai-create-card ai-companion-limit-card">
+      {sessionQuery.data?.authenticated && !paywallVisible && creatingCompanion && !canCreate ? <section className="ai-create-card ai-companion-limit-card">
         <div>
           <p className="eyebrow">YOUR COMPANIONS</p>
-          <h2>Your current plan already includes its companion.</h2>
-          <p className="muted">You can keep chatting with {detail?.companion.name ?? "your companion"}. More companion spaces will appear here when they become available for your plan.</p>
+          <h2>{detail?.entitlement.plan === "ultra" ? "Ultra currently supports up to two companions." : "Your current plan already includes its companion."}</h2>
+          <p className="muted">{detail?.entitlement.plan === "ultra" ? "Your two existing companions and their conversations stay exactly as they are. Velora will never replace one automatically." : `You can keep chatting with ${detail?.companion.name ?? "your companion"}. More companion spaces will appear here when they become available for your plan.`}</p>
           <button className="secondary-button ai-create-back" type="button" onClick={() => setCreatingCompanion(false)}>Back to {detail?.companion.name ?? "chat"}</button>
         </div>
       </section> : null}
 
-      {detail && !creatingCompanion ? <section className="ai-companion-workspace">
+      {detail && !creatingCompanion && !paywallVisible ? <section className="ai-companion-workspace">
         <div className="ai-chat-card">
           <header className="ai-chat-header">
             <div className="ai-companion-identity-wrap">
@@ -545,13 +644,13 @@ export function AiCompanionsPage() {
                   <div className="ai-companion-switcher-list">
                     {companionsQuery.data?.companions.map((companion) => <button className={companion.id === selectedId ? "ai-companion-option ai-companion-option-selected" : "ai-companion-option"} type="button" key={companion.id} aria-current={companion.id === selectedId ? "true" : undefined} onClick={() => { setSelectedId(companion.id); setCompanionSwitcherOpen(false); }}><span className="ai-avatar">{companionInitial(companion)}</span><strong>{companion.name}</strong>{companion.id === selectedId ? <span className="ai-companion-check" aria-label="Current companion">✓</span> : null}</button>)}
                   </div>
-                  <button className="ai-meet-companion-option" type="button" onClick={() => { createMutation.reset(); setCreatingCompanion(true); setCompanionSwitcherOpen(false); }}>+ Meet another companion</button>
+                  <button className="ai-meet-companion-option" type="button" onClick={() => { createMutation.reset(); setCompanionSwitcherOpen(false); if (canCreate || detail.entitlement.plan === "ultra") setCreatingCompanion(true); else setManualPaywallOpen(true); }}>+ Meet another companion</button>
                 </div>
               </> : null}
             </div>
             <div className="ai-chat-actions">
-              <span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span>
-              <button className="ai-call-button" type="button" aria-label={`Call ${detail.companion.name}`} title={voiceQuery.data?.calls.enabled ? `Call ${detail.companion.name}` : "Voice calls require Velora Ultra"} onClick={() => setCallOpen(true)} disabled={!voiceQuery.data?.calls.enabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.7 3.3 3.4 5 6.7 6.7l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.7 3.9.7.6 0 1 .4 1 1v3.7c0 .6-.4 1-1 1C10.6 21.5 2.5 13.4 2.5 3.5c0-.6.4-1 1-1h3.7c.6 0 1 .4 1 1 0 1.4.2 2.7.7 3.9.1.4 0 .8-.3 1.1z" /></svg></button>
+              {detail.entitlement.plan === "free" ? <span className="ai-trial-counter">{Math.max(0, detail.entitlement.messageLimit - detail.conversation.trialRepliesUsed)} preview replies left</span> : null}
+              <button className="ai-call-button" type="button" aria-label={`Call ${detail.companion.name}`} title={voiceQuery.data?.calls.enabled ? `Call ${detail.companion.name}` : "Voice calls are available with Velora Pro or Ultra"} onClick={() => setCallOpen(true)} disabled={!voiceQuery.data?.calls.enabled}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.7 3.3 3.4 5 6.7 6.7l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.7 3.9.7.6 0 1 .4 1 1v3.7c0 .6-.4 1-1 1C10.6 21.5 2.5 13.4 2.5 3.5c0-.6.4-1 1-1h3.7c.6 0 1 .4 1 1 0 1.4.2 2.7.7 3.9.1.4 0 .8-.3 1.1z" /></svg></button>
               <div className="ai-companion-menu-wrap">
                 <button className="ai-companion-menu-button" type="button" aria-label="Companion menu" aria-expanded={companionMenuOpen} onClick={() => { setCompanionMenuOpen((open) => !open); setCompanionSwitcherOpen(false); }}><span aria-hidden="true">•••</span></button>
                 {companionMenuOpen ? <div className="ai-companion-menu" role="menu">
@@ -591,8 +690,8 @@ export function AiCompanionsPage() {
               <button className="ai-attachment-button" type="button" aria-label="Attach a photo" aria-expanded={photoMenuOpen} onClick={() => setPhotoMenuOpen((open) => !open)} disabled={!detail.aiEnabled || userPhotoUploadMutation.isPending}>+</button>
               {photoMenuOpen ? <div className="ai-attachment-menu"><label className="ai-photo-picker">Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><label className="ai-photo-picker">Take selfie<input type="file" accept="image/*" capture="user" onChange={(event) => { void chooseUserPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div> : null}
             </div>
-            <textarea value={message} maxLength={1000} placeholder={voiceRecording ? "Recording… tap stop when you're finished" : voiceTranscribing ? "Preparing your voice message…" : `Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || messageMutation.isPending || voiceRecording || voiceTranscribing} />
-            {message.trim() ? <button className="ai-send-button" type="submit" aria-label="Send message" disabled={!detail.aiEnabled || messageMutation.isPending}>{messageMutation.isPending ? <span className="ai-voice-spinner" /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 20 18-8L3 4v6l13 2-13 2z" /></svg>}</button> : <button className={`ai-mic-button${voiceRecording ? " recording" : ""}`} type="button" aria-label={voiceRecording ? "Finish voice message" : `Record a voice message for ${detail.companion.name}`} title={voiceRecording ? "Tap to finish" : "Record a voice message"} onClick={toggleVoiceRecording} disabled={!detail.aiEnabled || !voiceQuery.data?.voice.enabled || messageMutation.isPending || voiceTranscribing}>{voiceTranscribing ? <span className="ai-voice-spinner" /> : voiceRecording ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" /></svg>}</button>}
+            <textarea value={message} maxLength={1000} placeholder={previewComplete ? "Your free preview is complete" : voiceRecording ? "Recording… tap stop when you're finished" : voiceTranscribing ? "Preparing your voice message…" : `Message ${detail.companion.name}...`} onChange={(event) => setMessage(event.target.value)} disabled={!detail.aiEnabled || previewComplete || messageMutation.isPending || voiceRecording || voiceTranscribing} />
+            {message.trim() ? <button className="ai-send-button" type="submit" aria-label="Send message" disabled={!detail.aiEnabled || previewComplete || messageMutation.isPending}>{messageMutation.isPending ? <span className="ai-voice-spinner" /> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 20 18-8L3 4v6l13 2-13 2z" /></svg>}</button> : <button className={`ai-mic-button${voiceRecording ? " recording" : ""}`} type="button" aria-label={voiceRecording ? "Finish voice message" : `Record a voice message for ${detail.companion.name}`} title={voiceRecording ? "Tap to finish" : "Record a voice message"} onClick={toggleVoiceRecording} disabled={!detail.aiEnabled || previewComplete || !voiceQuery.data?.voice.enabled || messageMutation.isPending || voiceTranscribing}>{voiceTranscribing ? <span className="ai-voice-spinner" /> : voiceRecording ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" /></svg>}</button>}
             {selectedUserPhotoUrl ? <div className="ai-attachment-preview"><img src={selectedUserPhotoUrl} alt="Photo ready to send" /><div><strong>Ready to send privately</strong><small>It will appear in chat only after safety review.</small><span><button className="primary-button" type="button" onClick={() => userPhotoUploadMutation.mutate()} disabled={userPhotoUploadMutation.isPending}>{userPhotoUploadMutation.isPending ? userPhotoProgress >= 100 ? "Reviewing..." : `Uploading ${userPhotoProgress}%` : "Send photo"}</button><button className="text-button" type="button" onClick={() => { URL.revokeObjectURL(selectedUserPhotoUrl); setSelectedUserPhoto(null); setSelectedUserPhotoUrl(null); setUserPhotoProgress(0); setUserPhotoError(null); }} disabled={userPhotoUploadMutation.isPending}>Cancel</button></span></div></div> : null}
             {userPhotoUploadMutation.isPending ? <progress max="100" value={userPhotoProgress} aria-label="Photo upload progress" /> : null}
             {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}
@@ -643,7 +742,7 @@ export function AiCompanionsPage() {
                 <div><span>Plan</span><strong>{detail.entitlement.plan === "free" ? "Velora Free" : detail.entitlement.plan === "pro" ? "Velora Pro" : "Velora Ultra"}</strong></div>
                 <div><span>Reply style</span><strong>{companionReplyStyle}</strong></div>
                 <div><span>Voice messages</span><strong>{voiceQuery.data?.voice.enabled ? "Available" : "Unavailable on this plan"}</strong></div>
-                <div><span>Voice calls</span><strong>{voiceQuery.data?.calls.enabled ? "Available" : "Velora Ultra required"}</strong></div>
+                <div><span>Voice calls</span><strong>{voiceQuery.data?.calls.enabled ? "Available" : "Velora Pro or Ultra required"}</strong></div>
               </section>
               <div className="ai-safety-note"><strong>Always AI.</strong><span>Private chats are not a substitute for real-world emergency or professional support.</span></div>
               <p className="ai-panel-note">Photos and voice messages keep their existing privacy and retention behavior.</p>

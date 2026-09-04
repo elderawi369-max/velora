@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -632,6 +632,30 @@ export const aiEntitlements = sqliteTable("ai_entitlements", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const aiCompanionSubscriptions = sqliteTable("ai_companion_subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  plan: text("plan").notNull(),
+  provider: text("provider").notNull(),
+  externalCheckoutId: text("external_checkout_id").notNull().unique(),
+  externalSubscriptionId: text("external_subscription_id"),
+  status: text("status").notNull().default("pending"),
+  currentPeriodStart: integer("current_period_start"),
+  currentPeriodEnd: integer("current_period_end"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionSubscriptionPlans = sqliteTable("ai_companion_subscription_plans", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  plan: text("plan").notNull(),
+  externalProductId: text("external_product_id").notNull(),
+  externalPlanId: text("external_plan_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [uniqueIndex("ai_companion_subscription_plans_provider_plan_idx").on(table.provider, table.plan)]);
 
 export const aiTrialDailyUsage = sqliteTable("ai_trial_daily_usage", {
   dayNumber: integer("day_number").primaryKey(),

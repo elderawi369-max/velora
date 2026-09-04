@@ -104,6 +104,9 @@ export function AppLayout() {
         await queryClient.invalidateQueries({ queryKey: ["conversations"] });
         await queryClient.invalidateQueries({ queryKey: ["notifications"] });
         await queryClient.invalidateQueries({ queryKey: ["challenges"] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-companions"] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-companion"] });
+        await queryClient.invalidateQueries({ queryKey: ["ai-companion-voice"] });
       } catch {
         return;
       }

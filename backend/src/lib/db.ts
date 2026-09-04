@@ -26,6 +26,8 @@ export type EnvBindings = {
   APPLE_SHARED_SECRET?: string;
   GOOGLE_PLAY_PACKAGE_NAME?: string;
   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?: string;
+  PAYPAL_AI_PRO_PLAN_ID?: string;
+  PAYPAL_AI_ULTRA_PLAN_ID?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   AI_COMPANION_ENABLED?: string;

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   aiCompanionAppearanceCatalog,
@@ -11,11 +11,10 @@ import {
   aiCompanionVoiceAssets,
   aiCompanionVoiceProfiles,
   aiCompanions,
-  aiEntitlements,
   aiCompanionVisualIdentities,
-  users,
 } from "../db/schema";
 import { detectVoiceDeliveryStyle, prepareSpokenText, synthesizeCompanionSpeech, voiceForCatalogName, type LockedVoiceProfile } from "../lib/companion-voice";
+import { getAiCompanionEntitlement } from "../lib/ai-companion-plans";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
 import { buildSystemPrompt, containsBlockedOutput, createMemoryCandidates, extractModelText, getOrCreateCharacterCanon, isCrisisMessage, relationshipPointsForMessage, relationshipStageForPoints, safetyReply } from "./ai-companions";
@@ -26,7 +25,7 @@ const voiceMessageSchema = z.object({ messageId: z.string().trim().min(1) });
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const now = () => Date.now();
 const monthPeriod = (timestamp = now()) => new Date(timestamp).toISOString().slice(0, 7);
-const dayPeriod = (timestamp = now()) => new Date(timestamp).toISOString().slice(0, 10);
+const monthStart = (timestamp = now()) => Date.UTC(new Date(timestamp).getUTCFullYear(), new Date(timestamp).getUTCMonth(), 1);
 
 async function contextFor(c: any) {
   return getAccountContext(c.env, c.req.header("cookie"), c.req.header("authorization"));
@@ -40,46 +39,37 @@ async function ownedCompanion(env: EnvBindings, companionId: string, userId: str
 }
 
 async function entitlementFor(env: EnvBindings, userId: string) {
-  const [entitlement] = await getDb(env).select().from(aiEntitlements).where(eq(aiEntitlements.userId, userId)).limit(1);
-  return entitlement ?? null;
+  return getAiCompanionEntitlement(env, userId);
 }
 
-async function betaUser(env: EnvBindings, userId: string) {
-  const [user] = await getDb(env).select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
-  const approved = new Set((env.AI_COMPANION_BETA_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
-  return Boolean(user && approved.has(user.email.toLowerCase()));
+async function sharedVoiceUsage(env: EnvBindings, userId: string) {
+  const start = monthStart();
+  const [voice, calls, reservation] = await Promise.all([
+    env.DB.prepare("SELECT COALESCE(SUM((duration_ms + 999) / 1000), 0) AS seconds FROM ai_companion_voice_assets WHERE user_id = ? AND status = 'ready' AND call_id IS NULL AND deleted_at IS NULL AND duration_ms IS NOT NULL AND created_at >= ?").bind(userId, start).first<{ seconds: number }>(),
+    env.DB.prepare("SELECT COALESCE(SUM(billable_seconds), 0) AS seconds FROM ai_companion_calls WHERE user_id = ? AND created_at >= ?").bind(userId, start).first<{ seconds: number }>(),
+    env.DB.prepare("SELECT reserved_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${userId}:month:${monthPeriod()}`).first<{ reserved_count: number }>(),
+  ]);
+  return {
+    usedSeconds: Number(voice?.seconds ?? 0) + Number(calls?.seconds ?? 0),
+    reservedSeconds: Number(reservation?.reserved_count ?? 0) * 30,
+  };
 }
 
-function voiceLimits(plan: string, beta: boolean) {
-  if (beta || plan === "ultra") return { monthly: 60, daily: 10 };
-  if (plan === "pro") return { monthly: 20, daily: 3 };
-  return { monthly: 0, daily: 0 };
-}
-
-async function reserveVoiceMessage(env: EnvBindings, userId: string, limits: { monthly: number; daily: number }) {
-  if (limits.monthly <= 0 || limits.daily <= 0) return false;
+async function reserveVoiceMessage(env: EnvBindings, userId: string, monthlySeconds: number) {
+  if (monthlySeconds <= 0) return false;
   const timestamp = now();
-  const entries = [
-    { scope: "month", period: monthPeriod(timestamp), limit: limits.monthly },
-    { scope: "day", period: dayPeriod(timestamp), limit: limits.daily },
-  ];
-  const reserved: typeof entries = [];
-  for (const entry of entries) {
-    const usageId = `${userId}:${entry.scope}:${entry.period}`;
-    await env.DB.prepare("INSERT OR IGNORE INTO ai_companion_voice_usage (id, user_id, scope, period, reserved_count, successful_count, updated_at) VALUES (?, ?, ?, ?, 0, 0, ?)").bind(usageId, userId, entry.scope, entry.period, timestamp).run();
-    const result = await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = reserved_count + 1, updated_at = ? WHERE id = ? AND reserved_count + successful_count < ?").bind(timestamp, usageId, entry.limit).run();
-    if ((result.meta.changes ?? 0) === 1) { reserved.push(entry); continue; }
-    for (const prior of reserved) await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = MAX(0, reserved_count - 1), updated_at = ? WHERE id = ?").bind(timestamp, `${userId}:${prior.scope}:${prior.period}`).run();
-    return false;
-  }
-  return true;
+  const usageId = `${userId}:month:${monthPeriod(timestamp)}`;
+  await env.DB.prepare("INSERT OR IGNORE INTO ai_companion_voice_usage (id, user_id, scope, period, reserved_count, successful_count, updated_at) VALUES (?, ?, 'month', ?, 0, 0, ?)").bind(usageId, userId, monthPeriod(timestamp), timestamp).run();
+  const usage = await sharedVoiceUsage(env, userId);
+  const availableReservations = Math.max(0, Math.floor((monthlySeconds - usage.usedSeconds) / 30));
+  if (availableReservations <= 0) return false;
+  const result = await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = reserved_count + 1, updated_at = ? WHERE id = ? AND reserved_count < ?").bind(timestamp, usageId, availableReservations).run();
+  return (result.meta.changes ?? 0) === 1;
 }
 
-async function finishVoiceReservation(env: EnvBindings, userId: string, success: boolean) {
+async function finishVoiceReservation(env: EnvBindings, userId: string) {
   const timestamp = now();
-  for (const entry of [{ scope: "month", period: monthPeriod(timestamp) }, { scope: "day", period: dayPeriod(timestamp) }]) {
-    await env.DB.prepare(`UPDATE ai_companion_voice_usage SET reserved_count = MAX(0, reserved_count - 1), successful_count = successful_count + ?, updated_at = ? WHERE id = ?`).bind(success ? 1 : 0, timestamp, `${userId}:${entry.scope}:${entry.period}`).run();
-  }
+  await env.DB.prepare("UPDATE ai_companion_voice_usage SET reserved_count = MAX(0, reserved_count - 1), updated_at = ? WHERE id = ?").bind(timestamp, `${userId}:month:${monthPeriod(timestamp)}`).run();
 }
 
 async function lockedProfileFor(env: EnvBindings, companion: typeof aiCompanions.$inferSelect) {
@@ -101,16 +91,16 @@ function publicAsset(asset: typeof aiCompanionVoiceAssets.$inferSelect) {
   return { id: asset.id, messageId: asset.messageId, status: asset.status, durationMs: asset.durationMs, characterCount: asset.characterCount, deliveryStyle: asset.deliveryStyle, origin: asset.provider === "user-recorded" ? "user" : "companion", createdAt: asset.createdAt };
 }
 
-async function createVoiceAsset(args: { env: EnvBindings; userId: string; companion: typeof aiCompanions.$inferSelect; conversationId: string; messageId: string; callId?: string; requestKey: string; text: string; profile: LockedVoiceProfile; countMessageQuota: boolean; limits?: { monthly: number; daily: number } }) {
+async function createVoiceAsset(args: { env: EnvBindings; userId: string; companion: typeof aiCompanions.$inferSelect; conversationId: string; messageId: string; callId?: string; requestKey: string; text: string; profile: LockedVoiceProfile; countMessageQuota: boolean; monthlyVoiceSeconds?: number }) {
   const db = getDb(args.env);
   const [existing] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.requestKey, args.requestKey)).limit(1);
   if (existing && existing.status !== "failed") return existing;
   if (existing?.status === "failed") await db.delete(aiCompanionVoiceAssets).where(and(eq(aiCompanionVoiceAssets.id, existing.id), eq(aiCompanionVoiceAssets.status, "failed")));
   if (!args.env.COMPANION_AUDIO) throw new Error("voice_storage_not_configured");
-  if (args.countMessageQuota && !(await reserveVoiceMessage(args.env, args.userId, args.limits ?? { monthly: 0, daily: 0 }))) throw new Error("voice_quota_complete");
+  if (args.countMessageQuota && !(await reserveVoiceMessage(args.env, args.userId, args.monthlyVoiceSeconds ?? 0))) throw new Error("voice_quota_complete");
   const spoken = prepareSpokenText(args.text);
   if (!spoken) {
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId, false);
+    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
     throw new Error("voice_text_empty");
   }
   const timestamp = now();
@@ -118,7 +108,7 @@ async function createVoiceAsset(args: { env: EnvBindings; userId: string; compan
   const draft = { id: assetId, userId: args.userId, companionId: args.companion.id, conversationId: args.conversationId, messageId: args.messageId, callId: args.callId ?? null, requestKey: args.requestKey, objectKey: null, status: "generating", durationMs: null, characterCount: spoken.length, provider: args.profile.provider, profileVersion: args.profile.profileVersion, deliveryStyle: detectVoiceDeliveryStyle(spoken), errorCode: null, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
   try { await db.insert(aiCompanionVoiceAssets).values(draft); }
   catch {
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId, false);
+    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
     const [duplicate] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.requestKey, args.requestKey)).limit(1);
     if (duplicate) return duplicate;
     throw new Error("voice_asset_create_failed");
@@ -129,12 +119,12 @@ async function createVoiceAsset(args: { env: EnvBindings; userId: string; compan
     const objectKey = `voice/${args.userId}/${args.companion.id}/${assetId}/${crypto.randomUUID()}.mp3`;
     await args.env.COMPANION_AUDIO.put(objectKey, audio.bytes, { httpMetadata: { contentType: "audio/mpeg", cacheControl: "private, no-store" }, customMetadata: { profileVersion: String(args.profile.profileVersion), voiceName: args.profile.voiceName } });
     await db.update(aiCompanionVoiceAssets).set({ objectKey, status: "ready", durationMs: audio.durationMs, deliveryStyle: audio.deliveryStyle, updatedAt: now() }).where(eq(aiCompanionVoiceAssets.id, assetId));
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId, true);
+    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
     const [ready] = await db.select().from(aiCompanionVoiceAssets).where(eq(aiCompanionVoiceAssets.id, assetId)).limit(1);
     return ready;
   } catch (error) {
     await db.update(aiCompanionVoiceAssets).set({ status: "failed", errorCode: error instanceof Error ? error.message.slice(0, 100) : "voice_generation_failed", updatedAt: now() }).where(eq(aiCompanionVoiceAssets.id, assetId));
-    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId, false);
+    if (args.countMessageQuota) await finishVoiceReservation(args.env, args.userId);
     throw error;
   }
 }
@@ -144,25 +134,21 @@ async function companionContext(c: any) {
   if (!context) return null;
   const companion = await ownedCompanion(c.env, c.req.param("companionId"), context.userId);
   if (!companion) return null;
-  const [conversation, entitlement, beta, profile] = await Promise.all([
+  const [conversation, entitlement, profile] = await Promise.all([
     getDb(c.env).select().from(aiCompanionConversations).where(and(eq(aiCompanionConversations.companionId, companion.id), eq(aiCompanionConversations.userId, context.userId))).limit(1).then((rows) => rows[0]),
-    entitlementFor(c.env, context.userId), betaUser(c.env, context.userId), lockedProfileFor(c.env, companion),
+    entitlementFor(c.env, context.userId), lockedProfileFor(c.env, companion),
   ]);
   if (!conversation || !entitlement) return null;
-  return { context, companion, conversation, entitlement, beta, profile };
+  return { context, companion, conversation, entitlement, profile };
 }
 
 aiCompanionVoiceRoutes.get("/:companionId/voice", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion voice is unavailable." }, 404);
-  const limits = voiceLimits(data.entitlement.plan, data.beta);
-  const [month, day] = await Promise.all([
-    c.env.DB.prepare("SELECT reserved_count, successful_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${data.context.userId}:month:${monthPeriod()}`).first<{ reserved_count: number; successful_count: number }>(),
-    c.env.DB.prepare("SELECT reserved_count, successful_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${data.context.userId}:day:${dayPeriod()}`).first<{ reserved_count: number; successful_count: number }>(),
-  ]);
+  const usage = await sharedVoiceUsage(c.env, data.context.userId);
   const voiceConfigured = c.env.AI_COMPANION_VOICE_ENABLED === "true" && Boolean(c.env.COMPANION_AUDIO && c.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON && data.profile);
   const callsConfigured = c.env.AI_COMPANION_CALLS_ENABLED === "true" && voiceConfigured && Boolean(c.env.AI);
-  return c.json({ voice: { enabled: voiceConfigured && limits.monthly > 0, catalogName: data.profile?.catalogName ?? null, engine: data.profile?.engine ?? null, monthlyLimit: limits.monthly, monthlyUsed: month?.successful_count ?? 0, dailyLimit: limits.daily, dailyUsed: day?.successful_count ?? 0, maxCharacters: 500, maxDurationSeconds: 30 }, calls: { enabled: callsConfigured && (data.beta || data.entitlement.plan === "ultra"), monthlySeconds: 3600, transcriptionDisclosure: "Your recorded turn is transcribed to create a reply. Raw call audio is not retained." } });
+  return c.json({ voice: { enabled: voiceConfigured && data.entitlement.voiceMonthlySeconds > 0, catalogName: data.profile?.catalogName ?? null, engine: data.profile?.engine ?? null, monthlyLimit: data.entitlement.voiceMonthlySeconds, monthlyUsed: usage.usedSeconds, dailyLimit: 0, dailyUsed: 0, maxCharacters: 500, maxDurationSeconds: 30 }, calls: { enabled: callsConfigured && data.entitlement.voiceMonthlySeconds > 0, monthlySeconds: data.entitlement.voiceMonthlySeconds, transcriptionDisclosure: "Your recorded turn is transcribed to create a reply. Raw call audio is not retained." } });
 });
 
 aiCompanionVoiceRoutes.post("/:companionId/voice-messages", async (c) => {
@@ -171,12 +157,11 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-messages", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !data.profile || !c.env.COMPANION_AUDIO || !c.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON) return c.json({ error: "Companion voice messages are not configured yet." }, 503);
-  const limits = voiceLimits(data.entitlement.plan, data.beta);
-  if (limits.monthly <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
+  if (data.entitlement.voiceMonthlySeconds <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
   const [message] = await getDb(c.env).select().from(aiCompanionMessages).where(and(eq(aiCompanionMessages.id, parsed.data.messageId), eq(aiCompanionMessages.conversationId, data.conversation.id), eq(aiCompanionMessages.role, "assistant"))).limit(1);
   if (!message || message.moderationStatus !== "allowed") return c.json({ error: "That reply cannot be made into a voice note." }, 404);
   try {
-    const asset = await createVoiceAsset({ env: c.env, userId: data.context.userId, companion: data.companion, conversationId: data.conversation.id, messageId: message.id, requestKey: `message:${message.id}:profile:${data.profile.profileVersion}`, text: message.body, profile: data.profile, countMessageQuota: true, limits });
+    const asset = await createVoiceAsset({ env: c.env, userId: data.context.userId, companion: data.companion, conversationId: data.conversation.id, messageId: message.id, requestKey: `message:${message.id}:profile:${data.profile.profileVersion}`, text: message.body, profile: data.profile, countMessageQuota: true, monthlyVoiceSeconds: data.entitlement.voiceMonthlySeconds });
     return c.json({ voiceAsset: publicAsset(asset) }, asset.status === "ready" ? 201 : 202);
   } catch (error) {
     if (error instanceof Error && error.message === "voice_quota_complete") return c.json({ error: "Your voice-message allowance is complete for now." }, 429);
@@ -199,13 +184,13 @@ aiCompanionVoiceRoutes.post("/:companionId/calls", async (c) => {
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (c.env.AI_COMPANION_CALLS_ENABLED !== "true" || c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !c.env.AI || !c.env.COMPANION_AUDIO || !data.profile) return c.json({ error: "Companion calls are not configured yet." }, 503);
-  if (!data.beta && data.entitlement.plan !== "ultra") return c.json({ error: "Companion calls are available with Velora Ultra." }, 403);
+  if (data.entitlement.voiceMonthlySeconds <= 0) return c.json({ error: "Companion calls are available with Velora Pro or Ultra." }, 403);
   const timestamp = now();
   await c.env.DB.prepare("UPDATE ai_companion_calls SET status = 'ended', ended_at = ?, updated_at = ? WHERE user_id = ? AND status IN ('calling','connected') AND updated_at < ?").bind(timestamp, timestamp, data.context.userId, timestamp - 90_000).run();
   const active = await c.env.DB.prepare("SELECT id FROM ai_companion_calls WHERE user_id = ? AND status IN ('calling','connected') LIMIT 1").bind(data.context.userId).first<{ id: string }>();
   if (active) return c.json({ error: "You already have a companion call in progress." }, 409);
-  const usage = await c.env.DB.prepare("SELECT COALESCE(SUM(billable_seconds), 0) AS seconds FROM ai_companion_calls WHERE user_id = ? AND created_at >= ?").bind(data.context.userId, Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).first<{ seconds: number }>();
-  const remaining = Math.max(0, 3600 - Number(usage?.seconds ?? 0));
+  const usage = await sharedVoiceUsage(c.env, data.context.userId);
+  const remaining = Math.max(0, data.entitlement.voiceMonthlySeconds - usage.usedSeconds - usage.reservedSeconds);
   if (remaining <= 0) return c.json({ error: "Your companion call allowance is complete for this month." }, 429);
   const call = { id: id("aicall"), userId: data.context.userId, companionId: data.companion.id, conversationId: data.conversation.id, status: "connected", connectedAt: timestamp, lastHeartbeatAt: timestamp, endedAt: null, billableSeconds: 0, maxSeconds: remaining, createdAt: timestamp, updatedAt: timestamp };
   await getDb(c.env).insert(aiCompanionCalls).values(call);
@@ -260,10 +245,9 @@ aiCompanionVoiceRoutes.post("/:companionId/voice-input/transcribe", async (c) =>
   const data = await companionContext(c);
   if (!data) return c.json({ error: "Companion not found." }, 404);
   if (c.env.AI_COMPANION_VOICE_ENABLED !== "true" || !c.env.AI || !data.profile) return c.json({ error: "Voice messages are unavailable." }, 503);
-  const limits = voiceLimits(data.entitlement.plan, data.beta);
-  if (limits.monthly <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
-  const day = await c.env.DB.prepare("SELECT reserved_count, successful_count FROM ai_companion_voice_usage WHERE id = ?").bind(`${data.context.userId}:day:${dayPeriod()}`).first<{ reserved_count: number; successful_count: number }>();
-  if ((day?.reserved_count ?? 0) + (day?.successful_count ?? 0) >= limits.daily) return c.json({ error: "Your voice-message allowance is complete for today." }, 429);
+  if (data.entitlement.voiceMonthlySeconds <= 0) return c.json({ error: "Voice messages are available with Velora Pro or Ultra." }, 403);
+  const usage = await sharedVoiceUsage(c.env, data.context.userId);
+  if (usage.usedSeconds + usage.reservedSeconds >= data.entitlement.voiceMonthlySeconds) return c.json({ error: "Your shared voice allowance is complete for this month." }, 429);
   const recording = await readRecordedAudio(c);
   if (!recording) return c.json({ error: "Record a voice message up to 4 MB." }, 400);
   let transcript = "";

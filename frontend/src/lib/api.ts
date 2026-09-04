@@ -923,6 +923,19 @@ export type AiEntitlement = {
   messageLimit: number;
   photoLimit: number;
   companionLimit: number;
+  voiceMonthlySeconds: number;
+};
+
+export type AiCompanionSubscriptionPlan = {
+  key: "pro" | "ultra";
+  name: string;
+  positioning: string;
+  messageLimit: number;
+  companionLimit: number;
+  photoLimit: number;
+  webPriceCents: number;
+  googlePlayFallbackPrice: string;
+  googlePlayProductId: string;
 };
 
 export type AiCompanionMessage = {
@@ -1025,6 +1038,26 @@ export function createAiCompanion(payload: {
   appearanceId: string;
 }) {
   return request<{ companion: AiCompanion }>("/api/ai-companions", { method: "POST", body: payload });
+}
+
+export function fetchAiCompanionPlans() {
+  return request<{ plans: AiCompanionSubscriptionPlan[] }>("/api/ai-companions/plans");
+}
+
+export function createAiCompanionSubscriptionCheckout(plan: "pro" | "ultra") {
+  return request<{ checkoutUrl: string; checkoutId: string }>("/api/ai-companions/subscriptions/checkout", { method: "POST", body: { plan } });
+}
+
+export function completeAiCompanionSubscriptionCheckout(checkoutId: string) {
+  return request<{ entitlement: AiEntitlement }>("/api/ai-companions/subscriptions/checkout/complete", { method: "POST", body: { checkoutId } });
+}
+
+export function refreshAiCompanionSubscription() {
+  return request<{ entitlement: AiEntitlement | null }>("/api/ai-companions/subscriptions/refresh", { method: "POST" });
+}
+
+export function verifyGoogleAiCompanionSubscription(payload: { plan: "pro" | "ultra"; purchaseToken: string; packageName: string; productId: string; orderId?: string }) {
+  return request<{ entitlement: AiEntitlement }>("/api/ai-companions/subscriptions/google", { method: "POST", body: payload });
 }
 
 export type AiCompanionAppearance = { id: string; name: string; identity: "woman" | "man" };
