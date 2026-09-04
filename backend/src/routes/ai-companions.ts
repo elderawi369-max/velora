@@ -6,6 +6,7 @@ import { logEvent } from "../lib/analytics";
 import { getDb, type EnvBindings } from "../lib/db";
 import { getAccountContext } from "../lib/profile-context";
 import { aiCompanionPlans, getAiCompanionEntitlement, publicAiCompanionPlans } from "../lib/ai-companion-plans";
+import { aiCompanionPhotoGenerationGuardConfig, aiCompanionPhotoGenerationPlanLimit } from "../lib/ai-companion-photo-guards";
 
 const trialReplies = aiCompanionPlans.free.messageLimit;
 const personaKeys = ["supportive_partner", "playful_tease", "sarcastic_best_friend", "confident_leader", "quiet_romantic", "personal_growth_companion"] as const;
@@ -351,6 +352,43 @@ function productionPhotoScene(request: z.infer<typeof photoSceneSchema>, state: 
 }
 function currentBillingPeriod(timestamp = now()) {
   return new Date(timestamp).toISOString().slice(0, 7);
+}
+function currentUsageDay(timestamp = now()) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+type PhotoGenerationReservation =
+  | { allowed: true; usagePeriod: string }
+  | { allowed: false; reason: "active" | "budget" }
+  | { allowed: false; reason: "quota"; period: "lifetime" | "daily"; limit: number };
+async function reservePhotoGeneration(env: EnvBindings, userId: string, plan: "free" | "pro" | "ultra"): Promise<PhotoGenerationReservation> {
+  const timestamp = now();
+  const generationLimit = aiCompanionPhotoGenerationPlanLimit(env, plan);
+  const usagePeriod = generationLimit.period === "lifetime" ? "free:lifetime" : `${plan}:${currentUsageDay(timestamp)}`;
+  const billingPeriod = currentBillingPeriod(timestamp);
+  const { estimatedCostCents, monthlySpendCeilingCents: spendCeilingCents } = aiCompanionPhotoGenerationGuardConfig(env);
+  await env.DB.prepare("DELETE FROM ai_companion_photo_generation_locks WHERE user_id = ? AND acquired_at < ?").bind(userId, timestamp - 5 * 60_000).run();
+  const lock = await env.DB.prepare("INSERT OR IGNORE INTO ai_companion_photo_generation_locks (user_id, usage_period, acquired_at) VALUES (?, ?, ?)").bind(userId, usagePeriod, timestamp).run();
+  if ((lock.meta.changes ?? 0) !== 1) return { allowed: false, reason: "active" };
+  const userReservation = await env.DB.prepare(
+    "INSERT INTO ai_companion_photo_generation_usage (user_id, usage_period, attempt_count, estimated_spend_cents, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(user_id, usage_period) DO UPDATE SET attempt_count = attempt_count + 1, estimated_spend_cents = estimated_spend_cents + excluded.estimated_spend_cents, updated_at = excluded.updated_at WHERE attempt_count < ?",
+  ).bind(userId, usagePeriod, estimatedCostCents, timestamp, generationLimit.limit).run();
+  if ((userReservation.meta.changes ?? 0) !== 1) {
+    await env.DB.prepare("DELETE FROM ai_companion_photo_generation_locks WHERE user_id = ?").bind(userId).run();
+    return { allowed: false, reason: "quota", period: generationLimit.period, limit: generationLimit.limit };
+  }
+  const budgetReservation = await env.DB.prepare(
+    "INSERT INTO ai_companion_photo_generation_budget (billing_period, attempt_count, estimated_spend_cents, updated_at) SELECT ?, 1, ?, ? WHERE ? <= ? ON CONFLICT(billing_period) DO UPDATE SET attempt_count = attempt_count + 1, estimated_spend_cents = estimated_spend_cents + excluded.estimated_spend_cents, updated_at = excluded.updated_at WHERE estimated_spend_cents + excluded.estimated_spend_cents <= ?",
+  ).bind(billingPeriod, estimatedCostCents, timestamp, estimatedCostCents, spendCeilingCents, spendCeilingCents).run();
+  if ((budgetReservation.meta.changes ?? 0) !== 1) {
+    await env.DB.prepare("UPDATE ai_companion_photo_generation_usage SET attempt_count = MAX(0, attempt_count - 1), estimated_spend_cents = MAX(0, estimated_spend_cents - ?), updated_at = ? WHERE user_id = ? AND usage_period = ?")
+      .bind(estimatedCostCents, now(), userId, usagePeriod).run();
+    await env.DB.prepare("DELETE FROM ai_companion_photo_generation_locks WHERE user_id = ?").bind(userId).run();
+    return { allowed: false, reason: "budget" };
+  }
+  return { allowed: true, usagePeriod };
+}
+async function finishPhotoGeneration(env: EnvBindings, userId: string, usagePeriod: string) {
+  await env.DB.prepare("DELETE FROM ai_companion_photo_generation_locks WHERE user_id = ? AND usage_period = ?").bind(userId, usagePeriod).run();
 }
 async function registerSuccessfulPhotoDelivery(env: EnvBindings, args: { userId: string; companionId: string; photoId: string; photoAssetId: string; requestMessageId: string | null; photoLimit: number; plan: string }) {
   const existing = await env.DB.prepare("SELECT id FROM ai_companion_photo_deliveries WHERE photo_id = ? LIMIT 1").bind(args.photoId).first<{ id: string }>();
@@ -1231,15 +1269,21 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
     return c.json({ photo: { id: photoId, status: "ready", source: "bank" } }, 201);
   }
   if (!c.env.COMPANION_IDENTITY_EVALUATOR_URL || !c.env.COMPANION_IDENTITY_EVALUATOR_TOKEN) return c.json({ error: "Companion photo generation is not released until the identity consistency evaluator is configured." }, 503);
+  const generationReservation = await reservePhotoGeneration(c.env, context.userId, entitlement.plan as "free" | "pro" | "ultra");
+  if (!generationReservation.allowed) {
+    if (generationReservation.reason === "active") return c.json({ error: "Your photo is still being prepared. Please wait for it to finish before requesting another." }, 409);
+    if (generationReservation.reason === "quota") return c.json({ error: generationReservation.period === "lifetime" ? "You've used the generated photo included with your free preview." : `You've created your ${generationReservation.limit} generated photos for today. Come back tomorrow for more.` }, 429);
+    return c.json({ error: "Companion photo generation is taking a short pause. Your monthly photo allowance is safe—please try again later." }, 503);
+  }
   const selectedReferences = [referenceKeys[0], referenceKeys[5], referenceKeys[1], referenceKeys[4]];
-  await db.insert(aiCompanionPhotos).values({ id: photoId, userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: parsed.data.requestMessageId ?? null, photoAssetId: null, sceneJson: JSON.stringify({ style: parsed.data.style, prompt: parsed.data.prompt, visualState, fingerprint }), prompt, objectKey: null, status: "generating", identityScore: null, validationStatus: "pending", generationAttempt: 1, createdAt: timestamp, updatedAt: timestamp });
   try {
+    await db.insert(aiCompanionPhotos).values({ id: photoId, userId: context.userId, companionId: companion.id, visualIdentityVersion: visualIdentity.version, requestMessageId: parsed.data.requestMessageId ?? null, photoAssetId: null, sceneJson: JSON.stringify({ style: parsed.data.style, prompt: parsed.data.prompt, visualState, fingerprint }), prompt, objectKey: null, status: "generating", identityScore: null, validationStatus: "pending", generationAttempt: 1, createdAt: timestamp, updatedAt: timestamp });
     const image = await generateReferenceImage(c.env, prompt, selectedReferences);
     const evaluation = await evaluatePhotoIdentity(c.env, image, selectedReferences);
     if (!evaluation.passed) {
       await db.update(aiCompanionPhotos).set({ status: "rejected", identityScore: evaluation.score, validationStatus: "failed", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photoId));
       await logEvent(c.env, { eventType: "ai_companion_photo_rejected", userId: context.userId, profileId: context.profileId, eventData: { companionId: companion.id, appearanceId: visualIdentity.appearanceCatalogId, score: evaluation.score } });
-      return c.json({ error: "The generated photo did not pass identity and safety checks. No photo allowance was used." }, 422);
+      return c.json({ error: "The generated photo did not pass identity and safety checks. No monthly photo credit was used." }, 422);
     }
     const assetId = id("aiphoto_asset");
     const objectKey = `catalog/bank/v1/${visualIdentity.appearanceCatalogId}/${fingerprint}/${assetId}.png`;
@@ -1252,7 +1296,9 @@ aiCompanionRoutes.post("/:companionId/photos", async (c) => {
   } catch (error) {
     await db.update(aiCompanionPhotos).set({ status: "failed", validationStatus: "failed", updatedAt: now() }).where(eq(aiCompanionPhotos.id, photoId));
     console.error("Companion production photo failed", { companionId: companion.id, photoId, error: error instanceof Error ? error.message : String(error) });
-    return c.json({ error: "The photo could not be prepared safely. No photo allowance was used." }, 502);
+    return c.json({ error: "The photo could not be prepared safely. No monthly photo credit was used." }, 502);
+  } finally {
+    await finishPhotoGeneration(c.env, context.userId, generationReservation.usagePeriod);
   }
 });
 

@@ -1189,6 +1189,21 @@ export function AdminPage() {
                 recentPurchases={analytics.googlePlayBilling.recentPurchases}
               />
 
+              <MetricGrid
+                eyebrow="AI companion photos"
+                title={`Generation safeguards · ${analytics.aiCompanionPhotoGeneration.billingPeriod}`}
+                items={[
+                  { label: "Generation attempts", value: analytics.aiCompanionPhotoGeneration.attempts.toString() },
+                  { label: "Estimated spend", value: formatUsd(analytics.aiCompanionPhotoGeneration.estimatedSpendCents) },
+                  { label: "Monthly ceiling", value: formatUsd(analytics.aiCompanionPhotoGeneration.spendCeilingCents) },
+                  { label: "Budget remaining", value: formatUsd(analytics.aiCompanionPhotoGeneration.remainingCents) },
+                  { label: "Free cap", value: `${analytics.aiCompanionPhotoGeneration.freeLifetimeLimit} lifetime` },
+                  { label: "Pro daily cap", value: `${analytics.aiCompanionPhotoGeneration.proDailyLimit} photos` },
+                  { label: "Ultra daily cap", value: `${analytics.aiCompanionPhotoGeneration.ultraDailyLimit} photos` },
+                  { label: "Generation status", value: analytics.aiCompanionPhotoGeneration.paused ? "Paused at ceiling" : "Available" },
+                ]}
+              />
+
               <section className="card-grid">
                 <EngagementPanel
                   eyebrow="Engagement"

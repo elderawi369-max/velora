@@ -495,6 +495,27 @@ export const aiCompanionVoiceProfiles = sqliteTable("ai_companion_voice_profiles
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const aiCompanionPhotoGenerationUsage = sqliteTable("ai_companion_photo_generation_usage", {
+  userId: text("user_id").notNull().references(() => users.id),
+  usagePeriod: text("usage_period").notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  estimatedSpendCents: integer("estimated_spend_cents").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiCompanionPhotoGenerationLocks = sqliteTable("ai_companion_photo_generation_locks", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  usagePeriod: text("usage_period").notNull(),
+  acquiredAt: integer("acquired_at").notNull(),
+});
+
+export const aiCompanionPhotoGenerationBudget = sqliteTable("ai_companion_photo_generation_budget", {
+  billingPeriod: text("billing_period").primaryKey(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  estimatedSpendCents: integer("estimated_spend_cents").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const aiCompanionVoiceAssets = sqliteTable("ai_companion_voice_assets", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id),

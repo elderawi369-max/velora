@@ -16,6 +16,7 @@ import { requireFounderAdmin } from "../lib/admin";
 import { logEvent } from "../lib/analytics";
 import { giftCatalog, createNotification, type GiftType } from "../lib/commerce";
 import { getDb, type EnvBindings } from "../lib/db";
+import { aiCompanionPhotoGenerationGuardConfig } from "../lib/ai-companion-photo-guards";
 import { sendFounderAnnouncementEmail, sendSupportReplyEmail } from "../lib/email";
 import { containsBlockedContactInfo } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
@@ -1038,6 +1039,17 @@ adminRoutes.get("/analytics", async (c) => {
     [sevenDaysAgo, now],
   );
 
+  const photoBudgetPeriod = new Date(now).toISOString().slice(0, 7);
+  const photoBudgetConfig = aiCompanionPhotoGenerationGuardConfig(c.env);
+  const photoBudgetUsage = await queryFirst<{ attemptCount: number; estimatedSpendCents: number }>(
+    c.env,
+    `SELECT attempt_count AS attemptCount, estimated_spend_cents AS estimatedSpendCents
+       FROM ai_companion_photo_generation_budget
+      WHERE billing_period = ?`,
+    [photoBudgetPeriod],
+  );
+  const photoSpendUsedCents = normalizeNumber(photoBudgetUsage?.estimatedSpendCents);
+
   return c.json({
     overview,
     funnelLast7d: {
@@ -1060,6 +1072,17 @@ adminRoutes.get("/analytics", async (c) => {
     retention,
     dailyTrends,
     googlePlayBilling,
+    aiCompanionPhotoGeneration: {
+      billingPeriod: photoBudgetPeriod,
+      freeLifetimeLimit: photoBudgetConfig.freeLifetimeLimit,
+      proDailyLimit: photoBudgetConfig.proDailyLimit,
+      ultraDailyLimit: photoBudgetConfig.ultraDailyLimit,
+      attempts: normalizeNumber(photoBudgetUsage?.attemptCount),
+      estimatedSpendCents: photoSpendUsedCents,
+      spendCeilingCents: photoBudgetConfig.monthlySpendCeilingCents,
+      remainingCents: Math.max(0, photoBudgetConfig.monthlySpendCeilingCents - photoSpendUsedCents),
+      paused: photoSpendUsedCents + photoBudgetConfig.estimatedCostCents > photoBudgetConfig.monthlySpendCeilingCents,
+    },
     topProfiles,
     recentEvents,
   });

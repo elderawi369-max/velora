@@ -251,6 +251,17 @@ export type AdminAnalytics = {
     summary: GooglePlayBillingSummary;
     recentPurchases: GooglePlayBillingPurchase[];
   };
+  aiCompanionPhotoGeneration: {
+    billingPeriod: string;
+    freeLifetimeLimit: number;
+    proDailyLimit: number;
+    ultraDailyLimit: number;
+    attempts: number;
+    estimatedSpendCents: number;
+    spendCeilingCents: number;
+    remainingCents: number;
+    paused: boolean;
+  };
   topProfiles: Array<{
     id: string;
     username: string;

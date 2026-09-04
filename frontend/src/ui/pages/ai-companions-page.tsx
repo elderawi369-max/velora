@@ -697,7 +697,7 @@ export function AiCompanionsPage() {
             {userPhotoQuery.data?.quota ? <small className="ai-photo-quota">{userPhotoQuery.data.quota.monthlyLimit > 0 ? `${userPhotoQuery.data.quota.remaining} of ${userPhotoQuery.data.quota.monthlyLimit} photo sends left this month` : "Photo sending is available with Velora Pro or Ultra"}</small> : null}
             {userPhotoError ? <p className="form-error">{userPhotoError}</p> : null}
             {userPhotoDeleteMutation.error ? <p className="form-error">{userPhotoDeleteMutation.error.message}</p> : null}
-            {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">Photo delivery failed: {photoRequestError}</p> : null}
+            {messageMutation.error ? <p className="form-error">{messageMutation.error.message}</p> : null}{photoRequestError ? <p className="form-error">{photoRequestError}</p> : null}
             {voiceError ? <p className="form-error">Voice note: {voiceError}</p> : null}
             {voiceQuery.data?.voice.enabled ? <small className="ai-voice-quota">{Math.max(0, voiceQuery.data.voice.dailyLimit - voiceQuery.data.voice.dailyUsed)} voice notes left today · {Math.max(0, voiceQuery.data.voice.monthlyLimit - voiceQuery.data.voice.monthlyUsed)} this month</small> : null}
           </form>
