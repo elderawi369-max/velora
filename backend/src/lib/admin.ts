@@ -25,8 +25,6 @@ export function requireAdmin(c: Context<{ Bindings: EnvBindings }>) {
 }
 
 export async function requireFounderAdmin(c: Context<{ Bindings: EnvBindings }>) {
-  requireAdmin(c);
-
   const userId = await getUserIdFromSession(
     c.env,
     c.req.header("Cookie"),

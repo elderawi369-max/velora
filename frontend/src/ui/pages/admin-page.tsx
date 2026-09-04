@@ -29,6 +29,7 @@ import {
 } from "../../lib/admin-api";
 
 const adminStorageKey = "velora-admin-key";
+const founderSessionAdminKey = "founder-session";
 
 function formatUsd(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -440,7 +441,7 @@ function TrendPanel({
 export function AdminPage() {
   const queryClient = useQueryClient();
   const [adminKeyInput, setAdminKeyInput] = useState("");
-  const [activeAdminKey, setActiveAdminKey] = useState("");
+  const [activeAdminKey, setActiveAdminKey] = useState(founderSessionAdminKey);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   const [lookupUsername, setLookupUsername] = useState("");
   const [selectedProfile, setSelectedProfile] = useState<AdminProfile | null>(null);
@@ -471,7 +472,7 @@ export function AdminPage() {
   useEffect(() => {
     const saved = window.localStorage.getItem(adminStorageKey) ?? "";
     setAdminKeyInput(saved);
-    setActiveAdminKey(saved);
+    setActiveAdminKey(saved || founderSessionAdminKey);
   }, []);
 
   const reportsQuery = useQuery({
@@ -680,8 +681,13 @@ export function AdminPage() {
   }, [reports]);
 
   function saveAdminKey() {
-    window.localStorage.setItem(adminStorageKey, adminKeyInput);
-    setActiveAdminKey(adminKeyInput);
+    const nextKey = adminKeyInput.trim();
+    if (nextKey) {
+      window.localStorage.setItem(adminStorageKey, nextKey);
+    } else {
+      window.localStorage.removeItem(adminStorageKey);
+    }
+    setActiveAdminKey(nextKey || founderSessionAdminKey);
   }
 
   function toggleConversation(conversationId: string | null) {
