@@ -1412,7 +1412,7 @@ body.ai-panel-open {
   .ai-companion-option { min-height: 62px; padding: 9px 10px; }
   .ai-meet-companion-option { min-height: 52px; padding: 15px 10px 10px; font-size: 0.94rem; }
   .ai-companion-menu { top: calc(100% + 8px); right: -4px; }
-  .ai-messages { min-height: 420px; height: calc(100dvh - 280px); max-height: none; padding: 14px 12px; }
+  .ai-messages { min-height: 420px; height: auto; max-height: none; padding: 14px 12px; overflow-y: visible; overscroll-behavior-y: auto; touch-action: auto; }
   .ai-composer { grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; }
   .ai-composer textarea { min-width: 0; }
   .ai-message { max-width: 92%; }
