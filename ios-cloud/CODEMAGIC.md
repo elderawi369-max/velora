@@ -4,6 +4,8 @@ Select branch `codex/ios-cloud-build` in Codemagic, then **Check for configurati
 
 This directory is the standalone 1.0.37/build-3 Firebase-enabled iOS source snapshot. The adjacent historical `frontend` directory is not used by either workflow. It includes the refreshed embedded web app and the local native packages. No npm install, CocoaPods, or Expo conversion is needed. Xcode resolves the remote Swift packages.
 
+The cloud snapshot also includes the AdMob initialization correction identified by the first Xcode run: await SDK startup before completing consent preparation and allowing ad requests.
+
 ## Workflows
 
 - **Velora iOS - Compile check (no signing)** compiles the Release configuration for iPhone without Apple credentials. It does not produce an installable IPA. Use it to verify native compilation while configuring signing.

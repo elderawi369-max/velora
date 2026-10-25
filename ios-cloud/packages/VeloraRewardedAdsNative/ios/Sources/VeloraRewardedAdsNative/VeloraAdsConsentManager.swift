@@ -38,7 +38,7 @@ final class VeloraAdsConsentManager {
 
                 let allowed = ConsentInformation.shared.canRequestAds
                 if allowed && !self.mobileAdsStarted {
-                    MobileAds.shared.start()
+                    _ = await MobileAds.shared.start()
                     self.mobileAdsStarted = true
                 }
                 self.finish(allowed: allowed)
