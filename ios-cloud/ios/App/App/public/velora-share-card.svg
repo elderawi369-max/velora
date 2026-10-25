@@ -1,0 +1,33 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" rx="40" fill="#FFF8F5"/>
+  <rect x="40" y="40" width="1120" height="550" rx="36" fill="url(#bg)"/>
+  <circle cx="228" cy="315" r="138" fill="#FFF6F4"/>
+  <circle cx="228" cy="315" r="118" fill="#F6E3E6"/>
+  <path d="M130 324C130 264.353 178.353 216 238 216C271.261 216 301.639 231.115 321.1 255.267" stroke="#E6BDC6" stroke-width="16" stroke-linecap="round"/>
+  <path d="M161 246C173.8 236.4 190.867 230 208.467 228.933" stroke="#F0D1D8" stroke-width="16" stroke-linecap="round"/>
+  <path d="M156 251.333L204 370.267C206.133 375.6 213.6 375.6 215.733 370.267L263.733 251.333" stroke="#4E2233" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M190.667 272.667C197.6 262 207.733 255.6 219.467 255.6C230.667 255.6 240.8 262 247.733 272.667" stroke="#B45469" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="276" cy="241.333" r="15.333" fill="#B45469"/>
+  <circle cx="276" cy="241.333" r="6" fill="#FFF7F5"/>
+  <g filter="url(#shadow)">
+    <path d="M468 196H971" stroke="#E9CED4" stroke-width="2"/>
+  </g>
+  <text x="468" y="280" fill="#341823" font-family="Georgia, 'Times New Roman', serif" font-size="104" font-weight="700" letter-spacing="-4">Velora</text>
+  <text x="468" y="356" fill="#6F5660" font-family="'Segoe UI', Arial, sans-serif" font-size="34">Text-first chemistry with personality, warmth, and premium presence.</text>
+  <text x="468" y="428" fill="#B45469" font-family="'Segoe UI', Arial, sans-serif" font-size="22" letter-spacing="8">CHAT THAT FEELS DISTINCT</text>
+  <defs>
+    <linearGradient id="bg" x1="600" y1="40" x2="600" y2="590" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF9F7"/>
+      <stop offset="1" stop-color="#F8F1EB"/>
+    </linearGradient>
+    <filter id="shadow" x="452" y="179" width="535" height="35" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="4"/>
+      <feGaussianBlur stdDeviation="8"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.705882 0 0 0 0 0.329412 0 0 0 0 0.411765 0 0 0 0.08 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    </filter>
+  </defs>
+</svg>

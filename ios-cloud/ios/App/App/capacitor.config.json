@@ -1,0 +1,20 @@
+{
+	"appId": "com.velorachat.app",
+	"appName": "Velora",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"iosScheme": "capacitor"
+	},
+	"plugins": {
+		"LocalNotifications": {
+			"smallIcon": "ic_stat_velora",
+			"iconColor": "#B45469"
+		}
+	},
+	"packageClassList": [
+		"LocalNotificationsPlugin",
+		"PushNotificationsPlugin",
+		"VeloraRewardedAdsPlugin"
+	]
+}

@@ -1,0 +1,58 @@
+# Build the reviewed iOS snapshot, not the historical frontend on main.
+# Workflows run manually; there are no automatic builds or store submissions.
+workflows:
+  ios-compile-check:
+    name: Velora iOS - Compile check (no signing)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Verify packaged release
+        script: python3 ios-cloud/verify.py
+      - name: Compile Release for iPhone
+        script: |
+          set -euo pipefail
+          mkdir -p build/ios
+          xcodebuild build \
+            -project ios-cloud/ios/App/App.xcodeproj \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/ios/compile.log
+    artifacts:
+      - build/ios/compile.log
+
+  ios-release:
+    name: Velora iOS - Signed IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.velorachat.app
+    scripts:
+      - name: Verify packaged release
+        script: python3 ios-cloud/verify.py
+      - name: Assign unique cloud build number
+        script: |
+          set -euo pipefail
+          cd ios-cloud/ios/App
+          agvtool new-version -all "$((BUILD_NUMBER + 4))"
+      - name: Apply uploaded Apple signing identities
+        script: |
+          set -euo pipefail
+          cd ios-cloud/ios/App
+          xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/ios-cloud/ios/App/App.xcodeproj" \
+            --scheme App --config Release
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
+      - /tmp/xcodebuild_logs/*.log

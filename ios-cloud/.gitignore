@@ -1,0 +1,8 @@
+*.p8
+*.p12
+*.pem
+*.mobileprovision
+*.xcarchive/
+DerivedData/
+xcuserdata/
+__pycache__/

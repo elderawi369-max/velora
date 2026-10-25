@@ -1,0 +1,17 @@
+{
+  "name": "@velora/rewarded-ads-native",
+  "version": "1.0.0",
+  "private": true,
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}
