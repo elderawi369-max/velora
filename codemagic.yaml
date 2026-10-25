@@ -152,3 +152,51 @@ workflows:
       - build/ios/*.log
       - build/ios/ipa-audit.json
       - /tmp/xcodebuild_logs/*.log
+
+  # Native simulator captures only: no signing credentials or store submission.
+  ios-store-screenshots:
+    name: Velora iOS - App Store screenshots (iPhone and iPad)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Verify packaged release
+        script: python3 ios-cloud/verify.py
+      - name: Build the actual app for Simulator
+        script: |
+          set -euo pipefail
+          mkdir -p build/ios
+          /usr/libexec/PlistBuddy -c 'Add :VeloraAdTesting bool true' "$CM_BUILD_DIR/ios-cloud/ios/App/App/Info.plist"
+          xcodebuild build \
+            -project "$CM_BUILD_DIR/ios-cloud/ios/App/App.xcodeproj" \
+            -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/build/ios/SimulatorDerivedData" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/ios/screenshot-build.log
+      - name: Prepare simulator SDK resources and content verification
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/repair_static_sdk.py \
+            "$CM_BUILD_DIR/build/ios/SimulatorDerivedData/Build/Products/Release-iphonesimulator/App.app" \
+            --unsigned-simulator
+          xcrun swiftc ios-cloud/check_screenshot.swift -o build/ios/check-screenshot
+      - name: Capture and verify native iPhone and iPad screenshots
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/capture_store_screenshots.py \
+            "$CM_BUILD_DIR/build/ios/SimulatorDerivedData/Build/Products/Release-iphonesimulator/App.app" \
+            --output "$CM_BUILD_DIR/build/ios/store-screenshots" \
+            --checker "$CM_BUILD_DIR/build/ios/check-screenshot" \
+            2>&1 | tee build/ios/screenshot-capture.log
+      - name: Package screenshot files
+        script: |
+          set -euo pipefail
+          ditto -c -k --keepParent build/ios/store-screenshots build/ios/Velora-App-Store-Screenshots.zip
+    artifacts:
+      - build/ios/Velora-App-Store-Screenshots.zip
+      - build/ios/store-screenshots/iphone/*.jpg
+      - build/ios/store-screenshots/ipad/*.jpg
+      - build/ios/store-screenshots/*.json
+      - build/ios/*.log

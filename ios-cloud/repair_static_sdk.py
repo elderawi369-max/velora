@@ -10,10 +10,13 @@ import tempfile
 from ipa_tools import macho_images, version_tuple
 
 
-def repair(app, prepare_only=False):
+def repair(app, prepare_only=False, unsigned_simulator=False):
     app = app.resolve(strict=True)
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == 'com.velorachat.app'
+    if unsigned_simulator:
+        main_images = macho_images((app / info['CFBundleExecutable']).read_bytes())
+        assert main_images and all(image.get('platform') == 7 for image in main_images), 'Simulator-only preparation requires simulator binaries'
     framework = (app / 'Frameworks/UserMessagingPlatform.framework').resolve()
     assert framework.is_relative_to(app) and not framework.is_symlink()
     resource_bundle = app / 'GoogleUserMessagingPlatformPrivacy.bundle'
@@ -62,6 +65,9 @@ def repair(app, prepare_only=False):
     assert framework.parent == app / 'Frameworks'
     shutil.rmtree(framework)
     print('Converted unused iOS-100 UMP placeholder into a resource-only bundle; privacy SHA256:', hashlib.sha256(privacy).hexdigest())
+    if unsigned_simulator:
+        print('Simulator resource preparation complete; simulator ad hoc signing must follow.')
+        return
     if prepare_only:
         print('Fixture preparation only: signature is stale and this copy must not be installed/uploaded.')
         return
@@ -84,5 +90,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('app', type=Path)
     parser.add_argument('--prepare-only', action='store_true', help='Local fixture validation only; never use for distribution')
+    parser.add_argument('--unsigned-simulator', action='store_true', help='Prepare simulator resources; rejects iPhone device binaries')
     args = parser.parse_args()
-    repair(args.app, args.prepare_only)
+    assert not (args.prepare_only and args.unsigned_simulator)
+    repair(args.app, args.prepare_only, args.unsigned_simulator)
