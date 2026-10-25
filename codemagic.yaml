@@ -49,15 +49,40 @@ workflows:
           set -euo pipefail
           cd ios-cloud/ios/App
           xcode-project use-profiles
-      - name: Build signed IPA
+      - name: Archive signed iOS app
         script: |
           set -euo pipefail
-          xcode-project build-ipa \
-            --project "$CM_BUILD_DIR/ios-cloud/ios/App/App.xcodeproj" \
-            --scheme App --config Release
+          mkdir -p build/ios/xcarchive
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/ios-cloud/ios/App/App.xcodeproj" \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/Velora.xcarchive" \
+            2>&1 | tee build/ios/archive.log
+      - name: Correct static SDK resource packaging and verify archive
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/repair_static_sdk.py \
+            "$CM_BUILD_DIR/build/ios/xcarchive/Velora.xcarchive/Products/Applications/App.app"
+      - name: Export signed IPA
+        script: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/Velora.xcarchive" \
+            -exportOptionsPlist "$HOME/export_options.plist" \
+            -exportPath "$CM_BUILD_DIR/build/ios/ipa" \
+            2>&1 | tee build/ios/export.log
+      - name: Verify final IPA compatibility and signatures before upload
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/audit_ipa.py build/ios/ipa/App.ipa \
+            --expected-build "$((BUILD_NUMBER + 4))" \
+            --verify-signatures --output build/ios/ipa-audit.json
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
+      - build/ios/*.log
+      - build/ios/ipa-audit.json
       - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:

@@ -19,6 +19,14 @@ Download the IPA and logs from build artifacts. The App Store Connect app record
 
 The first cloud compile check and the first signed IPA build succeeded on commit `982ac75`. The workflow ID stays `ios-release` when adding publishing so its existing build counter continues, producing a higher build number on the next run.
 
+## Installation correction after auditing build 6
+
+The exact exported 1.0.37 (6) IPA included an unused generated `UserMessagingPlatform.framework` executable and Info.plist declaring iOS 100.0. Its generated binary has no symbols and is not loaded by the app or its embedded frameworks. The SDK's code is already statically linked into the app. The exported package therefore contained an incompatible extra executable despite the top-level iOS 15 deployment target and Apple's VALID processing status.
+
+The release workflow now archives first, converts only this known unused static SDK placeholder into a resource-only privacy bundle, re-signs the parent app using its original signing certificate and entitlements, and then exports the final IPA. Google SDK code and versions are unchanged. The privacy manifest is preserved byte-for-byte. The script refuses to alter an actual dynamic SDK or remove a framework referenced by an executable.
+
+Before upload, the final exported IPA must pass arm64/device-platform, embedded minimum-OS, App Store profile, signing-entitlement, privacy-manifest and native `codesign --verify --deep --strict` checks. All embedded executable OS requirements must fit the app's declared minimum. The original failing build 6 is rejected by this audit. A local metadata fixture with the unused placeholder converted passes the compatibility checks, with the privacy manifest unchanged; that fixture is not signed or distributable. The repaired cloud archive/export still needs its first macOS run and a real iPhone install test.
+
 ## Snapshot integrity
 
 `verify.py` checks SHA-256 hashes for the packaged `ios` and `packages` files before Xcode or signing tools modify them. The Firebase plist is client app configuration; no Apple private signing keys or provisioning profiles belong in Git.
