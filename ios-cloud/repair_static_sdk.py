@@ -69,7 +69,9 @@ def repair(app, prepare_only=False):
     # leaf certificate from the existing app signature and the installed private key.
     with tempfile.TemporaryDirectory(prefix='velora-signing-') as directory:
         prefix = Path(directory) / 'certificate'
-        subprocess.run(['codesign', '--display', '--extract-certificates', str(prefix), str(app)], check=True)
+        # codesign's optional prefix must be attached with '='; a separate
+        # argument is interpreted as another application path.
+        subprocess.run(['codesign', '--display', f'--extract-certificates={prefix}', str(app)], check=True)
         identity = hashlib.sha1(Path(str(prefix) + '0').read_bytes()).hexdigest().upper()
         subprocess.run(['codesign', '--force', '--sign', identity,
                         '--preserve-metadata=identifier,entitlements,flags',
