@@ -18,15 +18,23 @@ parser.add_argument('--expected-build')
 parser.add_argument('--verify-signatures', action='store_true')
 parser.add_argument('--distribution', choices=('app-store', 'ad-hoc'), default='app-store')
 parser.add_argument('--expected-device-sha256', help='Require this device in an Ad Hoc profile without logging its UDID')
+parser.add_argument('--expect-test-ads', action='store_true')
 args = parser.parse_args()
 if args.expected_device_sha256 and args.distribution != 'ad-hoc':
     parser.error('--expected-device-sha256 requires --distribution ad-hoc')
+if args.expect_test_ads and args.distribution != 'ad-hoc':
+    parser.error('--expect-test-ads requires --distribution ad-hoc')
 failures = []
 report = {'ipa': str(args.ipa), 'sha256': hashlib.sha256(args.ipa.read_bytes()).hexdigest()}
 with zipfile.ZipFile(args.ipa) as archive:
     app_info_path = next(n for n in archive.namelist() if n.startswith('Payload/') and n.count('/') == 2 and n.endswith('.app/Info.plist'))
     root = app_info_path[:-len('Info.plist')]
     info = plistlib.loads(archive.read(app_info_path))
+    report['testAdsEnabled'] = info.get('VeloraAdTesting') is True
+    if args.distribution == 'app-store':
+        assert not info.get('VeloraAdTesting'), 'Test-ad configuration must not ship to the App Store'
+    if args.expect_test_ads:
+        assert report['testAdsEnabled'], 'Direct testing build must enable Google demo ads'
     report['app'] = {k: info.get(k) for k in ('CFBundleIdentifier', 'CFBundleShortVersionString', 'CFBundleVersion', 'MinimumOSVersion', 'UIDeviceFamily')}
     assert info['CFBundleIdentifier'] == 'com.velorachat.app'
     if args.expected_build:

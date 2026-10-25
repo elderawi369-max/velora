@@ -26,7 +26,7 @@ with (app / "GoogleService-Info.plist").open("rb") as file:
 assert firebase["BUNDLE_ID"] == config["appId"]
 assert firebase["PROJECT_ID"] == "velora-e3a28"
 with (app / "Info.plist").open("rb") as file:
-    plistlib.load(file)
+    assert not plistlib.load(file).get("VeloraAdTesting"), "Test ads must be enabled only by the device-testing workflow"
 with (app / "App.entitlements").open("rb") as file:
     assert plistlib.load(file)["aps-environment"] == "$(APNS_ENVIRONMENT)"
 

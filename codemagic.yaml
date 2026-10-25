@@ -103,6 +103,10 @@ workflows:
     scripts:
       - name: Verify packaged release
         script: python3 ios-cloud/verify.py
+      - name: Enable Google demo ads for direct testing
+        script: |
+          set -euo pipefail
+          /usr/libexec/PlistBuddy -c 'Add :VeloraAdTesting bool true' "$CM_BUILD_DIR/ios-cloud/ios/App/App/Info.plist"
       - name: Assign unique cloud build number
         script: |
           set -euo pipefail
@@ -141,7 +145,7 @@ workflows:
           set -euo pipefail
           python3 ios-cloud/audit_ipa.py build/ios/ipa/App.ipa \
             --expected-build "$((BUILD_NUMBER + 10000))" \
-            --distribution ad-hoc --verify-signatures --output build/ios/ipa-audit.json
+            --distribution ad-hoc --expect-test-ads --verify-signatures --output build/ios/ipa-audit.json
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM

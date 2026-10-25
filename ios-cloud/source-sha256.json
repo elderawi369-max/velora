@@ -170,7 +170,7 @@
   "packages/CapacitorPushNotifications/Package.swift": "098e90d106eb54c3f8639bccfe0311c7f4573f317cfa4f2b52d484f04c41898a",
   "packages/CapacitorPushNotifications/README.md": "cbde601b95ec8648af23c2cf1954afa20c3e99fbb4bf3266fd0c5c1b3bd54643",
   "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAdsConsentManager.swift": "d0935da562b58fef3ced84e1b8e1bff68504140d77e91c8697bb1580af11deb5",
-  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraRewardedAdsPlugin.swift": "d041809e7cb81e2d405c168f5d4b78ed007353f97eee0e77e029d38d6c5d6e2c",
+  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraRewardedAdsPlugin.swift": "127e1d1cbfa22cec003353bbd19545d72080ddd65afffb53795cc6ae7d79ac97",
   "packages/VeloraRewardedAdsNative/package.json": "d62db0cf3061e5305a386b7a16747442abc76a8092ec749fa714f40480c962ef",
   "packages/VeloraRewardedAdsNative/Package.swift": "736c0ab3eb4f4df79df747ec9abb81e55183f384bba5d00893fa4b78d181608a"
 }

@@ -210,23 +210,25 @@ public final class VeloraRewardedAdsPlugin: CAPPlugin, CAPBridgedPlugin, FullScr
         return Date().timeIntervalSince(cachedAt) < maxCacheAge
     }
 
-    private func adUnitID(from call: CAPPluginCall, placement: String) -> String {
+    private var usesTestAds: Bool {
         #if DEBUG
-        return testRewardedID
+        return true
         #else
-        let configured = call.getString("adUnitId")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return configured?.isEmpty == false ? configured! : fallbackAdUnitID(for: placement)
+        return Bundle.main.object(forInfoDictionaryKey: "VeloraAdTesting") as? Bool == true
         #endif
     }
 
+    private func adUnitID(from call: CAPPluginCall, placement: String) -> String {
+        if usesTestAds { return testRewardedID }
+        let configured = call.getString("adUnitId")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return configured?.isEmpty == false ? configured! : fallbackAdUnitID(for: placement)
+    }
+
     private func fallbackAdUnitID(for placement: String) -> String {
-        #if DEBUG
-        return testRewardedID
-        #else
+        if usesTestAds { return testRewardedID }
         if placement == "browse" { return browseRewardedID }
         if placement == "mind-hunters" { return mindHuntersRewardedID }
         return triviaRewardedID
-        #endif
     }
 
     private func rejectPendingShow(_ slot: RewardedSlot, message: String) {
