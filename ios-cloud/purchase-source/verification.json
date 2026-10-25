@@ -7,20 +7,24 @@
     "passed": 1
   },
   "backendApplePurchaseTests": {
-    "passed": 6
+    "passed": 6,
+    "coverage": "Includes production 401/404 to Sandbox fallback, disabled fallback, and rejected credentials"
   },
   "typescript": "frontend/backend passed",
   "productionBundle": "passed",
-  "apiVersion": "43af9ca9-99da-4e0f-8028-3af1b9d87838",
   "productionDatabase": "19155ba3-b108-40cc-93b3-f71d45279e8c",
-  "billingAvailable": false,
+  "billingAvailable": true,
   "remaining": [
     "Native Xcode compilation",
-    "Paid Apps Agreement activation",
-    "Private In-App Purchase verification key installation",
     "Native sandbox purchase/device tests",
     "Product review screenshots",
     "Add Purchase History privacy disclosure",
     "Attach updated build and products before submission"
-  ]
+  ],
+  "apiVersionBeforeSecretInstallation": "7b4c24ff-d01a-456d-b764-2fd7c958f164",
+  "appleCredentials": {
+    "sandboxAuthentication": "passed HTTP 200",
+    "productionAuthentication": "HTTP 401 before first release",
+    "storage": "encrypted Worker secrets; no key material in source"
+  }
 }

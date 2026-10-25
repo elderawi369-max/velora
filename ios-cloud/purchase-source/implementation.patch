@@ -1,6 +1,6 @@
 --- before/backend/src/lib/apple-purchases.ts
 +++ after/backend/src/lib/apple-purchases.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,86 @@
 +import type { EnvBindings } from "./db";
 +
 +export const appleProducts = [
@@ -76,7 +76,10 @@
 +    const response = await send(`${host}/inApps/v1/transactions/${transactionId}`, {
 +      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000),
 +    });
-+    if (response.status === 404 && environment === "Production" && environments.length > 1) continue;
++    // Before the first App Store release, Apple's production API can return
++    // 401 even when the same credentials work in Sandbox. Both responses need
++    // the test-environment lookup; delivery still requires all transaction checks.
++    if ([401, 404].includes(response.status) && environment === "Production" && environments.length > 1) continue;
 +    if (!response.ok) throw new ApplePurchaseError(response.status === 404 ? "Apple could not find this purchase yet. Please retry delivery." : "Apple purchase verification is temporarily unavailable. Please retry delivery.", response.status === 404 ? 409 : 503);
 +    const body = await response.json() as { signedTransactionInfo?: string };
 +    if (!body.signedTransactionInfo) throw new ApplePurchaseError("Apple returned an incomplete purchase.", 502);
@@ -86,7 +89,7 @@
 +}
 --- before/backend/src/lib/apple-purchases.test.ts
 +++ after/backend/src/lib/apple-purchases.test.ts
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,153 @@
 +import assert from "node:assert/strict";
 +import { DatabaseSync } from "node:sqlite";
 +import { generateKeyPairSync } from "node:crypto";
@@ -160,7 +163,7 @@
 +  }
 +});
 +
-+test("server retrieves transactions only from Apple and falls back to sandbox only after production 404", async () => {
++test("server retrieves transactions only from Apple and handles production 401/404 before sandbox verification", async () => {
 +  const calls: string[] = [];
 +  const t = transaction({ intentId: crypto.randomUUID(), productId: appleProducts[0].productId }, { environment: "Sandbox" });
 +  const result = await fetchAppleTransaction(credentials as EnvBindings, "123456", (async url => {
@@ -168,8 +171,18 @@
 +  }) as typeof fetch);
 +  assert.equal(result.environment, "Sandbox");
 +  assert.deepEqual(calls, ["https://api.storekit.apple.com/inApps/v1/transactions/123456", "https://api.storekit-sandbox.apple.com/inApps/v1/transactions/123456"]);
++  const beforeRelease = await fetchAppleTransaction(credentials as EnvBindings, "123456", (async url =>
++    String(url).includes("-sandbox") ? signResponse(t) : new Response("", { status: 401 })
++  ) as typeof fetch);
++  assert.equal(beforeRelease.environment, "Sandbox");
 +  let count = 0;
 +  await assert.rejects(fetchAppleTransaction(credentials as EnvBindings, "123456", (async () => { count++; return new Response("{}", { status: 401 }); }) as typeof fetch));
++  assert.equal(count, 2);
++  count = 0;
++  await assert.rejects(fetchAppleTransaction({ ...credentials, APPLE_ALLOW_SANDBOX_PURCHASES: "false" } as EnvBindings, "123456", (async () => { count++; return new Response("", { status: 401 }); }) as typeof fetch));
++  assert.equal(count, 1);
++  count = 0;
++  await assert.rejects(fetchAppleTransaction(credentials as EnvBindings, "123456", (async () => { count++; return new Response("", { status: 500 }); }) as typeof fetch));
 +  assert.equal(count, 1);
 +  await assert.rejects(fetchAppleTransaction(credentials as EnvBindings, "../../other"));
 +});

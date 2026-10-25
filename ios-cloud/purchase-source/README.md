@@ -28,12 +28,11 @@ for review. Review screenshots and real sandbox transaction tests are pending.
 - Native and website billing remain separate; Android uses its existing Google
   Play implementation. The website does not acquire purchasing controls.
 
-## External configuration still needed
+## Configuration and remaining checks
 
-1. Activate the Paid Apps Agreement and complete Apple's banking/tax requirements.
-2. Generate an **In-App Purchase key** under Users and Access → Integrations →
-   In-App Purchase. This is separate from the App Store Connect upload API key.
-3. Install the private key, key ID and issuer ID as encrypted API Worker secrets:
+1. The Paid Apps Agreement is active, as confirmed by the account holder.
+2. A separate In-App Purchase key has passed Apple Sandbox authentication.
+3. The private key, key ID and issuer ID are installed as encrypted API Worker secrets:
    `APPLE_IAP_PRIVATE_KEY`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`.
    `APPLE_BUNDLE_ID` is `com.velorachat.app`. Never place private keys in this repo,
    the web bundle, Codemagic artifacts or an IPA.
@@ -47,7 +46,8 @@ for review. Review screenshots and real sandbox transaction tests are pending.
    (and revenue analytics), not advertising tracking. No payment-card details are
    collected by Velora.
 
-The production purchase configuration returns `available: false` until the private
-verification credentials are installed. The app cannot initiate a charge without
+The production purchase configuration now returns `available: true`. Apple production
+access returns HTTP 401 before the first release; verification retries the Sandbox
+API for production 401/404 responses and still validates the returned transaction. The app cannot initiate a charge without
 successfully creating a server intent. This build is not yet purchase-tested or
 ready for submission.
