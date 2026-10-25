@@ -1,0 +1,116 @@
+{
+  "products": [
+    {
+      "id": "6826938148",
+      "productId": "com.velorachat.app.credits.10",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "10 Challenge Credits",
+          "description": "Add 10 credits for sending challenges."
+        }
+      ]
+    },
+    {
+      "id": "6826938345",
+      "productId": "com.velorachat.app.credits.3",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "3 Challenge Credits",
+          "description": "Add 3 credits for sending challenges."
+        }
+      ]
+    },
+    {
+      "id": "6826938294",
+      "productId": "com.velorachat.app.gift.rose_aura",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Rose Aura",
+          "description": "Send a Rose Aura to another profile."
+        }
+      ]
+    },
+    {
+      "id": "6826938194",
+      "productId": "com.velorachat.app.boost.spark",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Spark Boost",
+          "description": "Boost your profile visibility for 6 hours."
+        }
+      ]
+    },
+    {
+      "id": "6826938344",
+      "productId": "com.velorachat.app.boost.spotlight",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Spotlight Boost",
+          "description": "Boost your profile visibility for 24 hours."
+        }
+      ]
+    },
+    {
+      "id": "6826938193",
+      "productId": "com.velorachat.app.gift.starlight_ring",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Starlight Ring",
+          "description": "Send a Starlight Ring to another profile."
+        }
+      ]
+    },
+    {
+      "id": "6826938343",
+      "productId": "com.velorachat.app.gift.velora_crown",
+      "state": "MISSING_METADATA",
+      "priceScheduleSaved": true,
+      "manualPriceCount": 1,
+      "availabilitySaved": true,
+      "availableInNewTerritories": true,
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Velora Crown",
+          "description": "Send a Velora Crown to another profile."
+        }
+      ]
+    }
+  ]
+}

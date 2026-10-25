@@ -1,0 +1,26 @@
+{
+  "frontendRegression": {
+    "passed": 139,
+    "files": 24
+  },
+  "localizedPriceUiRegression": {
+    "passed": 1
+  },
+  "backendApplePurchaseTests": {
+    "passed": 6
+  },
+  "typescript": "frontend/backend passed",
+  "productionBundle": "passed",
+  "apiVersion": "43af9ca9-99da-4e0f-8028-3af1b9d87838",
+  "productionDatabase": "19155ba3-b108-40cc-93b3-f71d45279e8c",
+  "billingAvailable": false,
+  "remaining": [
+    "Native Xcode compilation",
+    "Paid Apps Agreement activation",
+    "Private In-App Purchase verification key installation",
+    "Native sandbox purchase/device tests",
+    "Product review screenshots",
+    "Add Purchase History privacy disclosure",
+    "Attach updated build and products before submission"
+  ]
+}

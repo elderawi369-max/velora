@@ -15,6 +15,7 @@
 	"packageClassList": [
 		"LocalNotificationsPlugin",
 		"PushNotificationsPlugin",
-		"VeloraRewardedAdsPlugin"
+		"VeloraRewardedAdsPlugin",
+		"VeloraStoreKitPlugin"
 	]
 }

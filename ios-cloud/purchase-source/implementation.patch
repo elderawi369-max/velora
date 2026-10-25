@@ -1,0 +1,874 @@
+--- before/backend/src/lib/apple-purchases.ts
++++ after/backend/src/lib/apple-purchases.ts
+@@ -0,0 +1,83 @@
++import type { EnvBindings } from "./db";
++
++export const appleProducts = [
++  { productId: "com.velorachat.app.gift.rose_aura", productKind: "gift", itemKey: "rose", label: "Rose Aura", priceCents: 99 },
++  { productId: "com.velorachat.app.gift.starlight_ring", productKind: "gift", itemKey: "starlight", label: "Starlight Ring", priceCents: 149 },
++  { productId: "com.velorachat.app.gift.velora_crown", productKind: "gift", itemKey: "crown", label: "Velora Crown", priceCents: 249 },
++  { productId: "com.velorachat.app.boost.spark", productKind: "boost", itemKey: "spark", label: "Spark Boost", priceCents: 149 },
++  { productId: "com.velorachat.app.boost.spotlight", productKind: "boost", itemKey: "spotlight", label: "Spotlight Boost", priceCents: 299 },
++  { productId: "com.velorachat.app.credits.3", productKind: "challenge_credit_pack", itemKey: "challenge_pack_3", label: "3 Challenge Credits", priceCents: 99 },
++  { productId: "com.velorachat.app.credits.10", productKind: "challenge_credit_pack", itemKey: "challenge_pack_10", label: "10 Challenge Credits", priceCents: 249 },
++] as const;
++
++export class ApplePurchaseError extends Error {
++  constructor(message: string, public status = 400) { super(message); }
++}
++
++export type AppleTransaction = {
++  transactionId: string; originalTransactionId: string; bundleId: string;
++  productId: string; appAccountToken: string; environment: "Production" | "Sandbox";
++  type: string; quantity: number; purchaseDate: number; revocationDate?: number;
++  inAppOwnershipType?: string; price?: number; currency?: string;
++};
++
++export function appleBillingConfigured(env: EnvBindings) {
++  return Boolean(env.APPLE_IAP_ISSUER_ID && env.APPLE_IAP_KEY_ID && env.APPLE_IAP_PRIVATE_KEY && env.APPLE_BUNDLE_ID);
++}
++
++function encode(bytes: Uint8Array) {
++  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
++}
++function json64(value: unknown) { return encode(new TextEncoder().encode(JSON.stringify(value))); }
++
++export async function appleServerToken(env: EnvBindings) {
++  if (!appleBillingConfigured(env)) throw new ApplePurchaseError("Apple purchases are not available yet. Please try again later.", 503);
++  const pem = env.APPLE_IAP_PRIVATE_KEY!.replace(/\\n/g, "\n").replace(/-----[A-Z ]+-----/g, "").replace(/\s/g, "");
++  const der = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
++  const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
++  const now = Math.floor(Date.now() / 1000);
++  const input = `${json64({ alg: "ES256", kid: env.APPLE_IAP_KEY_ID, typ: "JWT" })}.${json64({ iss: env.APPLE_IAP_ISSUER_ID, iat: now - 10, exp: now + 300, aud: "appstoreconnect-v1", bid: env.APPLE_BUNDLE_ID })}`;
++  const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(input));
++  return `${input}.${encode(new Uint8Array(signature))}`;
++}
++
++// Only decode a JWS received directly from Apple's authenticated HTTPS endpoint.
++// Never use this decoder to trust a client-supplied signed transaction.
++export function readAppleServerTransaction(signed: string): AppleTransaction {
++  const parts = signed.split(".");
++  if (parts.length !== 3 || parts[1].length > 32000) throw new ApplePurchaseError("Apple returned an invalid transaction.", 502);
++  try {
++    const raw = parts[1].replace(/-/g, "+").replace(/_/g, "/");
++    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw.padEnd(Math.ceil(raw.length / 4) * 4, "=")), c => c.charCodeAt(0))));
++  } catch { throw new ApplePurchaseError("Apple returned an invalid transaction.", 502); }
++}
++
++export function validateAppleTransaction(t: AppleTransaction, expected: {
++  transactionId: string; bundleId: string; productId: string; intentId: string; createdAt: number; environment: string;
++}) {
++  if (t.transactionId !== expected.transactionId || t.bundleId !== expected.bundleId || t.productId !== expected.productId ||
++      t.appAccountToken?.toLowerCase() !== expected.intentId.toLowerCase() || t.environment !== expected.environment ||
++      t.type !== "Consumable" || t.quantity !== 1 || t.revocationDate != null ||
++      !Number.isFinite(t.purchaseDate) || t.purchaseDate < expected.createdAt - 300000 || t.purchaseDate > Date.now() + 300000 ||
++      (t.inAppOwnershipType && t.inAppOwnershipType !== "PURCHASED")) {
++    throw new ApplePurchaseError("This Apple transaction does not match the purchase.", 400);
++  }
++}
++
++export async function fetchAppleTransaction(env: EnvBindings, transactionId: string, send: typeof fetch = fetch) {
++  if (!/^\d{1,40}$/.test(transactionId)) throw new ApplePurchaseError("Invalid Apple transaction identifier.");
++  const token = await appleServerToken(env);
++  const environments = env.APPLE_ALLOW_SANDBOX_PURCHASES === "false" ? ["Production"] : ["Production", "Sandbox"];
++  for (const environment of environments) {
++    const host = environment === "Production" ? "https://api.storekit.apple.com" : "https://api.storekit-sandbox.apple.com";
++    const response = await send(`${host}/inApps/v1/transactions/${transactionId}`, {
++      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000),
++    });
++    if (response.status === 404 && environment === "Production" && environments.length > 1) continue;
++    if (!response.ok) throw new ApplePurchaseError(response.status === 404 ? "Apple could not find this purchase yet. Please retry delivery." : "Apple purchase verification is temporarily unavailable. Please retry delivery.", response.status === 404 ? 409 : 503);
++    const body = await response.json() as { signedTransactionInfo?: string };
++    if (!body.signedTransactionInfo) throw new ApplePurchaseError("Apple returned an incomplete purchase.", 502);
++    return { transaction: readAppleServerTransaction(body.signedTransactionInfo), environment };
++  }
++  throw new ApplePurchaseError("Apple could not find this purchase yet.", 409);
++}
+--- before/backend/src/lib/apple-purchases.test.ts
++++ after/backend/src/lib/apple-purchases.test.ts
+@@ -0,0 +1,143 @@
++import assert from "node:assert/strict";
++import { DatabaseSync } from "node:sqlite";
++import { generateKeyPairSync } from "node:crypto";
++import { readFileSync } from "node:fs";
++import test from "node:test";
++import { appleProducts, fetchAppleTransaction, validateAppleTransaction, type AppleTransaction } from "./apple-purchases";
++import { applePurchaseRoutes } from "../routes/apple-purchases";
++import { createSession } from "./auth";
++import type { EnvBindings } from "./db";
++
++const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
++const credentials = { APPLE_BUNDLE_ID: "com.velorachat.app", APPLE_IAP_KEY_ID: "test-key", APPLE_IAP_ISSUER_ID: "test-issuer", APPLE_IAP_PRIVATE_KEY: key };
++const signResponse = (t: unknown) => new Response(JSON.stringify({ signedTransactionInfo: `e30.${Buffer.from(JSON.stringify(t)).toString("base64url")}.signature` }));
++
++async function fixture() {
++  const sqlite = new DatabaseSync(":memory:");
++  sqlite.exec(`
++    CREATE TABLE users(id TEXT PRIMARY KEY, deletion_requested_at INTEGER, created_at INTEGER);
++    CREATE TABLE profiles(id TEXT PRIMARY KEY,user_id TEXT,suspended_at INTEGER,challenge_credits INTEGER DEFAULT 0,updated_at INTEGER);
++    CREATE TABLE sessions(id TEXT PRIMARY KEY,user_id TEXT,token_hash TEXT,expires_at INTEGER,created_at INTEGER);
++    CREATE TABLE blocks(id TEXT,profile_id TEXT,target_profile_id TEXT);
++    CREATE TABLE purchases(id TEXT PRIMARY KEY,stripe_session_id TEXT UNIQUE,buyer_profile_id TEXT,target_profile_id TEXT,mobile_provider TEXT,mobile_product_id TEXT,mobile_order_id TEXT,mobile_package_name TEXT,mobile_verified_at INTEGER,product_kind TEXT,item_key TEXT,amount_cents INTEGER,currency TEXT,status TEXT,created_at INTEGER,fulfilled_at INTEGER);
++    CREATE TABLE gifts(id TEXT PRIMARY KEY,sender_profile_id TEXT,target_profile_id TEXT,gift_type TEXT,created_at INTEGER);
++    CREATE TABLE boosts(id TEXT PRIMARY KEY,profile_id TEXT,boost_type TEXT,created_at INTEGER,expires_at INTEGER);
++    INSERT INTO users VALUES ('owner',NULL,1),('other',NULL,1);
++    INSERT INTO profiles VALUES ('profile','owner',NULL,0,1),('recipient','other',NULL,0,1);
++  `);
++  sqlite.exec(readFileSync(new URL("../db/migrations/0051_add_apple_purchase_intents.sql", import.meta.url), "utf8"));
++  function statement(query: string, params: (string | number | null)[] = []) {
++    return { query, params,
++      bind: (...values: (string | number | null)[]) => statement(query, values),
++      async raw() { const s = sqlite.prepare(query); s.setReturnArrays(true); return s.all(...params); },
++      async first() { return sqlite.prepare(query).get(...params) ?? null; },
++      async all() { return { results: sqlite.prepare(query).all(...params) }; },
++      async run() { return { meta: sqlite.prepare(query).run(...params) }; },
++    };
++  }
++  const env = { ...credentials, DB: { prepare: statement,
++    async batch(items: { query: string; params: (string | number | null)[] }[]) {
++      sqlite.exec("BEGIN");
++      try { const results = items.map(s => ({ meta: sqlite.prepare(s.query).run(...s.params) })); sqlite.exec("COMMIT"); return results; }
++      catch (e) { sqlite.exec("ROLLBACK"); throw e; }
++    },
++  } as unknown as D1Database };
++  const token = await createSession(env as EnvBindings, "owner");
++  const otherToken = await createSession(env as EnvBindings, "other");
++  const send = (path: string, body: unknown, auth = token) => applePurchaseRoutes.request(path, {
++    method: "POST", headers: { Authorization: `Bearer ${auth}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
++  }, env);
++  async function intent(productId: string, targetProfileId?: string) {
++    const response = await send("/intents", { productId, targetProfileId });
++    assert.equal(response.status, 201, await response.clone().text());
++    return await response.json() as { intentId: string; productId: string };
++  }
++  const balance = () => sqlite.prepare("SELECT challenge_credits n FROM profiles WHERE id='profile'").get()!.n;
++  return { sqlite, env, send, intent, balance, otherToken };
++}
++
++function transaction(intent: { intentId: string; productId: string }, patch: Partial<AppleTransaction> = {}): AppleTransaction {
++  return { transactionId: "123456", originalTransactionId: "123456", bundleId: credentials.APPLE_BUNDLE_ID, productId: intent.productId,
++    appAccountToken: intent.intentId, environment: "Production", type: "Consumable", quantity: 1, purchaseDate: Date.now(), price: 990, currency: "USD", ...patch };
++}
++
++test("Apple purchase checks reject account/product/bundle/environment mismatches, revocation and impossible dates", () => {
++  const intent = { intentId: crypto.randomUUID(), productId: appleProducts[5].productId };
++  const t = transaction(intent);
++  const expected = { transactionId: t.transactionId, bundleId: t.bundleId, productId: t.productId, intentId: intent.intentId, createdAt: Date.now() - 1000, environment: "Production" };
++  validateAppleTransaction(t, expected);
++  for (const patch of [{ appAccountToken: crypto.randomUUID() }, { productId: appleProducts[6].productId }, { bundleId: "another.app" }, { environment: "Sandbox" }, { revocationDate: Date.now() }, { quantity: 2 }, { type: "Non-Consumable" }, { purchaseDate: 1 }, { inAppOwnershipType: "FAMILY_SHARED" }]) {
++    assert.throws(() => validateAppleTransaction({ ...t, ...patch } as AppleTransaction, expected));
++  }
++});
++
++test("server retrieves transactions only from Apple and falls back to sandbox only after production 404", async () => {
++  const calls: string[] = [];
++  const t = transaction({ intentId: crypto.randomUUID(), productId: appleProducts[0].productId }, { environment: "Sandbox" });
++  const result = await fetchAppleTransaction(credentials as EnvBindings, "123456", (async url => {
++    calls.push(String(url)); return calls.length === 1 ? new Response("{}", { status: 404 }) : signResponse(t);
++  }) as typeof fetch);
++  assert.equal(result.environment, "Sandbox");
++  assert.deepEqual(calls, ["https://api.storekit.apple.com/inApps/v1/transactions/123456", "https://api.storekit-sandbox.apple.com/inApps/v1/transactions/123456"]);
++  let count = 0;
++  await assert.rejects(fetchAppleTransaction(credentials as EnvBindings, "123456", (async () => { count++; return new Response("{}", { status: 401 }); }) as typeof fetch));
++  assert.equal(count, 1);
++  await assert.rejects(fetchAppleTransaction(credentials as EnvBindings, "../../other"));
++});
++
++test("credit delivery is atomic and retries grant exactly once without another Apple request", async () => {
++  const f = await fixture(); const intent = await f.intent(appleProducts[5].productId);
++  const original = globalThis.fetch; let requests = 0;
++  globalThis.fetch = async () => { requests++; return signResponse(transaction(intent)); };
++  try {
++    const body = { intentId: intent.intentId, transactionId: "123456" };
++    assert.equal((await f.send("/verify", body)).status, 200);
++    assert.equal(f.balance(), 3);
++    assert.equal((await f.send("/verify", body)).status, 200);
++    assert.equal(f.balance(), 3); assert.equal(requests, 1);
++    assert.equal((await f.send("/verify", body, f.otherToken)).status, 403);
++    assert.equal(f.balance(), 3);
++  } finally { globalThis.fetch = original; f.sqlite.close(); }
++});
++
++test("gift recipient is bound before payment and cannot be changed by the verification caller", async () => {
++  const f = await fixture(); const intent = await f.intent(appleProducts[0].productId, "recipient");
++  const original = globalThis.fetch; globalThis.fetch = async () => signResponse(transaction(intent));
++  try {
++    const body = { intentId: intent.intentId, transactionId: "123456" };
++    assert.equal((await f.send("/verify", { ...body, targetProfileId: "profile" })).status, 400);
++    assert.equal((await f.send("/verify", body)).status, 200);
++    assert.equal((await f.send("/verify", body)).status, 200);
++    assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM gifts WHERE target_profile_id='recipient'").get()!.n, 1);
++    assert.equal((await f.send("/intents", { productId: appleProducts[0].productId, targetProfileId: "profile" })).status, 400);
++  } finally { globalThis.fetch = original; f.sqlite.close(); }
++});
++
++test("failed fulfillment rolls back its transaction claim so recovery can grant later", async () => {
++  const f = await fixture(); const intent = await f.intent(appleProducts[5].productId);
++  f.sqlite.exec("CREATE TRIGGER fail_delivery BEFORE UPDATE OF challenge_credits ON profiles BEGIN SELECT RAISE(ABORT,'test failure'); END;");
++  const original = globalThis.fetch; globalThis.fetch = async () => signResponse(transaction(intent));
++  try {
++    const body = { intentId: intent.intentId, transactionId: "123456" };
++    assert.equal((await f.send("/verify", body)).status, 503);
++    assert.equal(f.balance(), 0);
++    assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM purchases").get()!.n, 0);
++    assert.equal(f.sqlite.prepare("SELECT transaction_id FROM apple_purchase_intents").get()!.transaction_id, null);
++    f.sqlite.exec("DROP TRIGGER fail_delivery");
++    assert.equal((await f.send("/verify", body)).status, 200); assert.equal(f.balance(), 3);
++  } finally { globalThis.fetch = original; f.sqlite.close(); }
++});
++
++test("unverified, revoked or mismatched Apple transactions cannot credit an account", async () => {
++  const f = await fixture(); const intent = await f.intent(appleProducts[6].productId);
++  const original = globalThis.fetch;
++  try {
++    for (const patch of [{ productId: appleProducts[5].productId }, { appAccountToken: crypto.randomUUID() }, { revocationDate: Date.now() }]) {
++      globalThis.fetch = async () => signResponse(transaction(intent, patch));
++      assert.equal((await f.send("/verify", { intentId: intent.intentId, transactionId: "123456" })).status, 400);
++      assert.equal(f.balance(), 0);
++    }
++    f.env.APPLE_IAP_PRIVATE_KEY = "";
++    assert.equal((await f.send("/intents", { productId: appleProducts[6].productId })).status, 503);
++  } finally { globalThis.fetch = original; f.sqlite.close(); }
++});
+--- before/backend/src/routes/apple-purchases.ts
++++ after/backend/src/routes/apple-purchases.ts
+@@ -0,0 +1,84 @@
++import { Hono } from "hono";
++import { z } from "zod";
++import type { EnvBindings } from "../lib/db";
++import { getOwnProfileContext } from "../lib/profile-context";
++import { appleBillingConfigured, appleProducts, ApplePurchaseError, fetchAppleTransaction, validateAppleTransaction } from "../lib/apple-purchases";
++import { createNotification } from "../lib/commerce";
++
++export const applePurchaseRoutes = new Hono<{ Bindings: EnvBindings }>();
++const intentSchema = z.object({ productId: z.string().max(160), targetProfileId: z.string().max(100).optional() }).strict();
++const verifySchema = z.object({ transactionId: z.string().regex(/^\d{1,40}$/), intentId: z.string().uuid() }).strict();
++type Intent = { id: string; user_id: string; buyer_profile_id: string; target_profile_id: string | null; product_id: string; product_kind: string; item_key: string; transaction_id: string | null; created_at: number; fulfilled_at: number | null };
++
++applePurchaseRoutes.onError((error, c) => {
++  if (error instanceof ApplePurchaseError) return c.json({ error: error.message }, error.status as 400 | 403 | 404 | 409 | 502 | 503);
++  // Do not expose Apple API responses, authentication material, or database details.
++  return c.json({ error: "Purchase delivery could not finish. Please retry; you will not be charged again." }, 503);
++});
++
++applePurchaseRoutes.get("/config", c => c.json({ available: appleBillingConfigured(c.env), products: appleProducts.map(({ productId, productKind, itemKey }) => ({ productId, productKind, itemKey })) }));
++
++applePurchaseRoutes.post("/intents", async c => {
++  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
++  if (!own) return c.json({ error: "Sign in and create a public profile before purchasing." }, 401);
++  if (!appleBillingConfigured(c.env)) throw new ApplePurchaseError("Apple purchases are not available yet. Please try again later.", 503);
++  const parsed = intentSchema.safeParse(await c.req.json());
++  if (!parsed.success) throw new ApplePurchaseError("Invalid purchase request.");
++  const item = appleProducts.find(p => p.productId === parsed.data.productId);
++  if (!item) throw new ApplePurchaseError("This product is not available.");
++  const target = item.productKind === "gift" ? parsed.data.targetProfileId : null;
++  if (item.productKind === "gift") {
++    if (!target || target === own.profileId) throw new ApplePurchaseError("Choose another profile to receive this gift.");
++    const allowed = await c.env.DB.prepare("SELECT id FROM profiles WHERE id = ? AND suspended_at IS NULL AND NOT EXISTS (SELECT 1 FROM blocks WHERE (profile_id = ? AND target_profile_id = ?) OR (profile_id = ? AND target_profile_id = ?))")
++      .bind(target, own.profileId, target, target, own.profileId).first();
++    if (!allowed) throw new ApplePurchaseError("This profile cannot receive a gift.");
++  } else if (parsed.data.targetProfileId) throw new ApplePurchaseError("This product is for your own profile.");
++  const id = crypto.randomUUID();
++  await c.env.DB.prepare("INSERT INTO apple_purchase_intents (id,user_id,buyer_profile_id,target_profile_id,product_id,product_kind,item_key,created_at) VALUES (?,?,?,?,?,?,?,?)")
++    .bind(id, own.userId, own.profileId, target ?? null, item.productId, item.productKind, item.itemKey, Date.now()).run();
++  return c.json({ intentId: id, productId: item.productId }, 201);
++});
++
++applePurchaseRoutes.post("/verify", async c => {
++  const own = await getOwnProfileContext(c.env, c.req.header("Cookie"), c.req.header("Authorization"));
++  if (!own) return c.json({ error: "Sign in to deliver your purchase." }, 401);
++  const parsed = verifySchema.safeParse(await c.req.json());
++  if (!parsed.success) throw new ApplePurchaseError("Invalid purchase verification request.");
++  const { transactionId, intentId } = parsed.data;
++  const intent = await c.env.DB.prepare("SELECT * FROM apple_purchase_intents WHERE id = ? AND user_id = ? AND buyer_profile_id = ?")
++    .bind(intentId.toLowerCase(), own.userId, own.profileId).first<Intent>();
++  if (!intent) throw new ApplePurchaseError("This purchase belongs to a different Velora account. Sign in to the account used to buy it.", 403);
++  if (intent.transaction_id && intent.transaction_id !== transactionId) throw new ApplePurchaseError("This purchase request has already been completed.", 409);
++  const purchaseId = `apple-${transactionId}`;
++  if (intent.fulfilled_at && intent.transaction_id === transactionId) return c.json({ ok: true, purchaseId, delivered: true });
++  const item = appleProducts.find(p => p.productId === intent.product_id);
++  if (!item) throw new ApplePurchaseError("Unknown purchase product.");
++  const { transaction, environment } = await fetchAppleTransaction(c.env, transactionId);
++  validateAppleTransaction(transaction, { transactionId, bundleId: c.env.APPLE_BUNDLE_ID!, productId: item.productId, intentId, createdAt: intent.created_at, environment });
++  if (item.productKind === "gift" && !intent.target_profile_id) throw new ApplePurchaseError("The gift recipient is no longer available. Please contact support.", 409);
++  const now = Date.now();
++  const gate = "EXISTS (SELECT 1 FROM purchases WHERE id = ? AND status = 'pending')";
++  const statements: D1PreparedStatement[] = [
++    c.env.DB.prepare("UPDATE apple_purchase_intents SET transaction_id = ? WHERE id = ? AND transaction_id IS NULL").bind(transactionId, intent.id),
++    c.env.DB.prepare("INSERT OR IGNORE INTO purchases (id,stripe_session_id,buyer_profile_id,target_profile_id,mobile_provider,mobile_product_id,mobile_order_id,mobile_package_name,mobile_verified_at,product_kind,item_key,amount_cents,currency,status,created_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM apple_purchase_intents WHERE id = ? AND transaction_id = ?")
++      .bind(purchaseId, `apple:${transactionId}`, own.profileId, intent.target_profile_id, "apple", item.productId, transactionId, c.env.APPLE_BUNDLE_ID!, now, item.productKind, item.itemKey,
++        typeof transaction.price === "number" ? Math.round(transaction.price / 10) : item.priceCents, transaction.currency?.toLowerCase() ?? "usd", "pending", now, intent.id, transactionId),
++  ];
++  if (item.productKind === "gift") statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO gifts (id,sender_profile_id,target_profile_id,gift_type,created_at) SELECT ?,?,?,?,? WHERE ${gate}`)
++    .bind(`apple-gift-${transactionId}`, own.profileId, intent.target_profile_id, item.itemKey, now, purchaseId));
++  if (item.productKind === "boost") statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO boosts (id,profile_id,boost_type,created_at,expires_at) SELECT ?,?,?,?,? WHERE ${gate}`)
++    .bind(`apple-boost-${transactionId}`, own.profileId, item.itemKey, now, now + (item.itemKey === "spark" ? 6 : 24) * 3600000, purchaseId));
++  if (item.productKind === "challenge_credit_pack") statements.push(c.env.DB.prepare(`UPDATE profiles SET challenge_credits = challenge_credits + ?, updated_at = ? WHERE id = ? AND ${gate}`)
++    .bind(item.itemKey === "challenge_pack_3" ? 3 : 10, now, own.profileId, purchaseId));
++  statements.push(c.env.DB.prepare("UPDATE purchases SET status = 'fulfilled', fulfilled_at = ? WHERE id = ? AND status = 'pending'").bind(now, purchaseId));
++  statements.push(c.env.DB.prepare("UPDATE apple_purchase_intents SET fulfilled_at = ? WHERE id = ? AND transaction_id = ? AND EXISTS (SELECT 1 FROM purchases WHERE id = ? AND status = 'fulfilled')").bind(now, intent.id, transactionId, purchaseId));
++  // D1 batch is an atomic transaction: concurrent retries cannot duplicate credit,
++  // boost, or gift delivery, and a failure rolls back the entire fulfillment.
++  const results = await c.env.DB.batch(statements);
++  const confirmed = await c.env.DB.prepare("SELECT fulfilled_at FROM apple_purchase_intents WHERE id = ? AND transaction_id = ?").bind(intent.id, transactionId).first<{ fulfilled_at: number | null }>();
++  if (!confirmed?.fulfilled_at) throw new ApplePurchaseError("Purchase delivery is pending. Please retry delivery.", 409);
++  if (item.productKind === "gift" && results[1].meta.changes > 0) {
++    await createNotification(c.env, { profileId: intent.target_profile_id!, actorProfileId: own.profileId, type: "gift", giftType: item.itemKey }).catch(() => undefined);
++  }
++  return c.json({ ok: true, purchaseId, delivered: true });
++});
+--- before/backend/src/db/migrations/0051_add_apple_purchase_intents.sql
++++ after/backend/src/db/migrations/0051_add_apple_purchase_intents.sql
+@@ -0,0 +1,13 @@
++CREATE TABLE IF NOT EXISTS apple_purchase_intents (
++  id TEXT PRIMARY KEY,
++  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
++  buyer_profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
++  target_profile_id TEXT REFERENCES profiles(id) ON DELETE SET NULL,
++  product_id TEXT NOT NULL,
++  product_kind TEXT NOT NULL,
++  item_key TEXT NOT NULL,
++  transaction_id TEXT UNIQUE,
++  created_at INTEGER NOT NULL,
++  fulfilled_at INTEGER
++);
++CREATE INDEX IF NOT EXISTS apple_purchase_intents_user_idx ON apple_purchase_intents(user_id, created_at);
+--- before/backend/src/lib/db.ts
++++ after/backend/src/lib/db.ts
+@@ -25,6 +25,10 @@
+   SUPPORT_REPLY_TO_EMAIL?: string;
+   APPLE_BUNDLE_ID?: string;
+   APPLE_SHARED_SECRET?: string;
++  APPLE_IAP_ISSUER_ID?: string;
++  APPLE_IAP_KEY_ID?: string;
++  APPLE_IAP_PRIVATE_KEY?: string;
++  APPLE_ALLOW_SANDBOX_PURCHASES?: string;
+   GOOGLE_PLAY_PACKAGE_NAME?: string;
+   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?: string;
+   GOOGLE_PLAY_RTDN_VERIFICATION_TOKEN?: string;
+--- before/backend/src/routes/payments.ts
++++ after/backend/src/routes/payments.ts
+@@ -14,8 +14,10 @@
+ } from "../lib/validation";
+ import { profiles, purchases } from "../db/schema";
+ import { logEvent } from "../lib/analytics";
++import { applePurchaseRoutes } from "./apple-purchases";
+ 
+ export const paymentRoutes = new Hono<{ Bindings: EnvBindings }>();
++paymentRoutes.route("/mobile/apple", applePurchaseRoutes);
+ 
+ type CheckoutProvider = "stripe";
+ type MobileProvider = "apple" | "google";
+--- before/frontend/src/lib/apple-billing.ts
++++ after/frontend/src/lib/apple-billing.ts
+@@ -0,0 +1,81 @@
++import { Capacitor, registerPlugin } from "@capacitor/core";
++import { createApplePurchaseIntent, fetchAppleBillingConfig, verifyApplePurchaseDelivery } from "./api";
++
++export const appleProductIds: Record<string, string> = {
++  rose: "com.velorachat.app.gift.rose_aura", starlight: "com.velorachat.app.gift.starlight_ring",
++  crown: "com.velorachat.app.gift.velora_crown", spark: "com.velorachat.app.boost.spark",
++  spotlight: "com.velorachat.app.boost.spotlight", challenge_pack_3: "com.velorachat.app.credits.3",
++  challenge_pack_10: "com.velorachat.app.credits.10",
++};
++export type AppleProduct = { productId: string; displayName: string; description: string; displayPrice: string };
++export type ApplePurchaseTransaction = { transactionId: string; productId: string; appAccountToken: string };
++type AppleNative = {
++  queryProducts(options: { productIds: string[] }): Promise<{ products: AppleProduct[]; canMakePayments: boolean }>;
++  purchaseProduct(options: { productId: string; appAccountToken: string }): Promise<{ status: "cancelled" | "pending" | "purchased"; transaction?: ApplePurchaseTransaction }>;
++  unfinishedTransactions(): Promise<{ transactions: ApplePurchaseTransaction[] }>;
++  finishTransaction(options: { transactionId: string }): Promise<{ finished: boolean }>;
++  addListener(name: "transactionUpdated", listener: (transaction: ApplePurchaseTransaction) => void): Promise<{ remove(): Promise<void> }>;
++};
++export const AppleStoreKit = registerPlugin<AppleNative>("VeloraStoreKit");
++export function isNativeAppleApp() { return Capacitor.getPlatform() === "ios" && Capacitor.isNativePlatform(); }
++
++export async function fetchAppleProducts() {
++  if (!isNativeAppleApp()) return { products: [] as AppleProduct[], canMakePayments: false };
++  if (!Capacitor.isPluginAvailable("VeloraStoreKit")) throw new Error("Apple purchases require the latest Velora app update.");
++  const config = await fetchAppleBillingConfig();
++  if (!config.available) throw new Error("Apple purchases are not available yet.");
++  return AppleStoreKit.queryProducts({ productIds: Object.values(appleProductIds) });
++}
++
++const deliveries = new Map<string, Promise<void>>();
++export function deliverAppleTransaction(transaction: ApplePurchaseTransaction): Promise<void> {
++  const running = deliveries.get(transaction.transactionId);
++  if (running) return running;
++  const delivery = (async () => {
++    if (!transaction.appAccountToken || !Object.values(appleProductIds).includes(transaction.productId)) throw new Error("This Apple purchase needs assistance from support.");
++    const result = await verifyApplePurchaseDelivery({ transactionId: transaction.transactionId, intentId: transaction.appAccountToken });
++    if (!result.ok || !result.delivered) throw new Error("Your purchase is awaiting delivery. Please retry; you will not be charged again.");
++    // A failed delivery must remain unfinished so StoreKit can recover it later.
++    await AppleStoreKit.finishTransaction({ transactionId: transaction.transactionId });
++    window.dispatchEvent(new Event("velora-apple-purchase-delivered"));
++  })().finally(() => { deliveries.delete(transaction.transactionId); });
++  deliveries.set(transaction.transactionId, delivery);
++  return delivery;
++}
++
++export async function recoverApplePurchases() {
++  if (!isNativeAppleApp() || !Capacitor.isPluginAvailable("VeloraStoreKit")) return;
++  const { transactions } = await AppleStoreKit.unfinishedTransactions();
++  let failure: unknown;
++  for (const transaction of transactions) {
++    try { await deliverAppleTransaction(transaction); } catch (error) { failure ??= error; }
++  }
++  if (failure) throw failure;
++}
++
++let purchaseInProgress = false;
++export async function completeApplePurchase(input: { itemKey: string; targetProfileId?: string }) {
++  if (!isNativeAppleApp() || !Capacitor.isPluginAvailable("VeloraStoreKit")) throw new Error("Apple purchases are unavailable in this app build.");
++  if (purchaseInProgress) throw new Error("Another purchase is already in progress.");
++  const productId = appleProductIds[input.itemKey];
++  if (!productId) throw new Error("Unknown purchase product.");
++  purchaseInProgress = true;
++  try {
++    await recoverApplePurchases();
++    // Creating a server intent verifies sign-in, recipient, and server readiness
++    // before presenting any payment sheet. Its UUID binds Apple's transaction
++    // to the original account, item, and gift recipient across app restarts.
++    const intent = await createApplePurchaseIntent({ productId, targetProfileId: input.targetProfileId });
++    if (intent.productId !== productId) throw new Error("The purchase product could not be confirmed.");
++    const result = await AppleStoreKit.purchaseProduct({ productId, appAccountToken: intent.intentId });
++    if (result.status === "cancelled") return { cancelled: true as const };
++    if (result.status === "pending") throw new Error("Purchase pending Apple approval. It will be delivered automatically after approval.");
++    if (!result.transaction || result.transaction.productId !== productId || result.transaction.appAccountToken.toLowerCase() !== intent.intentId.toLowerCase()) throw new Error("The purchase is awaiting verification. Please use Retry purchase delivery.");
++    try { await deliverAppleTransaction(result.transaction); }
++    catch {
++      window.dispatchEvent(new Event("velora-apple-purchase-needs-delivery"));
++      throw new Error("Your purchase was paid, but delivery could not finish. Use Retry purchase delivery; you will not be charged again.");
++    }
++    return { cancelled: false as const };
++  } finally { purchaseInProgress = false; }
++}
+--- before/frontend/src/lib/apple-billing.test.ts
++++ after/frontend/src/lib/apple-billing.test.ts
+@@ -0,0 +1,68 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  native: { queryProducts: vi.fn(), purchaseProduct: vi.fn(), unfinishedTransactions: vi.fn(), finishTransaction: vi.fn() },
++  create: vi.fn(), verify: vi.fn(), config: vi.fn(),
++}));
++vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: () => "ios", isNativePlatform: () => true, isPluginAvailable: () => true }, registerPlugin: () => mocks.native }));
++vi.mock("./api", () => ({ createApplePurchaseIntent: mocks.create, verifyApplePurchaseDelivery: mocks.verify, fetchAppleBillingConfig: mocks.config }));
++import { appleProductIds, completeApplePurchase, deliverAppleTransaction, fetchAppleProducts, recoverApplePurchases } from "./apple-billing";
++
++const intentId = "05743e3e-dbe3-400c-b58d-c6c89a5754a6";
++const transaction = { transactionId: "123456", productId: appleProductIds.rose, appAccountToken: intentId };
++beforeEach(() => {
++  vi.resetAllMocks();
++  mocks.native.unfinishedTransactions.mockResolvedValue({ transactions: [] });
++  mocks.native.finishTransaction.mockResolvedValue({ finished: true });
++  mocks.create.mockResolvedValue({ intentId, productId: appleProductIds.rose });
++  mocks.verify.mockResolvedValue({ ok: true, delivered: true });
++});
++
++describe("Apple purchase safety and recovery", () => {
++  it("does not finish or grant cancelled and pending purchases", async () => {
++    mocks.native.purchaseProduct.mockResolvedValueOnce({ status: "cancelled" });
++    expect(await completeApplePurchase({ itemKey: "rose", targetProfileId: "recipient" })).toEqual({ cancelled: true });
++    mocks.native.purchaseProduct.mockResolvedValueOnce({ status: "pending" });
++    await expect(completeApplePurchase({ itemKey: "rose" })).rejects.toThrow("pending Apple approval");
++    expect(mocks.verify).not.toHaveBeenCalled(); expect(mocks.native.finishTransaction).not.toHaveBeenCalled();
++  });
++  it("never presents payment when the server rejects preflight", async () => {
++    mocks.create.mockRejectedValue(new Error("Purchases are not available"));
++    await expect(completeApplePurchase({ itemKey: "rose" })).rejects.toThrow("not available");
++    expect(mocks.native.purchaseProduct).not.toHaveBeenCalled();
++  });
++  it("binds the recipient before payment and finishes only after confirmed server delivery", async () => {
++    const order: string[] = [];
++    mocks.native.purchaseProduct.mockResolvedValue({ status: "purchased", transaction });
++    mocks.verify.mockImplementation(async () => { order.push("delivered"); return { ok: true, delivered: true }; });
++    mocks.native.finishTransaction.mockImplementation(async () => { order.push("finished"); return { finished: true }; });
++    expect(await completeApplePurchase({ itemKey: "rose", targetProfileId: "recipient" })).toEqual({ cancelled: false });
++    expect(mocks.create).toHaveBeenCalledWith({ productId: appleProductIds.rose, targetProfileId: "recipient" });
++    expect(mocks.native.purchaseProduct).toHaveBeenCalledWith({ productId: appleProductIds.rose, appAccountToken: intentId });
++    expect(order).toEqual(["delivered", "finished"]);
++  });
++  it("leaves paid transactions unfinished after an API failure and recovers without another charge", async () => {
++    mocks.native.purchaseProduct.mockResolvedValue({ status: "purchased", transaction });
++    mocks.verify.mockRejectedValueOnce(new Error("network unavailable"));
++    await expect(completeApplePurchase({ itemKey: "rose" })).rejects.toThrow("will not be charged again");
++    expect(mocks.native.finishTransaction).not.toHaveBeenCalled();
++    mocks.native.unfinishedTransactions.mockResolvedValue({ transactions: [transaction] });
++    await recoverApplePurchases();
++    expect(mocks.native.purchaseProduct).toHaveBeenCalledTimes(1);
++    expect(mocks.native.finishTransaction).toHaveBeenCalledWith({ transactionId: "123456" });
++  });
++  it("does not deliver a transaction bound to another intent", async () => {
++    mocks.native.purchaseProduct.mockResolvedValue({ status: "purchased", transaction: { ...transaction, appAccountToken: "another-token" } });
++    await expect(completeApplePurchase({ itemKey: "rose" })).rejects.toThrow("awaiting verification");
++    expect(mocks.verify).not.toHaveBeenCalled(); expect(mocks.native.finishTransaction).not.toHaveBeenCalled();
++  });
++  it("coalesces duplicate native callbacks for the same transaction", async () => {
++    await Promise.all([deliverAppleTransaction(transaction), deliverAppleTransaction(transaction)]);
++    expect(mocks.verify).toHaveBeenCalledTimes(1); expect(mocks.native.finishTransaction).toHaveBeenCalledTimes(1);
++  });
++  it("returns Apple's localized prices without a hard-coded dollar fallback", async () => {
++    mocks.config.mockResolvedValue({ available: true });
++    mocks.native.queryProducts.mockResolvedValue({ canMakePayments: true, products: [{ productId: appleProductIds.rose, displayPrice: "EGP 49.99" }] });
++    expect((await fetchAppleProducts()).products[0].displayPrice).toBe("EGP 49.99");
++  });
++});
+--- before/frontend/src/lib/native-purchases.ts
++++ after/frontend/src/lib/native-purchases.ts
+@@ -0,0 +1,9 @@
++import { completeGooglePlayPurchase, isNativeAndroidApp, shouldUseGooglePlayBilling } from "./google-play-billing";
++import { completeApplePurchase, isNativeAppleApp } from "./apple-billing";
++
++export function isNativePurchaseApp() { return isNativeAndroidApp() || isNativeAppleApp(); }
++export async function completeNativePurchase(input: { productKind: "gift" | "boost" | "challenge_credit_pack"; itemKey: string; targetProfileId?: string }) {
++  if (isNativeAppleApp()) return completeApplePurchase(input);
++  if (await shouldUseGooglePlayBilling()) return completeGooglePlayPurchase(input);
++  throw new Error("Purchases are unavailable on this device.");
++}
+--- before/frontend/src/lib/api.ts
++++ after/frontend/src/lib/api.ts
+@@ -1468,3 +1468,13 @@
+ export function reportAiCompanionPhoto(photoId: string, payload: { reason: "unsafe" | "harmful" | "sexual_content" | "misleading" | "other"; details?: string }) {
+   return request<{ ok: true }>(`/api/ai-companions/photos/${photoId}/report`, { method: "POST", body: payload });
+ }
++
++export function fetchAppleBillingConfig() {
++  return request<{ available: boolean; products: { productId: string; productKind: string; itemKey: string }[] }>("/api/payments/mobile/apple/config");
++}
++export function createApplePurchaseIntent(input: { productId: string; targetProfileId?: string }) {
++  return request<{ intentId: string; productId: string }>("/api/payments/mobile/apple/intents", { method: "POST", body: input });
++}
++export function verifyApplePurchaseDelivery(input: { transactionId: string; intentId: string }) {
++  return request<{ ok: boolean; delivered: boolean; purchaseId: string }>("/api/payments/mobile/apple/verify", { method: "POST", body: input });
++}
+--- before/frontend/src/ui/components/apple-purchase-recovery.tsx
++++ after/frontend/src/ui/components/apple-purchase-recovery.tsx
+@@ -0,0 +1,45 @@
++import { useEffect, useState } from "react";
++import { useQueryClient } from "@tanstack/react-query";
++import { AppleStoreKit, deliverAppleTransaction, isNativeAppleApp, recoverApplePurchases } from "../../lib/apple-billing";
++import { Capacitor } from "@capacitor/core";
++
++export function ApplePurchaseRecovery({ userId }: { userId?: string }) {
++  const [error, setError] = useState("");
++  const [retrying, setRetrying] = useState(false);
++  const queryClient = useQueryClient();
++  async function retry() {
++    if (!userId) return;
++    setRetrying(true);
++    try { await recoverApplePurchases(); setError(""); }
++    catch (e) { setError(e instanceof Error ? e.message : "Purchase delivery needs another attempt."); }
++    finally { setRetrying(false); }
++  }
++  useEffect(() => {
++    setError("");
++    if (!userId || !isNativeAppleApp() || !Capacitor.isPluginAvailable("VeloraStoreKit")) return;
++    let disposed = false;
++    let listener: { remove(): Promise<void> } | undefined;
++    const capture = (e: unknown) => { if (!disposed) setError(e instanceof Error ? e.message : "Purchase delivery needs another attempt."); };
++    const recover = () => { void recoverApplePurchases().then(() => { if (!disposed) setError(""); }).catch(capture); };
++    const refresh = () => {
++      if (disposed) return;
++      setError("");
++      for (const key of ["ownProfile", "profiles", "notifications", "challenges", "conversation"]) void queryClient.invalidateQueries({ queryKey: [key] });
++    };
++    void AppleStoreKit.addListener("transactionUpdated", transaction => { void deliverAppleTransaction(transaction).catch(capture); }).then(handle => { if (disposed) void handle.remove(); else listener = handle; }).catch(capture);
++    const visible = () => { if (document.visibilityState === "visible") recover(); };
++    document.addEventListener("visibilitychange", visible);
++    window.addEventListener("velora-apple-purchase-delivered", refresh);
++    window.addEventListener("velora-apple-purchase-needs-delivery", recover);
++    recover();
++    return () => {
++      disposed = true;
++      void listener?.remove();
++      document.removeEventListener("visibilitychange", visible);
++      window.removeEventListener("velora-apple-purchase-delivered", refresh);
++      window.removeEventListener("velora-apple-purchase-needs-delivery", recover);
++    };
++  }, [userId, queryClient]);
++  if (!userId || !isNativeAppleApp() || !error) return null;
++  return <aside className="panel" role="status"><p>{error}</p><button className="secondary-button" disabled={retrying} onClick={() => { void retry(); }}>{retrying ? "Delivering purchase…" : "Retry purchase delivery"}</button></aside>;
++}
+--- before/frontend/src/ui/components/use-apple-product-prices.tsx
++++ after/frontend/src/ui/components/use-apple-product-prices.tsx
+@@ -0,0 +1,16 @@
++import { useQuery } from "@tanstack/react-query";
++import { appleProductIds, fetchAppleProducts, isNativeAppleApp } from "../../lib/apple-billing";
++
++export function useAppleProductPrices() {
++  const ios = isNativeAppleApp();
++  const query = useQuery({ queryKey: ["appleProducts"], queryFn: fetchAppleProducts, enabled: ios, staleTime: 5 * 60 * 1000, retry: 1 });
++  return {
++    ios,
++    price(itemKey: string, cents: number) {
++      if (!ios) return `$${(cents / 100).toFixed(2)}`;
++      return query.data?.products?.find(p => p.productId === appleProductIds[itemKey])?.displayPrice ?? (query.isLoading ? "Loading price…" : "Unavailable");
++    },
++    canBuy(itemKey: string) { return !ios || Boolean(query.data?.canMakePayments && query.data.products?.some(p => p.productId === appleProductIds[itemKey])); },
++    notice: ios ? <><p className="status-message">{query.error ? "Apple purchases are not available right now." : query.data && !query.data.products?.length ? "These products are not available in the App Store yet." : query.data && !query.data.canMakePayments ? "Purchases are disabled on this device." : "Purchases are processed securely by the App Store."}</p>{query.error ? <button className="secondary-button" onClick={() => { void query.refetch(); }}>Reload prices</button> : null}</> : null,
++  };
++}
+--- before/frontend/src/ui/components/gift-actions.tsx
++++ after/frontend/src/ui/components/gift-actions.tsx
+@@ -1,36 +1,24 @@
+ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+ import { fetchGiftCatalog } from "../../lib/api";
+-import {
+-  completeGooglePlayPurchase,
+-  isNativeAndroidApp,
+-  shouldUseGooglePlayBilling,
+-} from "../../lib/google-play-billing";
++import { completeNativePurchase, isNativePurchaseApp } from "../../lib/native-purchases";
++import { useAppleProductPrices } from "./use-apple-product-prices";
+ 
+ type GiftActionsProps = {
+   profileId: string;
+ };
+ 
+ export function GiftActions({ profileId }: GiftActionsProps) {
+-  const nativeAndroid = isNativeAndroidApp();
++  const nativeBilling = isNativePurchaseApp();
++  const applePrices = useAppleProductPrices();
+   const queryClient = useQueryClient();
+   const giftCatalogQuery = useQuery({
+     queryKey: ["giftCatalog"],
+     queryFn: fetchGiftCatalog,
+-    enabled: nativeAndroid,
++    enabled: nativeBilling,
+   });
+ 
+   const giftMutation = useMutation({
+-    mutationFn: async (giftType: string) => {
+-      if (await shouldUseGooglePlayBilling()) {
+-        return completeGooglePlayPurchase({
+-          productKind: "gift",
+-          itemKey: giftType,
+-          targetProfileId: profileId,
+-        });
+-      }
+-
+-      throw new Error("Google Play Billing is unavailable on this device.");
+-    },
++    mutationFn: (giftType: string) => completeNativePurchase({ productKind: "gift", itemKey: giftType, targetProfileId: profileId }),
+     onSuccess: async (result) => {
+       if (!result.cancelled) {
+         await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+@@ -40,7 +28,7 @@
+     },
+   });
+ 
+-  if (!nativeAndroid) return null;
++  if (!nativeBilling) return null;
+ 
+   return (
+     <div className="gift-actions">
+@@ -62,18 +50,19 @@
+                     : ""
+             }`}
+             type="button"
+-            disabled={giftMutation.isPending}
++            disabled={giftMutation.isPending || !applePrices.canBuy(gift.key)}
+             onClick={() => {
+               giftMutation.mutate(gift.key);
+             }}
+           >
+             {giftMutation.isPending
+               ? "Preparing gift..."
+-              : `Send ${gift.label} · $${(gift.priceCents / 100).toFixed(2)}`}
++              : `Send ${gift.label} · ${applePrices.price(gift.key, gift.priceCents)}`}
+           </button>
+         ))}
+       </div>
+ 
++      {applePrices.notice}
+       {giftMutation.error ? (
+         <p className="form-error">
+           {giftMutation.error instanceof Error
+--- before/frontend/src/ui/components/my-profile-card.tsx
++++ after/frontend/src/ui/components/my-profile-card.tsx
+@@ -12,18 +12,16 @@
+   fetchChallengeCreditCatalog,
+   fetchOwnProfile,
+ } from "../../lib/api";
+-import {
+-  completeGooglePlayPurchase,
+-  isNativeAndroidApp,
+-  shouldUseGooglePlayBilling,
+-} from "../../lib/google-play-billing";
++import { completeNativePurchase, isNativePurchaseApp } from "../../lib/native-purchases";
++import { useAppleProductPrices } from "./use-apple-product-prices";
+ import { BoostStatus } from "./boost-status";
+ import { GiftEffectStatus } from "./gift-effect-status";
+ import { ProfileAvatar } from "./profile-avatar";
+ import { ProfilePhotoGallery } from "./profile-photo-gallery";
+ 
+ export function MyProfileCard() {
+-  const nativeAndroid = isNativeAndroidApp();
++  const nativeBilling = isNativePurchaseApp();
++  const applePrices = useAppleProductPrices();
+   const queryClient = useQueryClient();
+   const { data, isLoading, error } = useQuery({
+     queryKey: ["ownProfile"],
+@@ -32,25 +30,16 @@
+   const boostCatalogQuery = useQuery({
+     queryKey: ["boostCatalog"],
+     queryFn: fetchBoostCatalog,
+-    enabled: nativeAndroid,
++    enabled: nativeBilling,
+   });
+   const challengeCreditCatalogQuery = useQuery({
+     queryKey: ["challengeCreditCatalog"],
+     queryFn: fetchChallengeCreditCatalog,
+-    enabled: nativeAndroid,
++    enabled: nativeBilling,
+   });
+ 
+   const boostMutation = useMutation({
+-    mutationFn: async (boostType: string) => {
+-      if (await shouldUseGooglePlayBilling()) {
+-        return completeGooglePlayPurchase({
+-          productKind: "boost",
+-          itemKey: boostType,
+-        });
+-      }
+-
+-      throw new Error("Google Play Billing is unavailable on this device.");
+-    },
++    mutationFn: (boostType: string) => completeNativePurchase({ productKind: "boost", itemKey: boostType }),
+     onSuccess: async (result) => {
+       if (!result.cancelled) {
+         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+@@ -60,16 +49,7 @@
+   });
+ 
+   const challengeCreditMutation = useMutation({
+-    mutationFn: async (packKey: string) => {
+-      if (await shouldUseGooglePlayBilling()) {
+-        return completeGooglePlayPurchase({
+-          productKind: "challenge_credit_pack",
+-          itemKey: packKey,
+-        });
+-      }
+-
+-      throw new Error("Google Play Billing is unavailable on this device.");
+-    },
++    mutationFn: (packKey: string) => completeNativePurchase({ productKind: "challenge_credit_pack", itemKey: packKey }),
+     onSuccess: async (result) => {
+       if (!result.cancelled) {
+         await queryClient.invalidateQueries({ queryKey: ["ownProfile"] });
+@@ -162,7 +142,7 @@
+           Credits are only used when you send a challenge. If you cancel while it is still pending,
+           the credit returns to your balance automatically.
+         </p>
+-        {nativeAndroid ? (
++        {nativeBilling ? (
+           <>
+             <div className="gift-row">
+               {(challengeCreditCatalogQuery.data?.packs ?? []).map((pack) => (
+@@ -170,12 +150,12 @@
+                   key={pack.key}
+                   className="secondary-button"
+                   type="button"
+-                  disabled={challengeCreditMutation.isPending}
++                  disabled={challengeCreditMutation.isPending || !applePrices.canBuy(pack.key)}
+                   onClick={() => challengeCreditMutation.mutate(pack.key)}
+                 >
+                   {challengeCreditMutation.isPending
+                     ? "Opening checkout..."
+-                    : `Buy ${pack.label} · $${(pack.priceCents / 100).toFixed(2)}`}
++                    : `Buy ${pack.label} · ${applePrices.price(pack.key, pack.priceCents)}`}
+                 </button>
+               ))}
+             </div>
+@@ -190,6 +170,7 @@
+         ) : null}
+       </div>
+ 
++      {nativeBilling ? applePrices.notice : null}
+       <div className="meta-group">
+         <span className="meta-title">Profile boost</span>
+         <div className="chip-row">
+@@ -206,7 +187,7 @@
+           activeExpiresAt={profile.boostEffect.activeExpiresAt}
+           totalPurchased={profile.boostEffect.totalPurchased}
+         />
+-        {nativeAndroid ? (
++        {nativeBilling ? (
+           <>
+             <div className="gift-row">
+               {(boostCatalogQuery.data?.boosts ?? []).map((boost) => (
+@@ -214,12 +195,12 @@
+                   key={boost.key}
+                   className="secondary-button"
+                   type="button"
+-                  disabled={boostMutation.isPending}
++                  disabled={boostMutation.isPending || !applePrices.canBuy(boost.key)}
+                   onClick={() => boostMutation.mutate(boost.key)}
+                 >
+                   {boostMutation.isPending
+                     ? "Opening checkout..."
+-                    : `Buy ${boost.label} · ${boost.durationHours}h · $${(boost.priceCents / 100).toFixed(2)}`}
++                    : `Buy ${boost.label} · ${boost.durationHours}h · ${applePrices.price(boost.key, boost.priceCents)}`}
+                 </button>
+               ))}
+             </div>
+--- before/frontend/src/ui/app-layout.tsx
++++ after/frontend/src/ui/app-layout.tsx
+@@ -1,3 +1,4 @@
++import { ApplePurchaseRecovery } from "./components/apple-purchase-recovery";
+ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+ import { useQuery, useQueryClient } from "@tanstack/react-query";
+ import { clearAuthToken, fetchConversations, fetchNotifications, fetchOwnProfile, fetchSession, hasStoredAuthToken } from "../lib/api";
+@@ -288,6 +289,7 @@
+         </section>
+       ) : null}
+ 
++      <ApplePurchaseRecovery userId={sessionQuery.data?.authenticated && sessionQuery.data.hasProfile ? sessionQuery.data.user?.id : undefined} />
+       <Outlet />
+ 
+       <footer className="site-footer">
+--- before/backend/wrangler.production.jsonc
++++ after/backend/wrangler.production.jsonc
+@@ -11,6 +11,8 @@
+ 		"ENABLE_DEV_ENDPOINTS": "false",
+ 		"MESSAGING_PASS_REQUIRED": "false",
+ 		"GOOGLE_PLAY_PACKAGE_NAME": "com.velorachat.app",
++		"APPLE_BUNDLE_ID": "com.velorachat.app",
++		"APPLE_ALLOW_SANDBOX_PURCHASES": "true",
+ 		"GOOGLE_PLAY_RTDN_AUDIENCE": "https://api.velorachat.com/google-play-rtdn",
+ 		"GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL": "velora-pubsub-push@velora-e3a28.iam.gserviceaccount.com",
+ 		"RESEND_FROM_EMAIL": "no-reply@velorachat.com",
+--- before/frontend/src/ui/components/gift-actions.ios.test.tsx
++++ after/frontend/src/ui/components/gift-actions.ios.test.tsx
+@@ -0,0 +1,30 @@
++import { cleanup, render, screen } from "@testing-library/react";
++import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++import { afterEach, describe, expect, it, vi } from "vitest";
++
++vi.mock("@capacitor/core", () => ({
++  Capacitor: { getPlatform: () => "ios", isNativePlatform: () => true, isPluginAvailable: () => true },
++  registerPlugin: () => ({ queryProducts: async () => ({ canMakePayments: true, products: [
++    { productId: "com.velorachat.app.gift.rose_aura", displayPrice: "EGP 49.99", displayName: "Rose Aura" },
++  ] }) }),
++}));
++vi.mock("../../lib/api", () => ({
++  fetchGiftCatalog: async () => ({ gifts: [
++    { key: "rose", label: "Rose Aura", priceCents: 99 }, { key: "crown", label: "Velora Crown", priceCents: 249 },
++  ] }),
++  fetchAppleBillingConfig: async () => ({ available: true }),
++}));
++import { GiftActions } from "./gift-actions";
++afterEach(cleanup);
++describe("Apple purchase buttons", () => {
++  it("uses the App Store's localized price and disables products Apple has not returned", async () => {
++    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
++    render(<QueryClientProvider client={client}><GiftActions profileId="recipient" /></QueryClientProvider>);
++    const available = await screen.findByRole("button", { name: "Send Rose Aura · EGP 49.99" });
++    expect((available as HTMLButtonElement).disabled).toBe(false);
++    const missing = await screen.findByRole("button", { name: "Send Velora Crown · Unavailable" });
++    expect((missing as HTMLButtonElement).disabled).toBe(true);
++    expect(screen.queryByRole("button", { name: /\$0\.99/ })).toBeNull();
++    client.clear();
++  });
++});

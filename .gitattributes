@@ -1,3 +1,4 @@
 # Preserve the exact bytes of the reviewed embedded iOS release.
 ios-cloud/** -text
 codemagic.yaml text eol=lf
+ios-cloud/purchase-source/implementation.patch -whitespace
