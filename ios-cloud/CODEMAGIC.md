@@ -9,13 +9,15 @@ The cloud snapshot also includes the AdMob initialization correction identified 
 ## Workflows
 
 - **Velora iOS - Compile check (no signing)** compiles the Release configuration for iPhone without Apple credentials. It does not produce an installable IPA. Use it to verify native compilation while configuring signing.
-- **Velora iOS - Signed IPA** requires an uploaded Apple Distribution certificate (including its private key) and an App Store provisioning profile matching `com.velorachat.app` and team `N94Z4PR968`. Configure these under Codemagic account/team settings > codemagic.yaml settings > Code signing identities. A profile for Trading AI's bundle identifier cannot be used for Velora. Enable Push Notifications on Velora's Apple identifier before creating its profile. An App Store Connect API integration can help generate/fetch signing files; it is separate from the APNs key uploaded to Firebase.
+- **Velora iOS - Upload to TestFlight** builds a signed IPA and uploads it to App Store Connect using the `velora-app-store-connect` integration. It requires an uploaded Apple Distribution certificate (including its private key) and an App Store provisioning profile matching `com.velorachat.app` and team `N94Z4PR968`. Configure these under Codemagic account/team settings > codemagic.yaml settings > Code signing identities. A profile for Trading AI's bundle identifier cannot be used for Velora. Enable Push Notifications on Velora's Apple identifier before creating its profile. The App Store Connect API integration is separate from the APNs key uploaded to Firebase.
 
-Both workflows use the M2 machine and stop after 60 minutes. There are no automatic triggers or store uploads. Run manually while free minutes remain on the Personal account. Build duration and native compilation success are only known after the first cloud run.
+Both workflows use the M2 machine and stop after 60 minutes. There are no automatic build triggers. Starting the release workflow manually authorizes its App Store Connect upload. It does not submit to TestFlight beta review or App Store review, and does not release the app publicly. `submit_to_testflight: false` disables beta review submission, not the binary upload; the processed build can be selected for internal testing in App Store Connect. Run manually while free minutes remain on the Personal account.
 
 The signed workflow assigns Codemagic's build counter plus 4 as the build number (above the packaged build 3), retaining version 1.0.37. If this app already has a higher build on App Store Connect, raise that offset before uploading. Keep Codemagic's build counter intact for subsequent uploads.
 
-Download the IPA and logs from build artifacts. App Store Connect/TestFlight upload can be configured after signing and the app record are ready; generating an IPA alone does not publish the app. Test login, Browse, rewarded unlock, Settings, reminders and a remote chat notification on a real iPhone before submitting for review.
+Download the IPA and logs from build artifacts. The App Store Connect app record must already exist for `com.velorachat.app` (listing name: **Velora: Games & Chat**). After upload and Apple processing, open the app's TestFlight tab and add the build to an internal testing group. Test login, Browse, rewarded unlock, Settings, reminders and a remote chat notification on a real iPhone before submitting for review.
+
+The first cloud compile check and the first signed IPA build succeeded on commit `982ac75`. The workflow ID stays `ios-release` when adding publishing so its existing build counter continues, producing a higher build number on the next run.
 
 ## Snapshot integrity
 

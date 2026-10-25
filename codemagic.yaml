@@ -1,5 +1,6 @@
 # Build the reviewed iOS snapshot, not the historical frontend on main.
-# Workflows run manually; there are no automatic builds or store submissions.
+# Builds run manually. The release workflow uploads to App Store Connect
+# without submitting to beta review or App Store review.
 workflows:
   ios-compile-check:
     name: Velora iOS - Compile check (no signing)
@@ -25,9 +26,11 @@ workflows:
       - build/ios/compile.log
 
   ios-release:
-    name: Velora iOS - Signed IPA
+    name: Velora iOS - Upload to TestFlight
     instance_type: mac_mini_m2
     max_build_duration: 60
+    integrations:
+      app_store_connect: velora-app-store-connect
     environment:
       xcode: latest
       ios_signing:
@@ -56,3 +59,8 @@ workflows:
       - build/ios/ipa/*.ipa
       - build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
       - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
