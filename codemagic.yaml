@@ -89,3 +89,62 @@ workflows:
         auth: integration
         submit_to_testflight: false
         submit_to_app_store: false
+
+  # Manual device-only distribution. No TestFlight or App Store upload.
+  ios-direct-install:
+    name: Velora iOS - Direct install on registered iPhone
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.velorachat.app
+    scripts:
+      - name: Verify packaged release
+        script: python3 ios-cloud/verify.py
+      - name: Assign unique cloud build number
+        script: |
+          set -euo pipefail
+          cd ios-cloud/ios/App
+          agvtool new-version -all "$((BUILD_NUMBER + 10000))"
+      - name: Apply uploaded Apple signing identities
+        script: |
+          set -euo pipefail
+          cd ios-cloud/ios/App
+          xcode-project use-profiles
+      - name: Archive signed iOS app
+        script: |
+          set -euo pipefail
+          mkdir -p build/ios/xcarchive
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/ios-cloud/ios/App/App.xcodeproj" \
+            -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/VeloraDirect.xcarchive" \
+            2>&1 | tee build/ios/archive.log
+      - name: Correct static SDK resource packaging and verify archive
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/repair_static_sdk.py \
+            "$CM_BUILD_DIR/build/ios/xcarchive/VeloraDirect.xcarchive/Products/Applications/App.app"
+      - name: Export signed IPA
+        script: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/build/ios/xcarchive/VeloraDirect.xcarchive" \
+            -exportOptionsPlist "$HOME/export_options.plist" \
+            -exportPath "$CM_BUILD_DIR/build/ios/ipa" \
+            2>&1 | tee build/ios/export.log
+      - name: Verify direct-install IPA compatibility and signatures
+        script: |
+          set -euo pipefail
+          python3 ios-cloud/audit_ipa.py build/ios/ipa/App.ipa \
+            --expected-build "$((BUILD_NUMBER + 10000))" \
+            --distribution ad-hoc --verify-signatures --output build/ios/ipa-audit.json
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
+      - build/ios/*.log
+      - build/ios/ipa-audit.json
+      - /tmp/xcodebuild_logs/*.log

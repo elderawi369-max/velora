@@ -16,7 +16,11 @@ parser.add_argument('ipa', type=Path)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--expected-build')
 parser.add_argument('--verify-signatures', action='store_true')
+parser.add_argument('--distribution', choices=('app-store', 'ad-hoc'), default='app-store')
+parser.add_argument('--expected-device-sha256', help='Require this device in an Ad Hoc profile without logging its UDID')
 args = parser.parse_args()
+if args.expected_device_sha256 and args.distribution != 'ad-hoc':
+    parser.error('--expected-device-sha256 requires --distribution ad-hoc')
 failures = []
 report = {'ipa': str(args.ipa), 'sha256': hashlib.sha256(args.ipa.read_bytes()).hexdigest()}
 with zipfile.ZipFile(args.ipa) as archive:
@@ -33,9 +37,22 @@ with zipfile.ZipFile(args.ipa) as archive:
     profile = plistlib.loads(raw[raw.index(b'<?xml'):raw.index(b'</plist>') + 8])
     ent = profile['Entitlements']
     assert ent['application-identifier'] == 'N94Z4PR968.com.velorachat.app'
-    assert ent['beta-reports-active'] is True
     assert ent['get-task-allow'] is False
-    assert not profile.get('ProvisionedDevices') and not profile.get('ProvisionsAllDevices')
+    assert not profile.get('ProvisionsAllDevices'), 'Enterprise profiles are not supported'
+    devices = profile.get('ProvisionedDevices', [])
+    if args.distribution == 'app-store':
+        assert ent['beta-reports-active'] is True
+        assert not devices, 'Expected an App Store profile'
+    else:
+        assert devices, 'Ad Hoc profile must authorize registered devices'
+        assert not ent.get('beta-reports-active'), 'Expected an Ad Hoc profile, not TestFlight'
+        assert ent.get('aps-environment') == 'production'
+        if args.expected_device_sha256:
+            assert args.expected_device_sha256.lower() in {
+                hashlib.sha256(device.encode()).hexdigest() for device in devices
+            }, 'This iPhone is not authorized by the Ad Hoc profile'
+    report['distribution'] = args.distribution
+    report['authorizedDeviceCount'] = len(devices)
     report['binaries'] = {}
     for entry in archive.infolist():
         if entry.is_dir() or not entry.filename.startswith(root) or Path(entry.filename).suffix not in ('', '.dylib'):
