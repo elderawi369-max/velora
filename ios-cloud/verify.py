@@ -52,16 +52,19 @@ for value in (
     "https://apps.apple.com/app/id6826858824",
     "VeloraAchievementShare",
     "Share Results",
-    "Share a text result with the Google Play and App Store links.",
+    "Share your achievement photo. Scan a code on the card to get Velora.",
 ):
     assert value in javascript, f"Missing production configuration: {value}"
 assert "Google is still verifying" not in javascript
 assert (app / "public/achievement-assets/app-store.svg").is_file()
 assert (app / "public/achievement-assets/google-play.png").is_file()
+assert (app / "public/achievement-assets/app-store-qr.png").is_file()
+assert (app / "public/achievement-assets/google-play-qr.png").is_file()
 assert (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").is_file()
 share_plugin = (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").read_text()
-assert 'CAPPluginMethod(name: "shareResults"' in share_plugin, "Native text sharing must be registered"
-assert "activityItems: [text]" in share_plugin, "Share Results must send text containing both store URLs"
+assert 'CAPPluginMethod(name: "exportCard"' in share_plugin, "Native photo sharing must be registered"
+assert "activityItems: [file]" in share_plugin, "Share Results must preserve the working photo-only handoff"
+assert "UIPasteboard.general.string = text" not in share_plugin, "QR photo sharing must not rely on copying a caption"
 assert "activityItems: [file, text]" not in share_plugin, "Sharing image and link text can replace the image with a link preview"
 source_records = json.loads((root / "achievement-source/source-files.json").read_text())
 recorded_swift = next(row for row in source_records if row["file"].endswith("VeloraAchievementSharePlugin.swift"))

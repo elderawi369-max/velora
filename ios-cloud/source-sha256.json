@@ -63,7 +63,7 @@
   "ios/App/App/public/cordova.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/cordova_plugins.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/firebase-messaging-sw.js": "ed0cbf2edb02dd4f4d3f57216ec763cfefa9449548b95cd395c887cde7a6f6b2",
-  "ios/App/App/public/index.html": "714da4ec2a28b93df68358f9089e326827718baed8f4bfdc5e81bd35a525edf4",
+  "ios/App/App/public/index.html": "19f40b5e3f1246940ef1913419ae0b5b1af69df26fe91b38d63847dad3a056a6",
   "ios/App/App/public/investigations/blackwood/blackwood-museum-storm-v1.png": "57932c3fb34e3178582faa1dd90ced899e0dda03f3accd6a9925587eebcbdbc4",
   "ios/App/App/public/investigations/blackwood/clara-finch-v1.png": "fef659a6800523741913464ec6e3f8ac073f8c6f223b8fa432ffaf2abf2b94dd",
   "ios/App/App/public/investigations/blackwood/conservation-laboratory-v1.png": "83ba145be62196b61be6fe03f583ae800e2305957787474e1d2ec70c10b43625",
@@ -171,11 +171,13 @@
   "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraRewardedAdsPlugin.swift": "127e1d1cbfa22cec003353bbd19545d72080ddd65afffb53795cc6ae7d79ac97",
   "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraStoreKitPlugin.swift": "67b550c436e132b3128d188f00e28319a97fb05e4d3734596ec239e7b0d9d187",
   "packages/VeloraRewardedAdsNative/package.json": "d62db0cf3061e5305a386b7a16747442abc76a8092ec749fa714f40480c962ef",
-  "ios/App/App/public/achievement-assets/README.md": "9db63390b5fe1c9e5b29cec8fa8e11b0d7104363396f545bd43d5d7261fc19af",
+  "ios/App/App/public/achievement-assets/README.md": "628bab5375630d3c5b3b640b0040f0e43d861d92e4957fb3fd405a6bde75a8a1",
   "ios/App/App/public/achievement-assets/app-store.svg": "a26fc5b38380272c92e9019a2eb8b45542a66814b3e2b203772db8904b9fb99f",
   "ios/App/App/public/achievement-assets/google-play.png": "f72611e2df8e88204009fd896d05d5e8e83c77009c63943bbffa169559934849",
   "ios/App/App/public/assets/index-ByJ5VK3u.css": "ea63bd656537af1f07423aa54e545ea93e855ba49bbd67f96816d8056c232456",
-  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift": "a71047f6b6f9b38763022e68510b1e749e7b04ffc04e2758f295dfbb7d46afff",
-  "ios/App/App/public/assets/index-PiL9UN8O.js": "2a71ff9fa4deed34d2d7ba3dc6add515cb3a3618dd8c4f20b2fd208a8b1d222b",
-  "ios/App/App/public/assets/web-DapAptXk.js": "46a7c3ad8cca78894106752297648ba4e8bb0aa8f9dc342840b2d35309cad661"
+  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift": "e1f49eb65607c8a8e1d3bba1f6d5554cef01b46575c97701c4222b25f2f0e6df",
+  "ios/App/App/public/achievement-assets/app-store-qr.png": "77d29447b5e356215538be68559303b23c35a110d2fc20573764304c72faf226",
+  "ios/App/App/public/achievement-assets/google-play-qr.png": "5167b930bf025549b6078014038131ebbf3f5fe182fa6341948184b35f71b66d",
+  "ios/App/App/public/assets/index-BkN0g1PJ.js": "d6afcd2b0f740d7f39ce19745cb81ef57e1d616c8da497948a7af9e40c1b7d74",
+  "ios/App/App/public/assets/web-oq1UTBQK.js": "8da6685e21a022d4fbfd3f86c46affc5747017d3bcff29661d09fd9e7064dce7"
 }

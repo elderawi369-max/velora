@@ -80,20 +80,14 @@ public final class VeloraAchievementSharePlugin: CAPPlugin, CAPBridgedPlugin, UI
                     self.pendingSave = call
                     host.present(picker, animated: true)
                 } else {
-                    // Social apps often treat a URL in shared text as a link preview and
-                    // silently discard the attached image. Keep the achievement card as
-                    // the only shared item and copy its store-link caption separately.
-                    UIPasteboard.general.string = text
+                    // Keep the working photo-only handoff. The QR codes are in the PNG.
                     let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
                     activity.completionWithItemsHandler = { [weak self] _, completed, _, error in
                         DispatchQueue.main.async {
                             self?.busy = false
                             if error != nil { call.reject("Sharing could not finish. Please try again.") }
                             else {
-                                call.resolve([
-                                    "status": completed ? "presented" : "cancelled",
-                                    "captionCopied": true
-                                ])
+                                call.resolve(["status": completed ? "presented" : "cancelled"])
                             }
                         }
                     }

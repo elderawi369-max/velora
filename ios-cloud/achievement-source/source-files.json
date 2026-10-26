@@ -31,22 +31,22 @@
   },
   {
     "file": "frontend/src/lib/achievement-card.ts",
-    "sha256": "83bc152fd1b29c2026974d2ccbd7e75bff78d69655c57897ddc4a84087683e20",
+    "sha256": "89872114340f8da8e1a4c315cccc94c540b0b21a7da52f8e4e3019511d07f34b",
     "new": true
   },
   {
     "file": "frontend/src/lib/achievement-sharing.ts",
-    "sha256": "c30c2d3be50ae8ffd494e625301d725256a3566a3720da11c9ebed9f95da6e58",
+    "sha256": "43c290dc8f1d0c7c95a29833351dc90f9c2c43c823f89bb927c52551e0e1f0e5",
     "new": true
   },
   {
     "file": "frontend/src/lib/achievement-sharing.test.ts",
-    "sha256": "d00e98a2b5b55622b23591841f8446fc9ae4fa38b5ab01c6c4422db16f2199c1",
+    "sha256": "92219393e1301746f85462d6a4f38ec7aab1a233332f6be479a795e8fd37835d",
     "new": true
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.tsx",
-    "sha256": "f43da203d22e82735143f91994c08e357719ed431c4ee6d95aad2bed0af3d47c",
+    "sha256": "9e069a0722c5432aeed460f4e8a2e3432b473a11e8a234882034429521c4be20",
     "new": true
   },
   {
@@ -56,7 +56,7 @@
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.test.tsx",
-    "sha256": "45408d61cff4e1f1849bb2475753fcae248e63f61e24dde415c7aa5a7d33f604",
+    "sha256": "2a9cc7461e3f6873de2883385d29d26a111badc1db04c6e49fb8ddf6b5246bf2",
     "new": true
   },
   {
@@ -76,22 +76,32 @@
   },
   {
     "file": "frontend/public/achievement-assets/README.md",
-    "sha256": "9db63390b5fe1c9e5b29cec8fa8e11b0d7104363396f545bd43d5d7261fc19af",
+    "sha256": "628bab5375630d3c5b3b640b0040f0e43d861d92e4957fb3fd405a6bde75a8a1",
     "new": true
   },
   {
     "file": "frontend/plugins/velora-rewarded-ads-native/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift",
-    "sha256": "a71047f6b6f9b38763022e68510b1e749e7b04ffc04e2758f295dfbb7d46afff",
+    "sha256": "e1f49eb65607c8a8e1d3bba1f6d5554cef01b46575c97701c4222b25f2f0e6df",
     "new": true
   },
   {
     "file": "frontend/android/app/src/main/java/com/velorachat/app/VeloraAchievementSharePlugin.java",
-    "sha256": "c33a7a966ed07879bc7bcf3f3cdd35e256bf3608120c80dc3ed637ce6fd56b11",
+    "sha256": "65aadf7af505d1d759c2098160a47b455c2911e0c704b9d466f751f080dbf4b4",
     "new": true
   },
   {
     "file": "frontend/ios/App/App/Info.plist",
     "sha256": "ce57f55bb8e2b56b6178250c6707cc25db10e4596cc36264f7877b0cfdb10365",
     "new": false
+  },
+  {
+    "file": "frontend/public/achievement-assets/app-store-qr.png",
+    "new": true,
+    "sha256": "77d29447b5e356215538be68559303b23c35a110d2fc20573764304c72faf226"
+  },
+  {
+    "file": "frontend/public/achievement-assets/google-play-qr.png",
+    "new": true,
+    "sha256": "5167b930bf025549b6078014038131ebbf3f5fe182fa6341948184b35f71b66d"
   }
 ]

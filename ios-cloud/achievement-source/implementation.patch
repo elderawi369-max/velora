@@ -155,7 +155,7 @@
 +}
 --- /dev/null
 +++ b/frontend/src/lib/achievement-card.ts
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,104 @@
 +import { achievementFileName, achievementRank, getAchievementCase, type AchievementCaseId } from "./achievement-data";
 +
 +const width = 1080;
@@ -176,6 +176,8 @@
 +    loadImage("/velora-favicon.svg"),
 +    loadImage("/achievement-assets/app-store.svg"),
 +    loadImage("/achievement-assets/google-play.png"),
++    loadImage("/achievement-assets/app-store-qr.png"),
++    loadImage("/achievement-assets/google-play-qr.png"),
 +  ]).catch(error => { assets = undefined; throw error; });
 +  return assets;
 +}
@@ -204,7 +206,7 @@
 +/** A purpose-built card: no DOM capture, saved evidence, names, answers, or ending text. */
 +export async function createAchievementCard(id: AchievementCaseId): Promise<File> {
 +  const investigation = getAchievementCase(id);
-+  const [logo, apple, google] = await loadAssets();
++  const [logo, apple, google, appleQr, googleQr] = await loadAssets();
 +  const canvas = document.createElement("canvas");
 +  canvas.width = width; canvas.height = height;
 +  const ctx = canvas.getContext("2d");
@@ -217,14 +219,14 @@
 +  ctx.restore();
 +  rounded(ctx, 36, 36, width - 72, height - 72, 24); ctx.strokeStyle = "#b99a62"; ctx.lineWidth = 2; ctx.stroke();
 +  rounded(ctx, 51, 51, width - 102, height - 102, 15); ctx.strokeStyle = "#3b4244"; ctx.lineWidth = 1; ctx.stroke();
-+  ctx.drawImage(logo, 88, 85, 100, 100);
-+  ctx.textAlign = "left"; ctx.fillStyle = "#f8efe0"; ctx.font = "bold 74px Georgia, serif"; ctx.fillText("Velora", 212, 157);
-+  ctx.fillStyle = "#bda77d"; ctx.font = "20px Arial, sans-serif"; ctx.fillText("MIND HUNTERS", 216, 191);
-+  rounded(ctx, 753, 113, 226, 54, 10); ctx.fillStyle = "#1a2c37"; ctx.fill(); ctx.strokeStyle = "#526066"; ctx.stroke();
-+  ctx.textAlign = "center"; ctx.fillStyle = "#d5c4a2"; ctx.font = "20px Arial, sans-serif"; ctx.fillText(`CASE FILE / ${investigation.number}`, 866, 148);
-+  ctx.beginPath(); ctx.moveTo(92, 224); ctx.lineTo(988, 224); ctx.strokeStyle = "#4c514c"; ctx.stroke();
++  ctx.drawImage(logo, 88, 70, 80, 80);
++  ctx.textAlign = "left"; ctx.fillStyle = "#f8efe0"; ctx.font = "bold 64px Georgia, serif"; ctx.fillText("Velora", 190, 132);
++  ctx.fillStyle = "#bda77d"; ctx.font = "18px Arial, sans-serif"; ctx.fillText("MIND HUNTERS", 194, 166);
++  rounded(ctx, 753, 91, 226, 46, 10); ctx.fillStyle = "#1a2c37"; ctx.fill(); ctx.strokeStyle = "#526066"; ctx.stroke();
++  ctx.textAlign = "center"; ctx.fillStyle = "#d5c4a2"; ctx.font = "20px Arial, sans-serif"; ctx.fillText(`CASE FILE / ${investigation.number}`, 866, 122);
++  ctx.beginPath(); ctx.moveTo(92, 192); ctx.lineTo(988, 192); ctx.strokeStyle = "#4c514c"; ctx.stroke();
 +
-+  ctx.save(); ctx.translate(540, 385);
++  ctx.save(); ctx.translate(540, 310); ctx.scale(0.75, 0.75);
 +  const glow = ctx.createRadialGradient(0, 0, 20, 0, 0, 175); glow.addColorStop(0, "#c9a86b25"); glow.addColorStop(1, "#c9a86b00");
 +  ctx.fillStyle = glow; ctx.fillRect(-180, -180, 360, 360);
 +  ctx.strokeStyle = "#c6a66c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 114, 0, Math.PI * 2); ctx.stroke();
@@ -235,32 +237,37 @@
 +  ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(-10, -9, 29, 0, Math.PI * 2); ctx.stroke();
 +  ctx.beginPath(); ctx.moveTo(12, 14); ctx.lineTo(41, 43); ctx.lineCap = "round"; ctx.stroke();
 +  ctx.restore();
-+  ctx.fillStyle = "#bba982"; ctx.font = "20px Arial, sans-serif"; spaced(ctx, "INVESTIGATION COMPLETE", 556, 5);
-+  ctx.fillStyle = "#fff4df"; ctx.font = "bold 79px Arial, sans-serif"; ctx.fillText("CASE SOLVED!", 540, 652);
-+  ctx.fillStyle = "#c6a66c"; ctx.fillRect(386, 685, 308, 3);
-+  ctx.fillStyle = "#eee8dd"; ctx.font = "58px Georgia, serif";
-+  if (investigation.lines.length === 1) ctx.fillText(investigation.lines[0], 540, 790, 880);
-+  else investigation.lines.forEach((line, index) => ctx.fillText(line, 540, 759 + index * 73, 880));
++  ctx.fillStyle = "#bba982"; ctx.font = "18px Arial, sans-serif"; spaced(ctx, "INVESTIGATION COMPLETE", 448, 4);
++  ctx.fillStyle = "#fff4df"; ctx.font = "bold 74px Arial, sans-serif"; ctx.fillText("CASE SOLVED!", 540, 520);
++  ctx.fillStyle = "#c6a66c"; ctx.fillRect(386, 549, 308, 3);
++  ctx.fillStyle = "#eee8dd"; ctx.font = "50px Georgia, serif";
++  if (investigation.lines.length === 1) ctx.fillText(investigation.lines[0], 540, 637, 880);
++  else investigation.lines.forEach((line, index) => ctx.fillText(line, 540, 606 + index * 60, 880));
 +  const gold = ctx.createLinearGradient(250, 0, 830, 0); gold.addColorStop(0, "#ac8851"); gold.addColorStop(0.5, "#e3c78f"); gold.addColorStop(1, "#b3915c");
-+  rounded(ctx, 240, 888, 600, 88, 44); ctx.fillStyle = gold; ctx.fill();
-+  ctx.fillStyle = "#16212a"; ctx.font = "bold 32px Arial, sans-serif"; spaced(ctx, achievementRank.toUpperCase(), 944, 4);
-+  ctx.fillStyle = "#f5eddf"; ctx.font = "italic 38px Georgia, serif"; ctx.fillText("Can you solve the mystery?", 540, 1063);
-+  ctx.fillStyle = "#91a0a6"; ctx.font = "18px Arial, sans-serif"; spaced(ctx, "YOUR NEXT CASE IS WAITING", 1110, 3);
-+  ctx.beginPath(); ctx.moveTo(154, 1145); ctx.lineTo(926, 1145); ctx.strokeStyle = "#35464e"; ctx.stroke();
-+  badge(ctx, apple, 145, 1171, 355, 110);
-+  badge(ctx, google, 520, 1147, 455, 154);
++  rounded(ctx, 240, 709, 600, 70, 35); ctx.fillStyle = gold; ctx.fill();
++  ctx.fillStyle = "#16212a"; ctx.font = "bold 30px Arial, sans-serif"; spaced(ctx, achievementRank.toUpperCase(), 754, 4);
++  ctx.fillStyle = "#f5eddf"; ctx.font = "italic 32px Georgia, serif"; ctx.fillText("Can you solve the mystery?", 540, 818);
++  ctx.fillStyle = "#bda77d"; ctx.font = "18px Arial, sans-serif"; spaced(ctx, "SCAN TO GET VELORA", 855, 3);
++  ctx.beginPath(); ctx.moveTo(154, 875); ctx.lineTo(926, 875); ctx.strokeStyle = "#35464e"; ctx.stroke();
++  badge(ctx, apple, 156, 887, 320, 70);
++  badge(ctx, google, 559, 869, 410, 106);
++  // Version-6 QR assets have 49 modules including their four-module white border.
++  // 294 pixels gives six whole pixels per module; preserve the quiet zone and edges.
++  ctx.save(); ctx.imageSmoothingEnabled = false;
++  ctx.drawImage(appleQr, 169, 979, 294, 294);
++  ctx.drawImage(googleQr, 617, 979, 294, 294);
++  ctx.restore();
 +  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("The achievement image could not be created.")), "image/png"));
 +  return new File([blob], achievementFileName(id), { type: "image/png" });
 +}
 --- /dev/null
 +++ b/frontend/src/lib/achievement-sharing.ts
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,51 @@
 +import { Capacitor, registerPlugin } from "@capacitor/core";
 +import { achievementShareText, type AchievementCaseId } from "./achievement-data";
 +
 +export type AchievementExportResult = { status: "presented" | "saved" | "cancelled" | "downloaded"; captionCopied?: boolean };
 +const nativeShare = registerPlugin<{
-+  shareResults(options: { text: string }): Promise<AchievementExportResult>;
 +  exportCard(options: { pngBase64: string; fileName: string; text: string; action: "share" | "save" }): Promise<AchievementExportResult>;
 +}>("VeloraAchievementShare");
 +
@@ -290,22 +297,14 @@
 +  return { status: "downloaded" };
 +}
 +
-+// Both direct store URLs are handed over as text, without a card or clipboard step.
-+export function shareAchievement(id: AchievementCaseId): Promise<AchievementExportResult> {
-+  const text = achievementShareText(id);
-+  if (Capacitor.isNativePlatform()) {
-+    if (!Capacitor.isPluginAvailable("VeloraAchievementShare")) return Promise.reject(new Error("Please update Velora to share these results."));
-+    return nativeShare.shareResults({ text }).catch(error => {
-+      if (error?.code === "UNIMPLEMENTED") throw new Error("Please update Velora to share these results.");
-+      throw error;
-+    });
-+  }
++// Share only the prepared photo. Both store destinations are encoded in its QR codes.
++export function shareAchievement(file: File, id: AchievementCaseId): Promise<AchievementExportResult> {
++  if (Capacitor.isNativePlatform()) return exportNative(file, id, "share");
++  let supportsFiles = false;
++  try { supportsFiles = typeof navigator.share === "function" && Boolean(navigator.canShare?.({ files: [file] })); } catch { /* Download fallback. */ }
++  if (!supportsFiles) return Promise.resolve(downloadCard(file));
 +  try {
-+    const payload = { title: "Velora · Master Detective", text };
-+    if (typeof navigator.share !== "function" || (navigator.canShare && !navigator.canShare(payload))) {
-+      return Promise.reject(new Error("This browser cannot open sharing. You can use Copy store links instead."));
-+    }
-+    return navigator.share(payload).then(
++    return navigator.share({ files: [file], title: "Velora · Master Detective" }).then(
 +      () => ({ status: "presented" as const }),
 +      error => { if (error?.name === "AbortError") return { status: "cancelled" as const }; throw error; },
 +    );
@@ -317,7 +316,7 @@
 +}
 --- /dev/null
 +++ b/frontend/src/lib/achievement-sharing.test.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,90 @@
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import { achievementCases, achievementShareText, achievementStoreLinks, getAchievementCase, type AchievementCaseId } from "./achievement-data";
 +import { saveAchievement, shareAchievement } from "./achievement-sharing";
@@ -351,12 +350,13 @@
 +    expect(() => getAchievementCase("anything else" as AchievementCaseId)).toThrow();
 +  });
 +
-+  it("hands both store URLs to Web Share as text immediately, with no photo or clipboard step", async () => {
++  it("shares the QR-bearing photo alone without separate text, URLs or clipboard access", async () => {
 +    const share = vi.fn().mockResolvedValue(undefined);
 +    Object.defineProperty(navigator, "share", { configurable: true, value: share });
 +    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
-+    const result = shareAchievement("lighthouse");
-+    expect(share).toHaveBeenCalledWith({ title: "Velora · Master Detective", text: achievementShareText("lighthouse") });
++    const image = file();
++    const result = shareAchievement(image, "lighthouse");
++    expect(share).toHaveBeenCalledWith({ files: [image], title: "Velora · Master Detective" });
 +    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
 +    expect(await result).toEqual({ status: "presented" });
 +  });
@@ -365,30 +365,36 @@
 +    const share = vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError"));
 +    Object.defineProperty(navigator, "share", { configurable: true, value: share });
 +    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
-+    expect(await shareAchievement("lighthouse")).toEqual({ status: "cancelled" });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "cancelled" });
 +    expect(share).toHaveBeenCalledTimes(1);
 +  });
 +
-+  it("reports unsupported text sharing without silently substituting a photo download", async () => {
++  it("downloads the QR-bearing image when the browser cannot share files", async () => {
++    vi.useFakeTimers();
 +    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-+    await expect(shareAchievement("lighthouse")).rejects.toThrow("This browser cannot open sharing");
-+    expect(click).not.toHaveBeenCalled();
++    const revoke = vi.fn();
++    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:card"), revokeObjectURL: revoke });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "downloaded" });
++    expect(click).toHaveBeenCalledTimes(1);
++    vi.advanceTimersByTime(30000);
++    expect(revoke).toHaveBeenCalledWith("blob:card");
 +    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
 +  });
 +
-+  it("uses the native text-only method with both URLs and no card payload", async () => {
++  it("restores the working native photo method and never calls the text-sharing method", async () => {
 +    native.enabled = true;
-+    native.shareResults.mockResolvedValue({ status: "cancelled" });
-+    expect(await shareAchievement("lighthouse")).toEqual({ status: "cancelled" });
-+    expect(native.shareResults).toHaveBeenCalledWith({ text: achievementShareText("lighthouse") });
-+    expect(native.exportCard).not.toHaveBeenCalled();
++    native.exportCard.mockResolvedValue({ status: "cancelled" });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "cancelled" });
++    expect(native.exportCard).toHaveBeenCalledWith({ pngBase64: "cG5n", fileName: "velora-lighthouse-master-detective.png", text: achievementShareText("lighthouse"), action: "share" });
++    expect(native.shareResults).not.toHaveBeenCalled();
 +  });
 +
-+  it("gives an update instruction for installed apps that lack the new text-sharing method", async () => {
++  it("can share the image when clipboard access is unavailable", async () => {
 +    native.enabled = true;
-+    native.shareResults.mockRejectedValue({ code: "UNIMPLEMENTED" });
-+    await expect(shareAchievement("lighthouse")).rejects.toThrow("Please update Velora");
-+    expect(native.exportCard).not.toHaveBeenCalled();
++    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
++    native.exportCard.mockResolvedValue({ status: "presented" });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "presented" });
++    expect(native.shareResults).not.toHaveBeenCalled();
 +  });
 +
 +  it("uses the native document exporter for Save card and reports old app builds clearly", async () => {
@@ -397,7 +403,7 @@
 +    expect(await saveAchievement(file(), "lighthouse")).toEqual({ status: "saved" });
 +    expect(native.exportCard.mock.calls[0][0].action).toBe("save");
 +    native.available = false;
-+    await expect(shareAchievement("lighthouse")).rejects.toThrow("Please update Velora");
++    await expect(shareAchievement(file(), "lighthouse")).rejects.toThrow("Please update Velora");
 +    expect(native.exportCard).toHaveBeenCalledTimes(1);
 +  });
 +});
@@ -430,9 +436,9 @@
 +  }, [caseId, generation]);
 +
 +  function exportCard(action: "share" | "save") {
-+    if (busy || (action === "save" && !prepared)) return;
++    if (busy || !prepared) return;
 +    setBusy(true); setError(""); setStatus("");
-+    const operation = action === "share" ? shareAchievement(caseId) : saveAchievement(prepared!.file, caseId);
++    const operation = action === "share" ? shareAchievement(prepared.file, caseId) : saveAchievement(prepared.file, caseId);
 +    void operation.then(result => {
 +      if (result.status === "saved") setStatus("Your achievement card was saved.");
 +      if (result.status === "downloaded") setStatus("Your card download has started.");
@@ -454,9 +460,9 @@
 +      <p className="investigation-achievement-kicker">CASE SOLVED!</p>
 +      <h3>{achievementRank}</h3>
 +      <p>Celebrate your investigation and invite others to play.</p>
-+      <p id={`achievement-share-help-${caseId}`}>Share a text result with the Google Play and App Store links.</p>
++      <p id={`achievement-share-help-${caseId}`}>Share your achievement photo. Scan a code on the card to get Velora.</p>
 +      <div className="investigation-achievement-actions">
-+        <button type="button" className="achievement-share-primary" aria-describedby={`achievement-share-help-${caseId}`} disabled={busy} onClick={() => exportCard("share")}>{busy ? "Opening…" : "Share Results"}</button>
++        <button type="button" className="achievement-share-primary" aria-describedby={`achievement-share-help-${caseId}`} disabled={!prepared || busy} onClick={() => exportCard("share")}>{busy ? "Opening…" : prepared ? "Share Results" : "Preparing card…"}</button>
 +        <Link className="achievement-play-next" to="/mind-hunters">Play Another Case</Link>
 +      </div>
 +      <div className="investigation-achievement-tools"><button type="button" disabled={!prepared || busy} onClick={() => exportCard("save")}>Save card</button><button type="button" onClick={copyLinks}>Copy store links</button></div>
@@ -502,14 +508,15 @@
 +  });
 +  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 +
-+  it("shares the case as text and keeps saving the image and playing another case available", async () => {
++  it("shares the prepared photo and keeps saving it and playing another case available", async () => {
 +    render(<MemoryRouter><InvestigationAchievement caseId="blackwood" /></MemoryRouter>);
 +    expect(screen.getByRole("link", { name: "Play Another Case" }).getAttribute("href")).toBe("/mind-hunters");
 +    const share = await screen.findByRole("button", { name: "Share Results" });
-+    expect(document.getElementById(share.getAttribute("aria-describedby")!)).toHaveProperty("textContent", "Share a text result with the Google Play and App Store links.");
++    expect(document.getElementById(share.getAttribute("aria-describedby")!)).toHaveProperty("textContent", "Share your achievement photo. Scan a code on the card to get Velora.");
 +    fireEvent.click(share);
 +    await waitFor(() => expect(mocks.share).toHaveBeenCalledTimes(1));
-+    expect(mocks.share.mock.calls[0]).toEqual(["blackwood"]);
++    expect(mocks.share.mock.calls[0][0]).toBeInstanceOf(File);
++    expect(mocks.share.mock.calls[0][1]).toBe("blackwood");
 +    await waitFor(() => expect((share as HTMLButtonElement).disabled).toBe(false));
 +    expect(screen.queryByRole("alert")).toBeNull();
 +    expect(screen.queryByText(/published|successfully shared/i)).toBeNull();
@@ -523,9 +530,8 @@
 +    mocks.card.mockRejectedValueOnce(new Error("Image unavailable"));
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
 +    await screen.findByRole("button", { name: "Prepare card again" });
-+    fireEvent.click(screen.getByRole("button", { name: "Share Results" }));
-+    await waitFor(() => expect(mocks.share).toHaveBeenCalledWith("lighthouse"));
-+    await waitFor(() => expect((screen.getByRole("button", { name: "Share Results" }) as HTMLButtonElement).disabled).toBe(false));
++    expect((screen.getByRole("button", { name: "Preparing card…" }) as HTMLButtonElement).disabled).toBe(true);
++    expect(mocks.share).not.toHaveBeenCalled();
 +    fireEvent.click(screen.getByRole("button", { name: "Prepare card again" }));
 +    await waitFor(() => expect((screen.getByRole("button", { name: "Save card" }) as HTMLButtonElement).disabled).toBe(false));
 +    expect(screen.getByRole("link", { name: "Play Another Case" })).toBeTruthy();
@@ -545,19 +551,19 @@
 +    mocks.share.mockResolvedValue({ status: "presented" });
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
 +    fireEvent.click(await screen.findByRole("button", { name: "Share Results" }));
-+    await waitFor(() => expect(mocks.share).toHaveBeenCalledWith("lighthouse"));
++    await waitFor(() => expect(mocks.share.mock.calls[0][1]).toBe("lighthouse"));
 +    expect(screen.queryByText(/paste|copied caption/i)).toBeNull();
 +    expect(screen.queryByText(/published|successfully shared/i)).toBeNull();
 +  });
 +
-+  it("opens text sharing while image generation is still pending", async () => {
++  it("waits for the QR-bearing image before enabling photo sharing", async () => {
 +    mocks.card.mockReturnValue(new Promise<File>(() => {}));
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
-+    const share = screen.getByRole("button", { name: "Share Results" });
-+    expect((share as HTMLButtonElement).disabled).toBe(false);
++    const share = screen.getByRole("button", { name: "Preparing card…" });
++    expect((share as HTMLButtonElement).disabled).toBe(true);
 +    expect((screen.getByRole("button", { name: "Save card" }) as HTMLButtonElement).disabled).toBe(true);
 +    fireEvent.click(share);
-+    await waitFor(() => expect(mocks.share).toHaveBeenCalledWith("lighthouse"));
++    expect(mocks.share).not.toHaveBeenCalled();
 +  });
 +});
 --- /dev/null
@@ -656,7 +662,7 @@
 +</svg>
 --- /dev/null
 +++ b/frontend/public/achievement-assets/README.md
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,13 @@
 +Official store badge artwork, bundled locally so achievement rendering makes no network request.
 +
 +- Apple: https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg
@@ -664,10 +670,15 @@
 +- Apple usage guide: https://developer.apple.com/app-store/marketing/guidelines/
 +- Google usage guide: https://partnermarketinghub.withgoogle.com/brands/google-play/visual-identity/badge-guidelines/
 +
-+Artwork is drawn without alteration. Both direct store URLs are in the accompanying share text; no website URL or coming-soon label is included.
++Official store badges are drawn without alteration. The achievement is shared as a photo with two locally bundled QR codes; no separate link post or caption-pasting step is needed.
++
++- `app-store-qr.png` encodes `https://apps.apple.com/app/id6826858824`.
++- `google-play-qr.png` encodes `https://play.google.com/store/apps/details?id=com.velorachat.app`.
++
++The QR codes were generated offline with qrcode 8.2 and independently decoded using zxing-cpp 3.1.1. Both are version 6, error correction Q, with a four-module white quiet zone, 8 pixels per module and 392 x 392 source pixels. The card draws them at 294 x 294 (six pixels per module) without smoothing. No QR service, tracking, redirect URL or runtime dependency is involved. The Apple destination is the account holder's approved expected App Store URL and becomes a download destination after the app is publicly available.
 --- /dev/null
 +++ b/frontend/plugins/velora-rewarded-ads-native/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,115 @@
 +import Capacitor
 +import Foundation
 +import UIKit
@@ -750,20 +761,14 @@
 +                    self.pendingSave = call
 +                    host.present(picker, animated: true)
 +                } else {
-+                    // Social apps often treat a URL in shared text as a link preview and
-+                    // silently discard the attached image. Keep the achievement card as
-+                    // the only shared item and copy its store-link caption separately.
-+                    UIPasteboard.general.string = text
++                    // Keep the working photo-only handoff. The QR codes are in the PNG.
 +                    let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
 +                    activity.completionWithItemsHandler = { [weak self] _, completed, _, error in
 +                        DispatchQueue.main.async {
 +                            self?.busy = false
 +                            if error != nil { call.reject("Sharing could not finish. Please try again.") }
 +                            else {
-+                                call.resolve([
-+                                    "status": completed ? "presented" : "cancelled",
-+                                    "captionCopied": true
-+                                ])
++                                call.resolve(["status": completed ? "presented" : "cancelled"])
 +                            }
 +                        }
 +                    }
@@ -791,13 +796,11 @@
 +}
 --- /dev/null
 +++ b/frontend/android/app/src/main/java/com/velorachat/app/VeloraAchievementSharePlugin.java
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,128 @@
 +package com.velorachat.app;
 +
 +import android.app.Activity;
 +import android.content.ClipData;
-+import android.content.ClipboardManager;
-+import android.content.Context;
 +import android.content.Intent;
 +import android.graphics.BitmapFactory;
 +import android.net.Uri;
@@ -889,9 +892,6 @@
 +                        startActivityForResult(call, intent, "cardSaved");
 +                    } else {
 +                        Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
-+                        ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-+                        boolean captionCopied = clipboard != null;
-+                        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Velora store links", text));
 +                        Intent intent = new Intent(Intent.ACTION_SEND);
 +                        intent.setType("image/png");
 +                        intent.putExtra(Intent.EXTRA_STREAM, uri);
@@ -899,7 +899,7 @@
 +                        intent.setClipData(ClipData.newUri(getContext().getContentResolver(), "Velora achievement", uri));
 +                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 +                        getActivity().startActivity(Intent.createChooser(intent, "Share your achievement"));
-+                        JSObject result = new JSObject(); result.put("status", "presented"); result.put("captionCopied", captionCopied); call.resolve(result);
++                        JSObject result = new JSObject(); result.put("status", "presented"); call.resolve(result);
 +                    }
 +                } catch (Exception error) { call.reject("Sharing could not open. Please try again."); }
 +            });
