@@ -51,8 +51,8 @@ for value in (
     "https://play.google.com/store/apps/details?id=com.velorachat.app",
     "https://apps.apple.com/app/id6826858824",
     "VeloraAchievementShare",
-    "Share Card + Copy Store Links",
-    "Share the card as a photo, then paste the copied caption into your post to include both store links.",
+    "Share Results",
+    "Your photo is shared separately. In Facebook or another app, paste the copied caption into your post to add both store links before posting.",
 ):
     assert value in javascript, f"Missing production configuration: {value}"
 assert "Google is still verifying" not in javascript

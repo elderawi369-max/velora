@@ -467,9 +467,9 @@
 +      <p className="investigation-achievement-kicker">CASE SOLVED!</p>
 +      <h3>{achievementRank}</h3>
 +      <p>Celebrate your investigation with a spoiler-free achievement card.</p>
-+      <p id={`achievement-share-help-${caseId}`}>Share the card as a photo, then paste the copied caption into your post to include both store links.</p>
++      <p id={`achievement-share-help-${caseId}`}>Your photo is shared separately. In Facebook or another app, paste the copied caption into your post to add both store links before posting.</p>
 +      <div className="investigation-achievement-actions">
-+        <button type="button" className="achievement-share-primary" aria-describedby={`achievement-share-help-${caseId}`} disabled={!prepared || busy} onClick={() => exportCard("share")}>{busy ? "Opening…" : prepared ? "Share Card + Copy Store Links" : "Preparing card…"}</button>
++        <button type="button" className="achievement-share-primary" aria-describedby={`achievement-share-help-${caseId}`} disabled={!prepared || busy} onClick={() => exportCard("share")}>{busy ? "Opening…" : prepared ? "Share Results" : "Preparing card…"}</button>
 +        <Link className="achievement-play-next" to="/mind-hunters">Play Another Case</Link>
 +      </div>
 +      {prepared ? <div className="investigation-achievement-tools"><button type="button" disabled={busy} onClick={() => exportCard("save")}>Save card</button><button type="button" onClick={copyLinks}>Copy store links</button></div> : error ? <button type="button" className="achievement-retry" onClick={() => setGeneration(value => value + 1)}>Prepare card again</button> : null}
@@ -516,8 +516,8 @@
 +  it("prepares the card before sharing and keeps Play Another Case available", async () => {
 +    render(<MemoryRouter><InvestigationAchievement caseId="blackwood" /></MemoryRouter>);
 +    expect(screen.getByRole("link", { name: "Play Another Case" }).getAttribute("href")).toBe("/mind-hunters");
-+    const share = await screen.findByRole("button", { name: "Share Card + Copy Store Links" });
-+    expect(document.getElementById(share.getAttribute("aria-describedby")!)).toHaveProperty("textContent", "Share the card as a photo, then paste the copied caption into your post to include both store links.");
++    const share = await screen.findByRole("button", { name: "Share Results" });
++    expect(document.getElementById(share.getAttribute("aria-describedby")!)).toHaveProperty("textContent", "Your photo is shared separately. In Facebook or another app, paste the copied caption into your post to add both store links before posting.");
 +    fireEvent.click(share);
 +    await waitFor(() => expect(mocks.share).toHaveBeenCalledTimes(1));
 +    expect(mocks.share.mock.calls[0][1]).toBe("blackwood");
@@ -532,7 +532,7 @@
 +    mocks.card.mockRejectedValueOnce(new Error("Image unavailable"));
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
 +    fireEvent.click(await screen.findByRole("button", { name: "Prepare card again" }));
-+    expect(await screen.findByRole("button", { name: "Share Card + Copy Store Links" })).toBeTruthy();
++    expect(await screen.findByRole("button", { name: "Share Results" })).toBeTruthy();
 +    expect(screen.getByRole("link", { name: "Play Another Case" })).toBeTruthy();
 +    expect(mocks.card).toHaveBeenCalledTimes(2);
 +  });
@@ -549,7 +549,7 @@
 +  it("explains the copied caption after native handoff without claiming a published post", async () => {
 +    mocks.share.mockResolvedValue({ status: "presented", captionCopied: true });
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
-+    fireEvent.click(await screen.findByRole("button", { name: "Share Card + Copy Store Links" }));
++    fireEvent.click(await screen.findByRole("button", { name: "Share Results" }));
 +    expect(await screen.findByRole("status")).toHaveProperty("textContent", "Your card is ready. Paste the copied caption to add both store links.");
 +    expect(screen.queryByText(/published|successfully shared/i)).toBeNull();
 +  });
