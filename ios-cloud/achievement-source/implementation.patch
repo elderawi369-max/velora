@@ -403,7 +403,7 @@
 +});
 --- /dev/null
 +++ b/frontend/src/ui/components/investigation-achievement.tsx
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,64 @@
 +import { useEffect, useState } from "react";
 +import { Link } from "react-router-dom";
 +import { createAchievementCard } from "../../lib/achievement-card";
@@ -415,16 +415,17 @@
 +  const [prepared, setPrepared] = useState<{ file: File; preview: string } | null>(null);
 +  const [generation, setGeneration] = useState(0);
 +  const [error, setError] = useState("");
++  const [cardError, setCardError] = useState("");
 +  const [status, setStatus] = useState("");
 +  const [busy, setBusy] = useState(false);
 +  const [manualCopy, setManualCopy] = useState(false);
 +  useEffect(() => {
 +    let cancelled = false, preview = "";
-+    setPrepared(null); setError(""); setStatus("");
++    setPrepared(null); setError(""); setCardError(""); setStatus("");
 +    void createAchievementCard(caseId).then(file => {
 +      if (cancelled) return;
 +      preview = URL.createObjectURL(file); setPrepared({ file, preview });
-+    }).catch(() => { if (!cancelled) setError("Your card could not be prepared. Please try again."); });
++    }).catch(() => { if (!cancelled) setCardError("Your card could not be prepared. Please try again."); });
 +    return () => { cancelled = true; if (preview) URL.revokeObjectURL(preview); };
 +  }, [caseId, generation]);
 +
@@ -459,10 +460,11 @@
 +        <Link className="achievement-play-next" to="/mind-hunters">Play Another Case</Link>
 +      </div>
 +      <div className="investigation-achievement-tools"><button type="button" disabled={!prepared || busy} onClick={() => exportCard("save")}>Save card</button><button type="button" onClick={copyLinks}>Copy store links</button></div>
-+      {!prepared && error ? <button type="button" className="achievement-retry" onClick={() => setGeneration(value => value + 1)}>Prepare card again</button> : null}
++      {!prepared && cardError ? <button type="button" className="achievement-retry" onClick={() => setGeneration(value => value + 1)}>Prepare card again</button> : null}
 +      {manualCopy ? <label className="achievement-manual-copy">Store links<textarea readOnly value={achievementLinksText()} onFocus={event => event.currentTarget.select()} /></label> : null}
 +      {status ? <p className="achievement-feedback" role="status">{status}</p> : null}
 +      {error ? <p className="achievement-feedback" role="alert">{error}</p> : null}
++      {cardError ? <p className="achievement-feedback" role="alert">{cardError}</p> : null}
 +    </div>
 +  </section>;
 +}
@@ -481,7 +483,7 @@
 +@media(max-width:600px){.investigation-achievement{align-items:flex-start;gap:1rem;padding:1.1rem;flex-direction:column}.investigation-achievement-preview{width:100px!important;flex-basis:auto;align-self:center}.investigation-achievement-content{width:100%}.investigation-achievement-actions{align-items:stretch;flex-direction:column}.investigation-achievement .achievement-share-primary,.investigation-achievement .achievement-play-next{width:100%}.investigation-achievement h3{font-size:1.4rem!important}}
 --- /dev/null
 +++ b/frontend/src/ui/components/investigation-achievement.test.tsx
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,76 @@
 +import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 +import { MemoryRouter } from "react-router-dom";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -520,7 +522,11 @@
 +  it("allows retry after artwork failure without blocking the next case", async () => {
 +    mocks.card.mockRejectedValueOnce(new Error("Image unavailable"));
 +    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
-+    fireEvent.click(await screen.findByRole("button", { name: "Prepare card again" }));
++    await screen.findByRole("button", { name: "Prepare card again" });
++    fireEvent.click(screen.getByRole("button", { name: "Share Results" }));
++    await waitFor(() => expect(mocks.share).toHaveBeenCalledWith("lighthouse"));
++    await waitFor(() => expect((screen.getByRole("button", { name: "Share Results" }) as HTMLButtonElement).disabled).toBe(false));
++    fireEvent.click(screen.getByRole("button", { name: "Prepare card again" }));
 +    await waitFor(() => expect((screen.getByRole("button", { name: "Save card" }) as HTMLButtonElement).disabled).toBe(false));
 +    expect(screen.getByRole("link", { name: "Play Another Case" })).toBeTruthy();
 +    expect(mocks.card).toHaveBeenCalledTimes(2);

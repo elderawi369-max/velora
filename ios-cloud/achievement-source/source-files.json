@@ -46,7 +46,7 @@
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.tsx",
-    "sha256": "decfc2355e2eee2c5598c51a78110391d02e39972637ede8117d52dabf025cfe",
+    "sha256": "f43da203d22e82735143f91994c08e357719ed431c4ee6d95aad2bed0af3d47c",
     "new": true
   },
   {
@@ -56,7 +56,7 @@
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.test.tsx",
-    "sha256": "db85a1511545f597fb2ead44cefaad17ddfd4cd63092d40e26cca2d80f123cff",
+    "sha256": "45408d61cff4e1f1849bb2475753fcae248e63f61e24dde415c7aa5a7d33f604",
     "new": true
   },
   {
