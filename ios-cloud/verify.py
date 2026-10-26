@@ -58,6 +58,10 @@ assert "Google is still verifying" not in javascript
 assert (app / "public/achievement-assets/app-store.svg").is_file()
 assert (app / "public/achievement-assets/google-play.png").is_file()
 assert (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").is_file()
+share_plugin = (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").read_text()
+assert "UIPasteboard.general.string = text" in share_plugin, "Achievement caption must be copied for manual pasting"
+assert "activityItems: [file]" in share_plugin, "Only the image may be sent to social share sheets"
+assert "activityItems: [file, text]" not in share_plugin, "Sharing image and link text can replace the image with a link preview"
 private_files = [p for p in root.rglob("*") if p.suffix.lower() in {
     ".p8", ".p12", ".pem", ".mobileprovision"
 }]
