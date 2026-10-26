@@ -63,7 +63,7 @@
   "ios/App/App/public/cordova.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/cordova_plugins.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/firebase-messaging-sw.js": "ed0cbf2edb02dd4f4d3f57216ec763cfefa9449548b95cd395c887cde7a6f6b2",
-  "ios/App/App/public/index.html": "91d824df8934423ba062a8dff883c270b355e77bab3ed5e768f6d188dfe54f8a",
+  "ios/App/App/public/index.html": "039905588992e9393f72176289cf314317df8c315b31cce3a3eae221069b1dcd",
   "ios/App/App/public/investigations/blackwood/blackwood-museum-storm-v1.png": "57932c3fb34e3178582faa1dd90ced899e0dda03f3accd6a9925587eebcbdbc4",
   "ios/App/App/public/investigations/blackwood/clara-finch-v1.png": "fef659a6800523741913464ec6e3f8ac073f8c6f223b8fa432ffaf2abf2b94dd",
   "ios/App/App/public/investigations/blackwood/conservation-laboratory-v1.png": "83ba145be62196b61be6fe03f583ae800e2305957787474e1d2ec70c10b43625",
@@ -175,7 +175,7 @@
   "ios/App/App/public/achievement-assets/app-store.svg": "a26fc5b38380272c92e9019a2eb8b45542a66814b3e2b203772db8904b9fb99f",
   "ios/App/App/public/achievement-assets/google-play.png": "f72611e2df8e88204009fd896d05d5e8e83c77009c63943bbffa169559934849",
   "ios/App/App/public/assets/index-ByJ5VK3u.css": "ea63bd656537af1f07423aa54e545ea93e855ba49bbd67f96816d8056c232456",
-  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift": "63ee947f09e95b78607b410cb856e8696f4b55a7988e39dca42a3ea06cd6a852",
-  "ios/App/App/public/assets/index-CHYKFVbI.js": "793b2132eab4fbea5e2b53bd8616a12bff23c1ad3ab8776b13a935fce644f1ca",
-  "ios/App/App/public/assets/web-DPn66KvE.js": "928213b003acd48f1b3178d0268e1b223d69a3e5c7067ea7f3535e4137248c07"
+  "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift": "a71047f6b6f9b38763022e68510b1e749e7b04ffc04e2758f295dfbb7d46afff",
+  "ios/App/App/public/assets/index-C6hcZOPH.js": "ed6d4ff3b3d22ca9e3643ca61d9b36701f34e762d25ce9e40a712a77bd272917",
+  "ios/App/App/public/assets/web-CIvI3Fj1.js": "f7c10feebe762f8634f7df48922ccd0fb2d65bee5c3d917c3a69b1cdd0efd5ae"
 }

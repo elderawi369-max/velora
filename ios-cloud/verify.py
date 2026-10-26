@@ -52,7 +52,7 @@ for value in (
     "https://apps.apple.com/app/id6826858824",
     "VeloraAchievementShare",
     "Share Results",
-    "Your photo is shared separately. In Facebook or another app, paste the copied caption into your post to add both store links before posting.",
+    "Share a text result with the Google Play and App Store links.",
 ):
     assert value in javascript, f"Missing production configuration: {value}"
 assert "Google is still verifying" not in javascript
@@ -60,8 +60,8 @@ assert (app / "public/achievement-assets/app-store.svg").is_file()
 assert (app / "public/achievement-assets/google-play.png").is_file()
 assert (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").is_file()
 share_plugin = (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").read_text()
-assert "UIPasteboard.general.string = text" in share_plugin, "Achievement caption must be copied for manual pasting"
-assert "activityItems: [file]" in share_plugin, "Only the image may be sent to social share sheets"
+assert 'CAPPluginMethod(name: "shareResults"' in share_plugin, "Native text sharing must be registered"
+assert "activityItems: [text]" in share_plugin, "Share Results must send text containing both store URLs"
 assert "activityItems: [file, text]" not in share_plugin, "Sharing image and link text can replace the image with a link preview"
 source_records = json.loads((root / "achievement-source/source-files.json").read_text())
 recorded_swift = next(row for row in source_records if row["file"].endswith("VeloraAchievementSharePlugin.swift"))

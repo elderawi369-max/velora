@@ -7,10 +7,40 @@ public final class VeloraAchievementSharePlugin: CAPPlugin, CAPBridgedPlugin, UI
     public let identifier = "VeloraAchievementSharePlugin"
     public let jsName = "VeloraAchievementShare"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "shareResults", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "exportCard", returnType: CAPPluginReturnPromise)
     ]
     private var busy = false
     private var pendingSave: CAPPluginCall?
+
+    @objc public func shareResults(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { call.reject("Sharing is unavailable."); return }
+            guard !self.busy, let host = self.bridge?.viewController, host.presentedViewController == nil else {
+                call.reject("Please close the current window before sharing."); return
+            }
+            guard let text = call.getString("text"), text.count <= 1200,
+                  text.contains("https://play.google.com/store/apps/details?id=com.velorachat.app"),
+                  text.contains("https://apps.apple.com/app/id6826858824") else {
+                call.reject("The result could not be prepared for sharing."); return
+            }
+            self.busy = true
+            let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+            activity.completionWithItemsHandler = { [weak self] _, completed, _, error in
+                DispatchQueue.main.async {
+                    self?.busy = false
+                    if error != nil { call.reject("Sharing could not finish. Please try again.") }
+                    else { call.resolve(["status": completed ? "presented" : "cancelled"]) }
+                }
+            }
+            if let popover = activity.popoverPresentationController {
+                popover.sourceView = host.view
+                popover.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 1, height: 1)
+                popover.permittedArrowDirections = []
+            }
+            host.present(activity, animated: true)
+        }
+    }
 
     @objc public func exportCard(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
