@@ -1,0 +1,830 @@
+--- a/frontend/src/ui/pages/lighthouse-page.tsx
++++ b/frontend/src/ui/pages/lighthouse-page.tsx
+@@ -4,6 +4,7 @@
+ import { LIGHTHOUSE_SAVE_KEY, LighthouseState, ProofSlot, addUnique, chapterIsReady, initialLighthouseState, parseLighthouseSave, validateAccusation, validateRescue } from "../../features/investigations/lighthouse-engine";
+ import { isNativeMobileApp, preloadNativeRewardedAd, showNativeRewardedAd } from "../../lib/rewarded-ads";
+ import { syncAndroidGameReminder } from "../../lib/game-reminders";
++import { InvestigationAchievement } from "../components/investigation-achievement";
+ import "./lighthouse.css";
+ 
+ type View = "phone" | "cloud" | "cctv" | "map" | "interviews" | "board";
+@@ -143,6 +144,6 @@
+   const [ending,setEnding]=useState<"perfect"|"partial"|null>(state.complete?"partial":null);
+   function accuse(){const result=validateAccusation(suspect,proof);if(result.correct){setConvicted(true);update({accused:suspect});notice("Your theory meets every burden of proof. The rescue decision is now open.");}else{const penalty=suspect==="Femke de Graaf"?60:120;const failures=state.accusationFails+1;update({accusationFails:failures,remainingSeconds:failures>=3?0:Math.max(0,state.remainingSeconds-penalty)});notice(`That theory leaves a gap. ${penalty} seconds were lost. Use three different records for knowledge, physical access, and staging.`);}}
+   function rescue(){const result=validateRescue(location,approach,state.discovered);if(result.success && result.ending !== "miss"){setEnding(result.ending==="perfect"&&state.remainingSeconds<60?"partial":result.ending);update({rescueLocation:location,rescueApproach:approach,complete:true});}else{const failures=state.rescueFails+1;update({rescueFails:failures,remainingSeconds:failures>=2?0:Math.max(0,state.remainingSeconds-(location!=="Kade 9"?120:90))});notice("That plan does not safely reach the captives. Time was lost; recheck the route evidence and access records.");}}
+-  if(ending)return <div className="lh-ending"><p className="lh-eyebrow">CASE CLOSED</p><h2>{ending==="perfect"?"The signal goes dark. The door opens.":"Mara is found before dawn."}</h2><p>The digital trail, the physical record and the human lies finally agree. Mara and her source are recovered from the harbor site. The innocent suspects still face the secrets they hid, but those secrets are no longer confused with the crime.</p><p className="lh-ending-line">You did not solve this with one clue. You proved a complete chain.</p></div>;
++  if(ending)return <div className="lh-ending"><p className="lh-eyebrow">CASE CLOSED</p><h2>{ending==="perfect"?"The signal goes dark. The door opens.":"Mara is found before dawn."}</h2><p>The digital trail, the physical record and the human lies finally agree. Mara and her source are recovered from the harbor site. The innocent suspects still face the secrets they hid, but those secrets are no longer confused with the crime.</p><p className="lh-ending-line">You did not solve this with one clue. You proved a complete chain.</p><InvestigationAchievement caseId="lighthouse" /></div>;
+   return <div className="lh-board"><p>Pin useful records, then assign a different record to each burden of proof. A suspicious secret or one device record is not enough.</p>{!accusationOptions.length&&<p className="lh-ending-line">Your board is empty. Return to the notebook and pin the records you want to use.</p>}<div className="lh-proof-grid"><label>Who had the required knowledge?<select value={proof.knowledge} onChange={e=>setProof({...proof,knowledge:e.target.value})}><option value="">Choose pinned evidence</option>{accusationOptions.map(e=><option value={e.id} key={e.id}>{e.id} · {e.title}</option>)}</select></label><label>Who was physically connected?<select value={proof.presence} onChange={e=>setProof({...proof,presence:e.target.value})}><option value="">Choose pinned evidence</option>{accusationOptions.map(e=><option value={e.id} key={e.id}>{e.id} · {e.title}</option>)}</select></label><label>What proves deliberate staging?<select value={proof.staging} onChange={e=>setProof({...proof,staging:e.target.value})}><option value="">Choose pinned evidence</option>{accusationOptions.map(e=><option value={e.id} key={e.id}>{e.id} · {e.title}</option>)}</select></label></div><label className="lh-suspect-select">Who kidnapped Mara and Lighthouse?<select value={suspect} onChange={e=>setSuspect(e.target.value)}><option value="">Choose a suspect</option>{suspects.map(s=><option key={s.name}>{s.name}</option>)}</select></label><button onClick={accuse}>Test complete theory</button>{convicted&&<div className="lh-rescue"><h3>Choose the rescue plan</h3><div className="lh-proof-grid"><label>Location<select value={location} onChange={e=>setLocation(e.target.value)}><option value="">Choose harbor site</option>{[2,4,6,9,11,14].map(n=><option key={n}>{`Kade ${n}`}</option>)}</select></label><label>Approach<select value={approach} onChange={e=>setApproach(e.target.value)}><option value="">Choose approach</option><option value="police">Immediate police entry</option><option value="quiet">Quiet entry with service fob</option><option value="bait">Use the Lighthouse phrase as bait</option></select></label></div><button onClick={rescue}>Begin rescue</button></div>}</div>;
+ }
+--- a/frontend/src/ui/pages/drowned-bell-page.tsx
++++ b/frontend/src/ui/pages/drowned-bell-page.tsx
+@@ -4,6 +4,7 @@
+ import { DROWNED_BELL_SAVE_KEY, drownedBellReducer, initialDrownedBellState, parseDrownedBellSave, validateDrownedBellChapter, type BellEvidenceId } from "../../features/investigations/drowned-bell-engine";
+ import { isNativeMobileApp, preloadNativeRewardedAd, showNativeRewardedAd } from "../../lib/rewarded-ads";
+ import { syncAndroidGameReminder } from "../../lib/game-reminders";
++import { InvestigationAchievement } from "../components/investigation-achievement";
+ import "./drowned-bell.css";
+ 
+ const chapterEvidence = Array.from({ length: 7 }, (_, index) => Object.entries(bellEvidence).filter(([, item]) => item.chapter === index + 1).map(([id]) => id as BellEvidenceId));
+@@ -55,6 +56,7 @@
+   return <main className="db-page">
+     <header className="db-toolbar"><div><Link to="/mind-hunters">← Mind Hunters</Link><small>THE DROWNED BELL</small><h1>{info.title}</h1></div><div><span>{progress}% solved</span><button onClick={() => { setOpeningIndex(0); setOpening(true); }}>Replay opening</button><button onClick={() => setJournal(true)}>Journal · {state.recorded.length}</button><button onClick={() => setReset(true)}>Reset game</button></div></header>
+     <section className="db-chapter"><div><small>CHAPTER {chapter} OF 7</small><strong>{info.objective}</strong></div><nav>{drownedBellChapters.map((item, index) => <button key={item.title} disabled={index + 1 > (state.solved.findIndex((v) => !v) + 1 || 7)} className={chapter === index + 1 ? "active" : ""} onClick={() => dispatch({ type: "visit", chapter: index + 1 })}>{index + 1}</button>)}</nav></section>
++    {state.solved[6] && !(transition && completedChapter === 7) ? <InvestigationAchievement caseId="drowned-bell" /> : null}
+     <section className="db-workspace"><div className="db-scene" style={{ backgroundImage: `linear-gradient(0deg,#070b0bc9,transparent 52%),url('${info.image}')` }}><div className="db-scene-title"><small>INVESTIGATION LOCATION</small><h2>{info.title}</h2><p>Choose a marked area to inspect it. Markers show fair interaction zones—not answers.</p></div>{visibleIds.map((id, index) => <button key={id} aria-label={`Inspect ${bellEvidence[id].title}`} className={`db-hotspot h${index + 1} ${state.recorded.includes(id) ? "recorded" : ""}`} onClick={() => setExamining(id)}><span>{index + 1}</span></button>)}</div>
+       <aside className="db-side"><header><small>CASE JOURNAL</small><h2>Recorded observations</h2><p>{state.recorded.filter((id) => bellEvidence[id].chapter === chapter).length} of {ids.length} in this chapter</p></header>{state.recorded.filter((id) => bellEvidence[id].chapter === chapter).map((id) => <button className="db-journal-card" key={id} onClick={() => setExamining(id)}><strong>{bellEvidence[id].title}</strong><p>{bellEvidence[id].summary}</p><span>Review evidence →</span></button>)}{!state.recorded.some((id) => bellEvidence[id].chapter === chapter) ? <p className="db-empty">Inspect the scene, then choose which observations to record.</p> : null}</aside>
+     </section>
+@@ -88,4 +90,4 @@
+   { key: "motive", title: "Why kill him?", options: [["inherit-island","Keep the island inheritance"],["hide-repairs","Hide unsafe repairs"],["control-confession","Control the confession and its source"],["family-revenge","Simple family revenge"]] },
+ ]; return <section className="db-board"><small>FINAL CASE BOARD</small><h2>Build one theory that explains every fact</h2><p>A motive or suspicious act is not enough. Each column must agree with the physical and documentary evidence.</p><div>{axes.map((axis) => <fieldset key={axis.key}><legend>{axis.title}</legend>{axis.options.map(([id,label]) => <label key={id}><input type="radio" name={axis.key} checked={state.accusation[axis.key] === id} onChange={() => { onChange(); dispatch({ type: "set-accusation", key: axis.key, value: id }); }}/><span>{label}</span></label>)}</fieldset>)}</div></section>; }
+ 
+-function Ending() { return <div className="db-ending"><ol><li><b>Before the bell</b><span>Gideon's planned confession became dangerous to someone who had already prepared a different public version.</span></li><li><b>The unseen route</b><span>The temporary tide window allowed movement between the house and tower without the watched stairs.</span></li><li><b>The locked chamber</b><span>The old service lift carried more than cargo. Its movement dropped the inside bolt and pulled the abandoned bell linkage once.</span></li><li><b>The confrontation</b><span>Celeste's edited recording, transferred material, and early press copy survive every denial. She wanted Gideon's confession to expose the old crime—but only in the version that made her its heroic owner. When he refused, she killed him and staged the chamber.</span></li></ol><blockquote>Celeste looks toward the turning beam. “He had twenty years to tell the truth.”<br/><br/>“And you had one night,” you answer. “You used it to silence him.”</blockquote><Link className="db-primary" to="/mind-hunters">Return to Mind Hunters</Link></div>; }
++function Ending() { return <div className="db-ending"><ol><li><b>Before the bell</b><span>Gideon's planned confession became dangerous to someone who had already prepared a different public version.</span></li><li><b>The unseen route</b><span>The temporary tide window allowed movement between the house and tower without the watched stairs.</span></li><li><b>The locked chamber</b><span>The old service lift carried more than cargo. Its movement dropped the inside bolt and pulled the abandoned bell linkage once.</span></li><li><b>The confrontation</b><span>Celeste's edited recording, transferred material, and early press copy survive every denial. She wanted Gideon's confession to expose the old crime—but only in the version that made her its heroic owner. When he refused, she killed him and staged the chamber.</span></li></ol><blockquote>Celeste looks toward the turning beam. “He had twenty years to tell the truth.”<br/><br/>“And you had one night,” you answer. “You used it to silence him.”</blockquote><InvestigationAchievement caseId="drowned-bell" /></div>; }
+--- a/frontend/src/ui/pages/last-exhibit-page.tsx
++++ b/frontend/src/ui/pages/last-exhibit-page.tsx
+@@ -4,6 +4,7 @@
+ import { initialLastExhibitState, isChapter1DeductionValid, isChapter2RouteValid, LAST_EXHIBIT_SAVE_KEY, lastExhibitReducer, parseLastExhibitSave, type EvidenceId } from "../../features/investigations/last-exhibit-engine";
+ import { isNativeMobileApp, preloadNativeRewardedAd, showNativeRewardedAd } from "../../lib/rewarded-ads";
+ import { syncAndroidGameReminder } from "../../lib/game-reminders";
++import { InvestigationAchievement } from "../components/investigation-achievement";
+ import { AlarmAnalysisVisual, CameraCoverageVisual, EvidenceVisual, InteractiveLabMap, LateRewardVisual, OneClockTimelineVisual, VisitorSnapshotVisual, type EscapeRoute } from "../components/last-exhibit-visuals";
+ import { SecurityAnalysis, SecurityInterviews } from "../components/last-exhibit-security";
+ import { LateChapterGame } from "../components/last-exhibit-late-game";
+@@ -144,6 +145,7 @@
+   return <main className="le-page">
+     <header className="le-toolbar"><div><Link className="le-back" to="/mind-hunters">← Mind Hunters</Link><small>BLACKWOOD: THE LAST EXHIBIT</small><h1>{titles[chapter]}</h1></div><div className="le-toolbar-actions"><span>{progress}% of case</span><button onClick={() => setShowOpening(true)}>Replay opening</button><button onClick={() => setJournalOpen((open) => !open)}>Journal · {state.recorded.length}</button><button className="le-reset-button" onClick={() => setResetOpen(true)}>Reset game</button></div></header>
+     {resetOpen ? <div className="le-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"><section className="le-reset-dialog"><small>RESET PROGRESS</small><h2 id="reset-title">Are you sure you want to reset the game?</h2><p>This removes all case progress, journal entries, deductions, and unlocked reports from this device.</p><div><button type="button" onClick={() => setResetOpen(false)}>Cancel</button><button type="button" className="le-reset-confirm" onClick={() => { dispatch({ type: "reset-game" }); setResetOpen(false); setOpeningIndex(0); setShowOpening(true); setInspecting(null); setJournalOpen(false); setStory(null); setConclusion(""); setRoute(""); setSupport([]); setFeedback(""); setReaction(null); }}>Confirm reset</button></div></section></div> : null}
++    {state.chapter7Solved && story !== "ending" ? <InvestigationAchievement caseId="blackwood" /> : null}
+     <section className="le-chapter"><div><small>CHAPTER {chapter} OF 7</small><strong>{titles[chapter]}</strong></div><p><small>CURRENT OBJECTIVE</small>{objectives[chapter]}</p><div className="le-pips">{[1,2,3,4,5,6,7].map((number) => <i key={number} className={number <= chapter ? "on" : ""} />)}</div></section>
+     <nav className="le-scenes">{[
+       [1,"gallery","Grand Gallery",true],[2,"laboratory","Conservation Lab",state.chapter1Solved],[3,"security","Security Office",state.chapter2Solved],[4,"passage","Portrait Passage",state.chapter3Solved],[5,"loading","Loading Archive",state.chapter4Solved],[6,"archive","History Archive",state.chapter5Solved],[7,"finale","Final Case Board",state.chapter6Solved]
+@@ -165,6 +167,6 @@
+     {story === "passage" ? <div className="le-modal"><section className="le-story"><small>CHAPTER 4 COMPLETE</small><h2>Someone is still interfering</h2><p>The route joins the Laboratory to the management side without crossing the public camera.</p><blockquote>Tomas starts toward the radio room. The lights fail for one breath. A door slams, and his voice comes through the wall: “I'm locked in!”</blockquote><p>The missing radio battery and closed storage door show that someone inside is still trying to delay help.</p><button className="le-primary" onClick={()=>{dispatch({type:"enter-loading"});setStory(null);}}>Go to the Loading Archive</button></section></div>:null}
+     {story === "fraud" ? <div className="le-modal"><section className="le-story"><small>CHAPTER 5 COMPLETE</small><h2>Two crimes, not one</h2><p>Adrian and Leo admit they arranged a false jewel theft for an insurance claim. Their records explain the replica, hatch, red cloth, and broken case.</p><blockquote>“We staged the theft,” Adrian says. “We did not kill Julian.”</blockquote><p>Their independently checked movements separate the fraud from the murder. During the argument, Iris drops a notebook. The name on its cover is Iris Wells.</p><button className="le-primary" onClick={()=>{dispatch({type:"enter-archive"});setStory(null);}}>Open the 2018 file</button></section></div>:null}
+     {story === "history" ? <div className="le-modal"><section className="le-story"><small>CHAPTER 6 COMPLETE</small><h2>The old report was a lie</h2><p>Iris says Nora Wells was her mother. Julian invited her because he was finally ready to correct the official story.</p><blockquote>“My mother wasn't trapped by an accident. Someone made a choice.”</blockquote><p>The records establish the old order, Julian's intended confession, the hidden route, and the physical links needed for a final accusation.</p><button className="le-primary" onClick={()=>{dispatch({type:"enter-finale"});setStory(null);}}>Convene the suspects</button></section></div>:null}
+-    {story === "ending" ? <div className="le-modal"><section className="le-story le-ending"><small>CASE SOLVED</small><h2>The last exhibit</h2><p>Adrian's expression changes when the solicitor's message is read aloud. The late call and the two passage-access events expose a gap in the story everyone accepted.</p><blockquote>“The lobby recording places you at 9:24. It does not account for what you did next.”</blockquote><p>Julian planned to change his inheritance before signing it that night. Adrian already faced heavy debts and exposure for the staged theft. He used the hidden route, struck Julian with the missing bookend, and hid it after handling the wax-sealed replica crate.</p><p>Evelyn's thread and access record showed that she argued with Julian and lied about her movements. They did not prove murder. She later tried to remove the old file because it exposed her responsibility for Nora's death. Her separate crime made the false accusation against her convincing.</p><p>The storm eases. Police reach the museum. Adrian faces murder and fraud charges; Leo cooperates; Evelyn must answer for the old cover-up and her attempts to hide it. Iris places a truthful label beside her mother's photograph.</p><strong className="le-last-line">Every object has a label. Every label is someone's version of the truth.</strong><button className="le-primary" onClick={()=>setStory(null)}>Review the solved case</button></section></div>:null}
++    {story === "ending" ? <div className="le-modal"><section className="le-story le-ending"><small>CASE SOLVED</small><h2>The last exhibit</h2><p>Adrian's expression changes when the solicitor's message is read aloud. The late call and the two passage-access events expose a gap in the story everyone accepted.</p><blockquote>“The lobby recording places you at 9:24. It does not account for what you did next.”</blockquote><p>Julian planned to change his inheritance before signing it that night. Adrian already faced heavy debts and exposure for the staged theft. He used the hidden route, struck Julian with the missing bookend, and hid it after handling the wax-sealed replica crate.</p><p>Evelyn's thread and access record showed that she argued with Julian and lied about her movements. They did not prove murder. She later tried to remove the old file because it exposed her responsibility for Nora's death. Her separate crime made the false accusation against her convincing.</p><p>The storm eases. Police reach the museum. Adrian faces murder and fraud charges; Leo cooperates; Evelyn must answer for the old cover-up and her attempts to hide it. Iris places a truthful label beside her mother's photograph.</p><strong className="le-last-line">Every object has a label. Every label is someone's version of the truth.</strong><InvestigationAchievement caseId="blackwood" /><button className="le-primary" onClick={()=>setStory(null)}>Review the solved case</button></section></div>:null}
+   </main>;
+ }
+--- a/frontend/android/app/src/main/java/com/velorachat/app/MainActivity.java
++++ b/frontend/android/app/src/main/java/com/velorachat/app/MainActivity.java
+@@ -22,6 +22,7 @@
+         registerPlugin(DeviceIdentityPlugin.class);
+         registerPlugin(GooglePlayBillingPlugin.class);
+         registerPlugin(VeloraRewardedAdsPlugin.class);
++        registerPlugin(VeloraAchievementSharePlugin.class);
+         super.onCreate(savedInstanceState);
+ 
+         // Refresh AdMob privacy consent on every app launch. Ad requests made
+--- a/frontend/ios/App/App/capacitor.config.json
++++ b/frontend/ios/App/App/capacitor.config.json
+@@ -1,21 +1,22 @@
+ {
+-  "appId": "com.velorachat.app",
+-  "appName": "Velora",
+-  "webDir": "dist",
+-  "server": {
+-    "androidScheme": "https",
+-    "iosScheme": "capacitor"
+-  },
+-  "plugins": {
+-    "LocalNotifications": {
+-      "smallIcon": "ic_stat_velora",
+-      "iconColor": "#B45469"
+-    }
+-  },
+-  "packageClassList": [
+-    "LocalNotificationsPlugin",
+-    "PushNotificationsPlugin",
+-    "VeloraRewardedAdsPlugin",
+-    "VeloraStoreKitPlugin"
+-  ]
++	"appId": "com.velorachat.app",
++	"appName": "Velora",
++	"webDir": "dist",
++	"server": {
++		"androidScheme": "https",
++		"iosScheme": "capacitor"
++	},
++	"plugins": {
++		"LocalNotifications": {
++			"smallIcon": "ic_stat_velora",
++			"iconColor": "#B45469"
++		}
++	},
++	"packageClassList": [
++		"LocalNotificationsPlugin",
++		"PushNotificationsPlugin",
++		"VeloraRewardedAdsPlugin",
++		"VeloraStoreKitPlugin",
++		"VeloraAchievementSharePlugin"
++	]
+ }
+--- /dev/null
++++ b/frontend/src/lib/achievement-data.ts
+@@ -0,0 +1,30 @@
++export const achievementCases = {
++  lighthouse: { title: "Lighthouse", number: "01", lines: ["Lighthouse"] },
++  "drowned-bell": { title: "The Drowned Bell", number: "02", lines: ["The Drowned Bell"] },
++  blackwood: { title: "Blackwood: The Last Exhibit", number: "03", lines: ["Blackwood:", "The Last Exhibit"] },
++} as const;
++
++export type AchievementCaseId = keyof typeof achievementCases;
++export const achievementRank = "Master Detective";
++export const achievementStoreLinks = {
++  googlePlay: "https://play.google.com/store/apps/details?id=com.velorachat.app",
++  appStore: "https://apps.apple.com/app/id6826858824",
++} as const;
++
++export function getAchievementCase(id: AchievementCaseId) {
++  if (!Object.prototype.hasOwnProperty.call(achievementCases, id)) throw new Error("Unknown investigation.");
++  return achievementCases[id];
++}
++
++export function achievementLinksText() {
++  return `Google Play: ${achievementStoreLinks.googlePlay}\nApp Store: ${achievementStoreLinks.appStore}`;
++}
++
++export function achievementShareText(id: AchievementCaseId) {
++  return `I solved ${getAchievementCase(id).title} in Velora!\n${achievementRank}\nCan you solve the mystery?\n\n${achievementLinksText()}`;
++}
++
++export function achievementFileName(id: AchievementCaseId) {
++  getAchievementCase(id);
++  return `velora-${id}-master-detective.png`;
++}
+--- /dev/null
++++ b/frontend/src/lib/achievement-card.ts
+@@ -0,0 +1,96 @@
++import { achievementFileName, achievementRank, getAchievementCase, type AchievementCaseId } from "./achievement-data";
++
++const width = 1080;
++const height = 1350;
++let assets: Promise<HTMLImageElement[]> | undefined;
++
++function loadImage(src: string) {
++  return new Promise<HTMLImageElement>((resolve, reject) => {
++    const image = new Image();
++    image.onload = () => resolve(image);
++    image.onerror = () => reject(new Error("The achievement artwork could not load. Please try again."));
++    image.src = src;
++  });
++}
++
++function loadAssets() {
++  assets ??= Promise.all([
++    loadImage("/velora-favicon.svg"),
++    loadImage("/achievement-assets/app-store.svg"),
++    loadImage("/achievement-assets/google-play.png"),
++  ]).catch(error => { assets = undefined; throw error; });
++  return assets;
++}
++
++function rounded(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
++  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
++  ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r);
++  ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
++}
++
++function spaced(ctx: CanvasRenderingContext2D, text: string, y: number, spacing: number) {
++  const letters = [...text];
++  const total = letters.reduce((sum, letter) => sum + ctx.measureText(letter).width, 0) + (letters.length - 1) * spacing;
++  let x = (width - total) / 2;
++  ctx.textAlign = "left";
++  for (const letter of letters) { ctx.fillText(letter, x, y); x += ctx.measureText(letter).width + spacing; }
++  ctx.textAlign = "center";
++}
++
++function badge(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, w: number, h: number) {
++  const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
++  const bw = image.naturalWidth * scale, bh = image.naturalHeight * scale;
++  ctx.drawImage(image, x + (w - bw) / 2, y + (h - bh) / 2, bw, bh);
++}
++
++/** A purpose-built card: no DOM capture, saved evidence, names, answers, or ending text. */
++export async function createAchievementCard(id: AchievementCaseId): Promise<File> {
++  const investigation = getAchievementCase(id);
++  const [logo, apple, google] = await loadAssets();
++  const canvas = document.createElement("canvas");
++  canvas.width = width; canvas.height = height;
++  const ctx = canvas.getContext("2d");
++  if (!ctx) throw new Error("This device could not prepare the achievement card.");
++  const background = ctx.createLinearGradient(0, 0, width, height);
++  background.addColorStop(0, "#182832"); background.addColorStop(0.5, "#0c151e"); background.addColorStop(1, "#171921");
++  ctx.fillStyle = background; ctx.fillRect(0, 0, width, height);
++  ctx.save(); ctx.strokeStyle = "#7693a0"; ctx.globalAlpha = 0.07; ctx.lineWidth = 1;
++  for (let line = -height; line < width; line += 44) { ctx.beginPath(); ctx.moveTo(line, 0); ctx.lineTo(line + height, height); ctx.stroke(); }
++  ctx.restore();
++  rounded(ctx, 36, 36, width - 72, height - 72, 24); ctx.strokeStyle = "#b99a62"; ctx.lineWidth = 2; ctx.stroke();
++  rounded(ctx, 51, 51, width - 102, height - 102, 15); ctx.strokeStyle = "#3b4244"; ctx.lineWidth = 1; ctx.stroke();
++  ctx.drawImage(logo, 88, 85, 100, 100);
++  ctx.textAlign = "left"; ctx.fillStyle = "#f8efe0"; ctx.font = "bold 74px Georgia, serif"; ctx.fillText("Velora", 212, 157);
++  ctx.fillStyle = "#bda77d"; ctx.font = "20px Arial, sans-serif"; ctx.fillText("MIND HUNTERS", 216, 191);
++  rounded(ctx, 753, 113, 226, 54, 10); ctx.fillStyle = "#1a2c37"; ctx.fill(); ctx.strokeStyle = "#526066"; ctx.stroke();
++  ctx.textAlign = "center"; ctx.fillStyle = "#d5c4a2"; ctx.font = "20px Arial, sans-serif"; ctx.fillText(`CASE FILE / ${investigation.number}`, 866, 148);
++  ctx.beginPath(); ctx.moveTo(92, 224); ctx.lineTo(988, 224); ctx.strokeStyle = "#4c514c"; ctx.stroke();
++
++  ctx.save(); ctx.translate(540, 385);
++  const glow = ctx.createRadialGradient(0, 0, 20, 0, 0, 175); glow.addColorStop(0, "#c9a86b25"); glow.addColorStop(1, "#c9a86b00");
++  ctx.fillStyle = glow; ctx.fillRect(-180, -180, 360, 360);
++  ctx.strokeStyle = "#c6a66c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 114, 0, Math.PI * 2); ctx.stroke();
++  ctx.setLineDash([2, 11]); ctx.beginPath(); ctx.arc(0, 0, 127, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
++  ctx.beginPath(); ctx.moveTo(0, -82); ctx.lineTo(72, -52); ctx.lineTo(60, 42); ctx.quadraticCurveTo(34, 71, 0, 88);
++  ctx.quadraticCurveTo(-34, 71, -60, 42); ctx.lineTo(-72, -52); ctx.closePath();
++  ctx.fillStyle = "#c6a66c13"; ctx.fill(); ctx.strokeStyle = "#c6a66c"; ctx.stroke();
++  ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(-10, -9, 29, 0, Math.PI * 2); ctx.stroke();
++  ctx.beginPath(); ctx.moveTo(12, 14); ctx.lineTo(41, 43); ctx.lineCap = "round"; ctx.stroke();
++  ctx.restore();
++  ctx.fillStyle = "#bba982"; ctx.font = "20px Arial, sans-serif"; spaced(ctx, "INVESTIGATION COMPLETE", 556, 5);
++  ctx.fillStyle = "#fff4df"; ctx.font = "bold 79px Arial, sans-serif"; ctx.fillText("CASE SOLVED!", 540, 652);
++  ctx.fillStyle = "#c6a66c"; ctx.fillRect(386, 685, 308, 3);
++  ctx.fillStyle = "#eee8dd"; ctx.font = "58px Georgia, serif";
++  if (investigation.lines.length === 1) ctx.fillText(investigation.lines[0], 540, 790, 880);
++  else investigation.lines.forEach((line, index) => ctx.fillText(line, 540, 759 + index * 73, 880));
++  const gold = ctx.createLinearGradient(250, 0, 830, 0); gold.addColorStop(0, "#ac8851"); gold.addColorStop(0.5, "#e3c78f"); gold.addColorStop(1, "#b3915c");
++  rounded(ctx, 240, 888, 600, 88, 44); ctx.fillStyle = gold; ctx.fill();
++  ctx.fillStyle = "#16212a"; ctx.font = "bold 32px Arial, sans-serif"; spaced(ctx, achievementRank.toUpperCase(), 944, 4);
++  ctx.fillStyle = "#f5eddf"; ctx.font = "italic 38px Georgia, serif"; ctx.fillText("Can you solve the mystery?", 540, 1063);
++  ctx.fillStyle = "#91a0a6"; ctx.font = "18px Arial, sans-serif"; spaced(ctx, "YOUR NEXT CASE IS WAITING", 1110, 3);
++  ctx.beginPath(); ctx.moveTo(154, 1145); ctx.lineTo(926, 1145); ctx.strokeStyle = "#35464e"; ctx.stroke();
++  badge(ctx, apple, 145, 1171, 355, 110);
++  badge(ctx, google, 520, 1147, 455, 154);
++  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("The achievement image could not be created.")), "image/png"));
++  return new File([blob], achievementFileName(id), { type: "image/png" });
++}
+--- /dev/null
++++ b/frontend/src/lib/achievement-sharing.ts
+@@ -0,0 +1,52 @@
++import { Capacitor, registerPlugin } from "@capacitor/core";
++import { achievementShareText, type AchievementCaseId } from "./achievement-data";
++
++export type AchievementExportResult = { status: "presented" | "saved" | "cancelled" | "downloaded" };
++const nativeShare = registerPlugin<{
++  exportCard(options: { pngBase64: string; fileName: string; text: string; action: "share" | "save" }): Promise<AchievementExportResult>;
++}>("VeloraAchievementShare");
++
++function fileBase64(file: File) {
++  return new Promise<string>((resolve, reject) => {
++    const reader = new FileReader();
++    reader.onerror = () => reject(new Error("The achievement image could not be read."));
++    reader.onload = () => {
++      const value = reader.result;
++      if (typeof value !== "string" || !value.startsWith("data:image/png;base64,")) reject(new Error("The achievement image is invalid."));
++      else resolve(value.slice(value.indexOf(",") + 1));
++    };
++    reader.readAsDataURL(file);
++  });
++}
++
++function exportNative(file: File, id: AchievementCaseId, action: "share" | "save") {
++  if (!Capacitor.isPluginAvailable("VeloraAchievementShare")) return Promise.reject(new Error("Please update Velora to share or save this achievement."));
++  return fileBase64(file).then(pngBase64 => nativeShare.exportCard({ pngBase64, fileName: file.name, text: achievementShareText(id), action }));
++}
++
++function downloadCard(file: File): AchievementExportResult {
++  const url = URL.createObjectURL(file);
++  const anchor = document.createElement("a");
++  anchor.href = url; anchor.download = file.name; document.body.appendChild(anchor); anchor.click(); anchor.remove();
++  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
++  return { status: "downloaded" };
++}
++
++// The prepared File lets Web Share run directly inside the button's user gesture.
++export function shareAchievement(file: File, id: AchievementCaseId): Promise<AchievementExportResult> {
++  const text = achievementShareText(id);
++  if (Capacitor.isNativePlatform()) return exportNative(file, id, "share");
++  let supportsFiles = false;
++  try { supportsFiles = typeof navigator.share === "function" && Boolean(navigator.canShare?.({ files: [file] })); } catch { /* Download fallback. */ }
++  if (!supportsFiles) return Promise.resolve(downloadCard(file));
++  try {
++    return navigator.share({ files: [file], title: "Velora · Master Detective", text }).then(
++      () => ({ status: "presented" as const }),
++      error => { if (error?.name === "AbortError") return { status: "cancelled" as const }; throw error; },
++    );
++  } catch (error) { return Promise.reject(error); }
++}
++
++export function saveAchievement(file: File, id: AchievementCaseId): Promise<AchievementExportResult> {
++  return Capacitor.isNativePlatform() ? exportNative(file, id, "save") : Promise.resolve(downloadCard(file));
++}
+--- /dev/null
++++ b/frontend/src/lib/achievement-sharing.test.ts
+@@ -0,0 +1,76 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { achievementCases, achievementShareText, achievementStoreLinks, getAchievementCase, type AchievementCaseId } from "./achievement-data";
++import { saveAchievement, shareAchievement } from "./achievement-sharing";
++
++const native = vi.hoisted(() => ({ enabled: false, available: true, exportCard: vi.fn() }));
++vi.mock("@capacitor/core", () => ({
++  Capacitor: { isNativePlatform: () => native.enabled, isPluginAvailable: () => native.available },
++  registerPlugin: () => ({ exportCard: native.exportCard }),
++}));
++
++describe("spoiler-free achievement sharing", () => {
++  const file = () => new File(["png"], "velora-lighthouse-master-detective.png", { type: "image/png" });
++  beforeEach(() => { native.enabled = false; native.available = true; native.exportCard.mockReset(); });
++  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
++
++  it("uses only the approved case title, fixed badge, and both direct store URLs", () => {
++    for (const id of Object.keys(achievementCases) as AchievementCaseId[]) {
++      const text = achievementShareText(id);
++      expect(text).toContain(achievementCases[id].title);
++      expect(text).toContain("Master Detective");
++      expect(text).toContain(achievementStoreLinks.googlePlay);
++      expect(text).toContain(achievementStoreLinks.appStore);
++      expect(text).not.toMatch(/https?:\/\/(?:www\.)?velorachat\.com|coming soon|culprit|evidence|Femke|Celeste|Adrian/i);
++    }
++    expect(() => getAchievementCase("constructor" as AchievementCaseId)).toThrow("Unknown investigation");
++    expect(() => getAchievementCase("anything else" as AchievementCaseId)).toThrow();
++  });
++
++  it("calls Web Share immediately with the prepared image and both store links", async () => {
++    const share = vi.fn().mockResolvedValue(undefined);
++    Object.defineProperty(navigator, "share", { configurable: true, value: share });
++    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
++    const image = file();
++    const result = shareAchievement(image, "lighthouse");
++    expect(share).toHaveBeenCalledWith({ files: [image], title: "Velora · Master Detective", text: achievementShareText("lighthouse") });
++    expect(await result).toEqual({ status: "presented" });
++  });
++
++  it("treats cancelling the web share menu as cancellation, without another attempt", async () => {
++    const share = vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError"));
++    Object.defineProperty(navigator, "share", { configurable: true, value: share });
++    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "cancelled" });
++    expect(share).toHaveBeenCalledTimes(1);
++  });
++
++  it("offers a PNG download when the browser cannot share files", async () => {
++    vi.useFakeTimers();
++    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
++    const create = vi.fn(() => "blob:card"), revoke = vi.fn();
++    vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: revoke });
++    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => false });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "downloaded" });
++    expect(click).toHaveBeenCalledTimes(1);
++    expect(revoke).not.toHaveBeenCalled();
++    vi.advanceTimersByTime(30000);
++    expect(revoke).toHaveBeenCalledWith("blob:card");
++  });
++
++  it("hands the PNG and share text to the native menu without a social SDK", async () => {
++    native.enabled = true;
++    native.exportCard.mockResolvedValue({ status: "cancelled" });
++    expect(await shareAchievement(file(), "lighthouse")).toEqual({ status: "cancelled" });
++    expect(native.exportCard).toHaveBeenCalledWith({ pngBase64: "cG5n", fileName: "velora-lighthouse-master-detective.png", text: achievementShareText("lighthouse"), action: "share" });
++  });
++
++  it("uses the native document exporter for Save card and reports old app builds clearly", async () => {
++    native.enabled = true;
++    native.exportCard.mockResolvedValue({ status: "saved" });
++    expect(await saveAchievement(file(), "lighthouse")).toEqual({ status: "saved" });
++    expect(native.exportCard.mock.calls[0][0].action).toBe("save");
++    native.available = false;
++    await expect(shareAchievement(file(), "lighthouse")).rejects.toThrow("Please update Velora");
++    expect(native.exportCard).toHaveBeenCalledTimes(1);
++  });
++});
+--- /dev/null
++++ b/frontend/src/ui/components/investigation-achievement.tsx
+@@ -0,0 +1,60 @@
++import { useEffect, useState } from "react";
++import { Link } from "react-router-dom";
++import { createAchievementCard } from "../../lib/achievement-card";
++import { achievementLinksText, achievementRank, getAchievementCase, type AchievementCaseId } from "../../lib/achievement-data";
++import { saveAchievement, shareAchievement } from "../../lib/achievement-sharing";
++import "./investigation-achievement.css";
++
++export function InvestigationAchievement({ caseId }: { caseId: AchievementCaseId }) {
++  const [prepared, setPrepared] = useState<{ file: File; preview: string } | null>(null);
++  const [generation, setGeneration] = useState(0);
++  const [error, setError] = useState("");
++  const [status, setStatus] = useState("");
++  const [busy, setBusy] = useState(false);
++  const [manualCopy, setManualCopy] = useState(false);
++  useEffect(() => {
++    let cancelled = false, preview = "";
++    setPrepared(null); setError(""); setStatus("");
++    void createAchievementCard(caseId).then(file => {
++      if (cancelled) return;
++      preview = URL.createObjectURL(file); setPrepared({ file, preview });
++    }).catch(() => { if (!cancelled) setError("Your card could not be prepared. Please try again."); });
++    return () => { cancelled = true; if (preview) URL.revokeObjectURL(preview); };
++  }, [caseId, generation]);
++
++  function exportCard(action: "share" | "save") {
++    if (!prepared || busy) return;
++    setBusy(true); setError(""); setStatus("");
++    const operation = action === "share" ? shareAchievement(prepared.file, caseId) : saveAchievement(prepared.file, caseId);
++    void operation.then(result => {
++      if (result.status === "saved") setStatus("Your achievement card was saved.");
++      if (result.status === "downloaded") setStatus("Your card download has started. Copy the store links to include them in your post.");
++      // Opening a destination is not proof that a social post was published.
++    }).catch(reason => setError(reason instanceof Error ? reason.message : "Sharing could not open. Please try again or save your card."))
++      .finally(() => setBusy(false));
++  }
++
++  function copyLinks() {
++    setStatus("");
++    if (!navigator.clipboard?.writeText) { setManualCopy(true); return; }
++    void navigator.clipboard.writeText(achievementLinksText()).then(() => { setStatus("Both store links copied."); setManualCopy(false); })
++      .catch(() => setManualCopy(true));
++  }
++
++  return <section className="investigation-achievement" aria-label="Your detective achievement">
++    {prepared ? <img className="investigation-achievement-preview" src={prepared.preview} alt={`Spoiler-free ${getAchievementCase(caseId).title} achievement card`} /> : <div className="investigation-achievement-seal" aria-hidden="true">✦</div>}
++    <div className="investigation-achievement-content">
++      <p className="investigation-achievement-kicker">CASE SOLVED!</p>
++      <h3>{achievementRank}</h3>
++      <p>Celebrate your investigation with a spoiler-free achievement card.</p>
++      <div className="investigation-achievement-actions">
++        <button type="button" className="achievement-share-primary" disabled={!prepared || busy} onClick={() => exportCard("share")}>{busy ? "Opening…" : prepared ? "Share My Achievement" : "Preparing card…"}</button>
++        <Link className="achievement-play-next" to="/mind-hunters">Play Another Case</Link>
++      </div>
++      {prepared ? <div className="investigation-achievement-tools"><button type="button" disabled={busy} onClick={() => exportCard("save")}>Save card</button><button type="button" onClick={copyLinks}>Copy store links</button></div> : error ? <button type="button" className="achievement-retry" onClick={() => setGeneration(value => value + 1)}>Prepare card again</button> : null}
++      {manualCopy ? <label className="achievement-manual-copy">Store links<textarea readOnly value={achievementLinksText()} onFocus={event => event.currentTarget.select()} /></label> : null}
++      {status ? <p className="achievement-feedback" role="status">{status}</p> : null}
++      {error ? <p className="achievement-feedback" role="alert">{error}</p> : null}
++    </div>
++  </section>;
++}
+--- /dev/null
++++ b/frontend/src/ui/components/investigation-achievement.css
+@@ -0,0 +1,10 @@
++.investigation-achievement{display:flex;align-items:center;gap:1.4rem;margin:1.8rem 0 0;padding:1.4rem;border:1px solid #a88b56;border-radius:18px;background:linear-gradient(135deg,#1a2b35,#0e1821);color:#f5eddf;text-align:left;box-sizing:border-box;max-width:100%;overflow:hidden}
++.investigation-achievement-preview{display:block!important;width:132px!important;height:auto!important;flex:0 0 132px;border-radius:9px;box-shadow:0 8px 24px #0005;object-fit:contain!important}
++.investigation-achievement-seal{font-size:3rem;color:#d4b479;flex:0 0 70px;text-align:center}
++.investigation-achievement-content{min-width:0;flex:1}.investigation-achievement .investigation-achievement-kicker{margin:0 0 .35rem!important;color:#d4b479!important;font:700 .7rem/1.3 system-ui,sans-serif!important;letter-spacing:.16em}
++.investigation-achievement h3{margin:0 0 .65rem!important;color:#fff3dd!important;font:700 1.55rem/1.2 Georgia,serif!important}.investigation-achievement-content>p:not(.investigation-achievement-kicker){font:400 .92rem/1.6 system-ui,sans-serif;color:#c6d0d4;margin:.5rem 0 1rem}
++.investigation-achievement-actions{display:flex;gap:.7rem;flex-wrap:wrap;align-items:center}.investigation-achievement .achievement-share-primary,.investigation-achievement .achievement-play-next{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:.7rem 1rem;border-radius:9px;font:600 .88rem/1.3 system-ui,sans-serif;cursor:pointer;text-decoration:none;box-sizing:border-box}
++.investigation-achievement .achievement-share-primary{background:#dec28b;color:#15212b;border:1px solid #dec28b}.investigation-achievement .achievement-share-primary:disabled{opacity:.65;cursor:wait}.investigation-achievement .achievement-play-next{color:#f1e3c6;border:1px solid #607079;background:transparent}
++.investigation-achievement-tools{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.9rem}.investigation-achievement .investigation-achievement-tools button,.investigation-achievement .achievement-retry{min-height:36px;padding:.3rem 0;background:transparent;border:0;color:#d6be91;font:500 .83rem/1.4 system-ui,sans-serif;text-decoration:underline;text-underline-offset:4px;cursor:pointer}
++.investigation-achievement button:focus-visible,.investigation-achievement a:focus-visible{outline:3px solid #f5daa3;outline-offset:4px}.investigation-achievement .achievement-feedback{font-size:.85rem!important;margin:.8rem 0 0!important}.achievement-manual-copy{display:block;font-size:.85rem;margin-top:.9rem}.achievement-manual-copy textarea{display:block;width:100%;box-sizing:border-box;min-height:110px;margin-top:.4rem;color:#f1e3c6;background:#0c151e;border:1px solid #607079;border-radius:6px;padding:.7rem;font-size:.8rem;overflow-wrap:anywhere}
++@media(max-width:600px){.investigation-achievement{align-items:flex-start;gap:1rem;padding:1.1rem;flex-direction:column}.investigation-achievement-preview{width:100px!important;flex-basis:auto;align-self:center}.investigation-achievement-content{width:100%}.investigation-achievement-actions{align-items:stretch;flex-direction:column}.investigation-achievement .achievement-share-primary,.investigation-achievement .achievement-play-next{width:100%}.investigation-achievement h3{font-size:1.4rem!important}}
+--- /dev/null
++++ b/frontend/src/ui/components/investigation-achievement.test.tsx
+@@ -0,0 +1,50 @@
++import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { MemoryRouter } from "react-router-dom";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { InvestigationAchievement } from "./investigation-achievement";
++
++const mocks = vi.hoisted(() => ({ card: vi.fn(), share: vi.fn(), save: vi.fn() }));
++vi.mock("../../lib/achievement-card", () => ({ createAchievementCard: mocks.card }));
++vi.mock("../../lib/achievement-sharing", () => ({ shareAchievement: mocks.share, saveAchievement: mocks.save }));
++
++describe("completed investigation achievement controls", () => {
++  beforeEach(() => {
++    mocks.card.mockReset().mockResolvedValue(new File(["png"], "card.png", { type: "image/png" }));
++    mocks.share.mockReset().mockResolvedValue({ status: "cancelled" });
++    mocks.save.mockReset().mockResolvedValue({ status: "saved" });
++    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:achievement"), revokeObjectURL: vi.fn() });
++  });
++  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
++
++  it("prepares the card before sharing and keeps Play Another Case available", async () => {
++    render(<MemoryRouter><InvestigationAchievement caseId="blackwood" /></MemoryRouter>);
++    expect(screen.getByRole("link", { name: "Play Another Case" }).getAttribute("href")).toBe("/mind-hunters");
++    const share = await screen.findByRole("button", { name: "Share My Achievement" });
++    fireEvent.click(share);
++    await waitFor(() => expect(mocks.share).toHaveBeenCalledTimes(1));
++    expect(mocks.share.mock.calls[0][1]).toBe("blackwood");
++    await waitFor(() => expect((share as HTMLButtonElement).disabled).toBe(false));
++    expect(screen.queryByRole("alert")).toBeNull();
++    expect(screen.queryByText(/published|successfully shared/i)).toBeNull();
++    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
++    expect(await screen.findByRole("status")).toHaveProperty("textContent", "Your achievement card was saved.");
++  });
++
++  it("allows retry after artwork failure without blocking the next case", async () => {
++    mocks.card.mockRejectedValueOnce(new Error("Image unavailable"));
++    render(<MemoryRouter><InvestigationAchievement caseId="lighthouse" /></MemoryRouter>);
++    fireEvent.click(await screen.findByRole("button", { name: "Prepare card again" }));
++    expect(await screen.findByRole("button", { name: "Share My Achievement" })).toBeTruthy();
++    expect(screen.getByRole("link", { name: "Play Another Case" })).toBeTruthy();
++    expect(mocks.card).toHaveBeenCalledTimes(2);
++  });
++
++  it("gives a manual copy fallback with both store links when clipboard access fails", async () => {
++    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error("Denied")) } });
++    render(<MemoryRouter><InvestigationAchievement caseId="drowned-bell" /></MemoryRouter>);
++    fireEvent.click(await screen.findByRole("button", { name: "Copy store links" }));
++    const links = await screen.findByRole("textbox", { name: "Store links" });
++    expect((links as HTMLTextAreaElement).value).toContain("https://apps.apple.com/app/id6826858824");
++    expect((links as HTMLTextAreaElement).value).toContain("https://play.google.com/store/apps/details?id=com.velorachat.app");
++  });
++});
+--- /dev/null
++++ b/frontend/src/ui/pages/investigation-achievements.test.tsx
+@@ -0,0 +1,42 @@
++import { cleanup, render, screen } from "@testing-library/react";
++import { MemoryRouter } from "react-router-dom";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { LighthousePage } from "./lighthouse-page";
++import { DrownedBellPage } from "./drowned-bell-page";
++import { BlackwoodCasePage } from "./blackwood-case-page";
++import { LIGHTHOUSE_SAVE_KEY, initialLighthouseState } from "../../features/investigations/lighthouse-engine";
++import { DROWNED_BELL_SAVE_KEY, initialDrownedBellState } from "../../features/investigations/drowned-bell-engine";
++import { LAST_EXHIBIT_SAVE_KEY, initialLastExhibitState } from "../../features/investigations/last-exhibit-engine";
++
++vi.mock("../components/investigation-achievement", () => ({ InvestigationAchievement: ({ caseId }: { caseId: string }) => <section aria-label="Achievement">{caseId}</section> }));
++
++describe("achievement unlocks", () => {
++  beforeEach(() => localStorage.clear());
++  afterEach(cleanup);
++
++  it("never offers an achievement in an unfinished investigation", () => {
++    for (const Page of [LighthousePage, DrownedBellPage, BlackwoodCasePage]) {
++      const view = render(<MemoryRouter><Page /></MemoryRouter>);
++      expect(screen.queryByRole("region", { name: "Achievement" })).toBeNull();
++      view.unmount();
++    }
++  });
++
++  it("restores sharing for a successfully finished Lighthouse save", () => {
++    localStorage.setItem(LIGHTHOUSE_SAVE_KEY, JSON.stringify({ ...initialLighthouseState(), started: true, introSeen: true, chapter: 6, complete: true }));
++    render(<MemoryRouter><LighthousePage /></MemoryRouter>);
++    expect(screen.getByRole("region", { name: "Achievement" }).textContent).toBe("lighthouse");
++  });
++
++  it("restores sharing for a successfully finished Drowned Bell save", () => {
++    localStorage.setItem(DROWNED_BELL_SAVE_KEY, JSON.stringify({ ...initialDrownedBellState, started: true, openingSeen: true, chapter: 7, solved: Array(7).fill(true) }));
++    render(<MemoryRouter><DrownedBellPage /></MemoryRouter>);
++    expect(screen.getByRole("region", { name: "Achievement" }).textContent).toBe("drowned-bell");
++  });
++
++  it("restores sharing for a successfully finished Blackwood save", () => {
++    localStorage.setItem(LAST_EXHIBIT_SAVE_KEY, JSON.stringify({ ...initialLastExhibitState, started: true, openingSeen: true, chapter: 7, scene: "finale", chapter1Solved: true, chapter2Solved: true, chapter3Solved: true, chapter4Solved: true, chapter5Solved: true, chapter6Solved: true, chapter7Solved: true }));
++    render(<MemoryRouter><BlackwoodCasePage /></MemoryRouter>);
++    expect(screen.getByRole("region", { name: "Achievement" }).textContent).toBe("blackwood");
++  });
++});
+--- /dev/null
++++ b/frontend/public/achievement-assets/app-store.svg
+@@ -0,0 +1,46 @@
++<svg id="livetype" xmlns="http://www.w3.org/2000/svg" width="119.66407" height="40" viewBox="0 0 119.66407 40">
++  <title>Download_on_the_App_Store_Badge_US-UK_RGB_blk_4SVG_092917</title>
++  <g>
++    <g>
++      <g>
++        <path d="M110.13477,0H9.53468c-.3667,0-.729,0-1.09473.002-.30615.002-.60986.00781-.91895.0127A13.21476,13.21476,0,0,0,5.5171.19141a6.66509,6.66509,0,0,0-1.90088.627A6.43779,6.43779,0,0,0,1.99757,1.99707,6.25844,6.25844,0,0,0,.81935,3.61816a6.60119,6.60119,0,0,0-.625,1.90332,12.993,12.993,0,0,0-.1792,2.002C.00587,7.83008.00489,8.1377,0,8.44434V31.5586c.00489.3105.00587.6113.01515.9219a12.99232,12.99232,0,0,0,.1792,2.0019,6.58756,6.58756,0,0,0,.625,1.9043A6.20778,6.20778,0,0,0,1.99757,38.001a6.27445,6.27445,0,0,0,1.61865,1.1787,6.70082,6.70082,0,0,0,1.90088.6308,13.45514,13.45514,0,0,0,2.0039.1768c.30909.0068.6128.0107.91895.0107C8.80567,40,9.168,40,9.53468,40H110.13477c.3594,0,.7246,0,1.084-.002.3047,0,.6172-.0039.9219-.0107a13.279,13.279,0,0,0,2-.1768,6.80432,6.80432,0,0,0,1.9082-.6308,6.27742,6.27742,0,0,0,1.6172-1.1787,6.39482,6.39482,0,0,0,1.1816-1.6143,6.60413,6.60413,0,0,0,.6191-1.9043,13.50643,13.50643,0,0,0,.1856-2.0019c.0039-.3106.0039-.6114.0039-.9219.0078-.3633.0078-.7246.0078-1.0938V9.53613c0-.36621,0-.72949-.0078-1.09179,0-.30664,0-.61426-.0039-.9209a13.5071,13.5071,0,0,0-.1856-2.002,6.6177,6.6177,0,0,0-.6191-1.90332,6.46619,6.46619,0,0,0-2.7988-2.7998,6.76754,6.76754,0,0,0-1.9082-.627,13.04394,13.04394,0,0,0-2-.17676c-.3047-.00488-.6172-.01074-.9219-.01269-.3594-.002-.7246-.002-1.084-.002Z" style="fill: #a6a6a6"/>
++        <path d="M8.44483,39.125c-.30468,0-.602-.0039-.90429-.0107a12.68714,12.68714,0,0,1-1.86914-.1631,5.88381,5.88381,0,0,1-1.65674-.5479,5.40573,5.40573,0,0,1-1.397-1.0166,5.32082,5.32082,0,0,1-1.02051-1.3965,5.72186,5.72186,0,0,1-.543-1.6572,12.41351,12.41351,0,0,1-.1665-1.875c-.00634-.2109-.01464-.9131-.01464-.9131V8.44434S.88185,7.75293.8877,7.5498a12.37039,12.37039,0,0,1,.16553-1.87207,5.7555,5.7555,0,0,1,.54346-1.6621A5.37349,5.37349,0,0,1,2.61183,2.61768,5.56543,5.56543,0,0,1,4.01417,1.59521a5.82309,5.82309,0,0,1,1.65332-.54394A12.58589,12.58589,0,0,1,7.543.88721L8.44532.875H111.21387l.9131.0127a12.38493,12.38493,0,0,1,1.8584.16259,5.93833,5.93833,0,0,1,1.6709.54785,5.59374,5.59374,0,0,1,2.415,2.41993,5.76267,5.76267,0,0,1,.5352,1.64892,12.995,12.995,0,0,1,.1738,1.88721c.0029.2832.0029.5874.0029.89014.0079.375.0079.73193.0079,1.09179V30.4648c0,.3633,0,.7178-.0079,1.0752,0,.3252,0,.6231-.0039.9297a12.73126,12.73126,0,0,1-.1709,1.8535,5.739,5.739,0,0,1-.54,1.67,5.48029,5.48029,0,0,1-1.0156,1.3857,5.4129,5.4129,0,0,1-1.3994,1.0225,5.86168,5.86168,0,0,1-1.668.5498,12.54218,12.54218,0,0,1-1.8692.1631c-.2929.0068-.5996.0107-.8974.0107l-1.084.002Z"/>
++      </g>
++      <g id="_Group_" data-name="&lt;Group&gt;">
++        <g id="_Group_2" data-name="&lt;Group&gt;">
++          <g id="_Group_3" data-name="&lt;Group&gt;">
++            <path id="_Path_" data-name="&lt;Path&gt;" d="M24.76888,20.30068a4.94881,4.94881,0,0,1,2.35656-4.15206,5.06566,5.06566,0,0,0-3.99116-2.15768c-1.67924-.17626-3.30719,1.00483-4.1629,1.00483-.87227,0-2.18977-.98733-3.6085-.95814a5.31529,5.31529,0,0,0-4.47292,2.72787c-1.934,3.34842-.49141,8.26947,1.3612,10.97608.9269,1.32535,2.01018,2.8058,3.42763,2.7533,1.38706-.05753,1.9051-.88448,3.5794-.88448,1.65876,0,2.14479.88448,3.591.8511,1.48838-.02416,2.42613-1.33124,3.32051-2.66914a10.962,10.962,0,0,0,1.51842-3.09251A4.78205,4.78205,0,0,1,24.76888,20.30068Z" style="fill: #fff"/>
++            <path id="_Path_2" data-name="&lt;Path&gt;" d="M22.03725,12.21089a4.87248,4.87248,0,0,0,1.11452-3.49062,4.95746,4.95746,0,0,0-3.20758,1.65961,4.63634,4.63634,0,0,0-1.14371,3.36139A4.09905,4.09905,0,0,0,22.03725,12.21089Z" style="fill: #fff"/>
++          </g>
++        </g>
++        <g>
++          <path d="M42.30227,27.13965h-4.7334l-1.13672,3.35645H34.42727l4.4834-12.418h2.083l4.4834,12.418H43.438ZM38.0591,25.59082h3.752l-1.84961-5.44727h-.05176Z" style="fill: #fff"/>
++          <path d="M55.15969,25.96973c0,2.81348-1.50586,4.62109-3.77832,4.62109a3.0693,3.0693,0,0,1-2.84863-1.584h-.043v4.48438h-1.8584V21.44238H48.4302v1.50586h.03418a3.21162,3.21162,0,0,1,2.88281-1.60059C53.645,21.34766,55.15969,23.16406,55.15969,25.96973Zm-1.91016,0c0-1.833-.94727-3.03809-2.39258-3.03809-1.41992,0-2.375,1.23047-2.375,3.03809,0,1.82422.95508,3.0459,2.375,3.0459C52.30227,29.01563,53.24953,27.81934,53.24953,25.96973Z" style="fill: #fff"/>
++          <path d="M65.12453,25.96973c0,2.81348-1.50586,4.62109-3.77832,4.62109a3.0693,3.0693,0,0,1-2.84863-1.584h-.043v4.48438h-1.8584V21.44238H58.395v1.50586h.03418A3.21162,3.21162,0,0,1,61.312,21.34766C63.60988,21.34766,65.12453,23.16406,65.12453,25.96973Zm-1.91016,0c0-1.833-.94727-3.03809-2.39258-3.03809-1.41992,0-2.375,1.23047-2.375,3.03809,0,1.82422.95508,3.0459,2.375,3.0459C62.26711,29.01563,63.21438,27.81934,63.21438,25.96973Z" style="fill: #fff"/>
++          <path d="M71.71047,27.03613c.1377,1.23145,1.334,2.04,2.96875,2.04,1.56641,0,2.69336-.80859,2.69336-1.91895,0-.96387-.67969-1.541-2.28906-1.93652l-1.60937-.3877c-2.28027-.55078-3.33887-1.61719-3.33887-3.34766,0-2.14258,1.86719-3.61426,4.51855-3.61426,2.624,0,4.42285,1.47168,4.4834,3.61426h-1.876c-.1123-1.23926-1.13672-1.9873-2.63379-1.9873s-2.52148.75684-2.52148,1.8584c0,.87793.6543,1.39453,2.25488,1.79l1.36816.33594c2.54785.60254,3.60645,1.626,3.60645,3.44238,0,2.32324-1.85059,3.77832-4.79395,3.77832-2.75391,0-4.61328-1.4209-4.7334-3.667Z" style="fill: #fff"/>
++          <path d="M83.34621,19.2998v2.14258h1.72168v1.47168H83.34621v4.99121c0,.77539.34473,1.13672,1.10156,1.13672a5.80752,5.80752,0,0,0,.61133-.043v1.46289a5.10351,5.10351,0,0,1-1.03223.08594c-1.833,0-2.54785-.68848-2.54785-2.44434V22.91406H80.16262V21.44238H81.479V19.2998Z" style="fill: #fff"/>
++          <path d="M86.065,25.96973c0-2.84863,1.67773-4.63867,4.29395-4.63867,2.625,0,4.29492,1.79,4.29492,4.63867,0,2.85645-1.66113,4.63867-4.29492,4.63867C87.72609,30.6084,86.065,28.82617,86.065,25.96973Zm6.69531,0c0-1.9541-.89551-3.10742-2.40137-3.10742s-2.40039,1.16211-2.40039,3.10742c0,1.96191.89453,3.10645,2.40039,3.10645S92.76027,27.93164,92.76027,25.96973Z" style="fill: #fff"/>
++          <path d="M96.18606,21.44238h1.77246v1.541h.043a2.1594,2.1594,0,0,1,2.17773-1.63574,2.86616,2.86616,0,0,1,.63672.06934v1.73828a2.59794,2.59794,0,0,0-.835-.1123,1.87264,1.87264,0,0,0-1.93652,2.083v5.37012h-1.8584Z" style="fill: #fff"/>
++          <path d="M109.3843,27.83691c-.25,1.64355-1.85059,2.77148-3.89844,2.77148-2.63379,0-4.26855-1.76465-4.26855-4.5957,0-2.83984,1.64355-4.68164,4.19043-4.68164,2.50488,0,4.08008,1.7207,4.08008,4.46582v.63672h-6.39453v.1123a2.358,2.358,0,0,0,2.43555,2.56445,2.04834,2.04834,0,0,0,2.09082-1.27344Zm-6.28223-2.70215h4.52637a2.1773,2.1773,0,0,0-2.2207-2.29785A2.292,2.292,0,0,0,103.10207,25.13477Z" style="fill: #fff"/>
++        </g>
++      </g>
++    </g>
++    <g id="_Group_4" data-name="&lt;Group&gt;">
++      <g>
++        <path d="M37.82619,8.731a2.63964,2.63964,0,0,1,2.80762,2.96484c0,1.90625-1.03027,3.002-2.80762,3.002H35.67092V8.731Zm-1.22852,5.123h1.125a1.87588,1.87588,0,0,0,1.96777-2.146,1.881,1.881,0,0,0-1.96777-2.13379h-1.125Z" style="fill: #fff"/>
++        <path d="M41.68068,12.44434a2.13323,2.13323,0,1,1,4.24707,0,2.13358,2.13358,0,1,1-4.24707,0Zm3.333,0c0-.97607-.43848-1.54687-1.208-1.54687-.77246,0-1.207.5708-1.207,1.54688,0,.98389.43457,1.55029,1.207,1.55029C44.57522,13.99463,45.01369,13.42432,45.01369,12.44434Z" style="fill: #fff"/>
++        <path d="M51.57326,14.69775h-.92187l-.93066-3.31641h-.07031l-.92676,3.31641h-.91309l-1.24121-4.50293h.90137l.80664,3.436h.06641l.92578-3.436h.85254l.92578,3.436h.07031l.80273-3.436h.88867Z" style="fill: #fff"/>
++        <path d="M53.85354,10.19482H54.709v.71533h.06641a1.348,1.348,0,0,1,1.34375-.80225,1.46456,1.46456,0,0,1,1.55859,1.6748v2.915h-.88867V12.00586c0-.72363-.31445-1.0835-.97168-1.0835a1.03294,1.03294,0,0,0-1.0752,1.14111v2.63428h-.88867Z" style="fill: #fff"/>
++        <path d="M59.09377,8.437h.88867v6.26074h-.88867Z" style="fill: #fff"/>
++        <path d="M61.21779,12.44434a2.13346,2.13346,0,1,1,4.24756,0,2.1338,2.1338,0,1,1-4.24756,0Zm3.333,0c0-.97607-.43848-1.54687-1.208-1.54687-.77246,0-1.207.5708-1.207,1.54688,0,.98389.43457,1.55029,1.207,1.55029C64.11232,13.99463,64.5508,13.42432,64.5508,12.44434Z" style="fill: #fff"/>
++        <path d="M66.4009,13.42432c0-.81055.60352-1.27783,1.6748-1.34424l1.21973-.07031v-.38867c0-.47559-.31445-.74414-.92187-.74414-.49609,0-.83984.18213-.93848.50049h-.86035c.09082-.77344.81836-1.26953,1.83984-1.26953,1.12891,0,1.76563.562,1.76563,1.51318v3.07666h-.85547v-.63281h-.07031a1.515,1.515,0,0,1-1.35254.707A1.36026,1.36026,0,0,1,66.4009,13.42432Zm2.89453-.38477v-.37646l-1.09961.07031c-.62012.0415-.90137.25244-.90137.64941,0,.40527.35156.64111.835.64111A1.0615,1.0615,0,0,0,69.29543,13.03955Z" style="fill: #fff"/>
++        <path d="M71.34816,12.44434c0-1.42285.73145-2.32422,1.86914-2.32422a1.484,1.484,0,0,1,1.38086.79h.06641V8.437h.88867v6.26074h-.85156v-.71143h-.07031a1.56284,1.56284,0,0,1-1.41406.78564C72.0718,14.772,71.34816,13.87061,71.34816,12.44434Zm.918,0c0,.95508.4502,1.52979,1.20313,1.52979.749,0,1.21191-.583,1.21191-1.52588,0-.93848-.46777-1.52979-1.21191-1.52979C72.72121,10.91846,72.26613,11.49707,72.26613,12.44434Z" style="fill: #fff"/>
++        <path d="M79.23,12.44434a2.13323,2.13323,0,1,1,4.24707,0,2.13358,2.13358,0,1,1-4.24707,0Zm3.333,0c0-.97607-.43848-1.54687-1.208-1.54687-.77246,0-1.207.5708-1.207,1.54688,0,.98389.43457,1.55029,1.207,1.55029C82.12453,13.99463,82.563,13.42432,82.563,12.44434Z" style="fill: #fff"/>
++        <path d="M84.66945,10.19482h.85547v.71533h.06641a1.348,1.348,0,0,1,1.34375-.80225,1.46456,1.46456,0,0,1,1.55859,1.6748v2.915H87.605V12.00586c0-.72363-.31445-1.0835-.97168-1.0835a1.03294,1.03294,0,0,0-1.0752,1.14111v2.63428h-.88867Z" style="fill: #fff"/>
++        <path d="M93.51516,9.07373v1.1416h.97559v.74854h-.97559V13.2793c0,.47168.19434.67822.63672.67822a2.96657,2.96657,0,0,0,.33887-.02051v.74023a2.9155,2.9155,0,0,1-.4834.04541c-.98828,0-1.38184-.34766-1.38184-1.21582v-2.543h-.71484v-.74854h.71484V9.07373Z" style="fill: #fff"/>
++        <path d="M95.70461,8.437h.88086v2.48145h.07031a1.3856,1.3856,0,0,1,1.373-.80664,1.48339,1.48339,0,0,1,1.55078,1.67871v2.90723H98.69v-2.688c0-.71924-.335-1.0835-.96289-1.0835a1.05194,1.05194,0,0,0-1.13379,1.1416v2.62988h-.88867Z" style="fill: #fff"/>
++        <path d="M104.76125,13.48193a1.828,1.828,0,0,1-1.95117,1.30273A2.04531,2.04531,0,0,1,100.73,12.46045a2.07685,2.07685,0,0,1,2.07617-2.35254c1.25293,0,2.00879.856,2.00879,2.27V12.688h-3.17969v.0498a1.1902,1.1902,0,0,0,1.19922,1.29,1.07934,1.07934,0,0,0,1.07129-.5459Zm-3.126-1.45117h2.27441a1.08647,1.08647,0,0,0-1.1084-1.1665A1.15162,1.15162,0,0,0,101.63527,12.03076Z" style="fill: #fff"/>
++      </g>
++    </g>
++  </g>
++</svg>
+--- /dev/null
++++ b/frontend/public/achievement-assets/README.md
+@@ -0,0 +1,8 @@
++Official store badge artwork, bundled locally so achievement rendering makes no network request.
++
++- Apple: https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg
++- Google: https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png
++- Apple usage guide: https://developer.apple.com/app-store/marketing/guidelines/
++- Google usage guide: https://partnermarketinghub.withgoogle.com/brands/google-play/visual-identity/badge-guidelines/
++
++Artwork is drawn without alteration. Both direct store URLs are in the accompanying share text; no website URL or coming-soon label is included.
+--- /dev/null
++++ b/frontend/plugins/velora-rewarded-ads-native/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift
+@@ -0,0 +1,82 @@
++import Capacitor
++import Foundation
++import UIKit
++
++@objc(VeloraAchievementSharePlugin)
++public final class VeloraAchievementSharePlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDelegate {
++    public let identifier = "VeloraAchievementSharePlugin"
++    public let jsName = "VeloraAchievementShare"
++    public let pluginMethods: [CAPPluginMethod] = [
++        CAPPluginMethod(name: "exportCard", returnType: CAPPluginReturnPromise)
++    ]
++    private var busy = false
++    private var pendingSave: CAPPluginCall?
++
++    @objc public func exportCard(_ call: CAPPluginCall) {
++        DispatchQueue.main.async { [weak self] in
++            guard let self else { call.reject("Sharing is unavailable."); return }
++            guard !self.busy, let host = self.bridge?.viewController, host.presentedViewController == nil else {
++                call.reject("Please close the current window before sharing."); return
++            }
++            guard let encoded = call.getString("pngBase64"), encoded.count <= 6_000_000,
++                  let data = Data(base64Encoded: encoded), data.count <= 4_000_000,
++                  data.starts(with: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
++                  let image = UIImage(data: data), image.size.width > 0, image.size.width <= 4096,
++                  image.size.height > 0, image.size.height <= 4096,
++                  let name = call.getString("fileName"),
++                  name.range(of: "^velora-(lighthouse|drowned-bell|blackwood)-master-detective\\.png$", options: .regularExpression) != nil,
++                  let text = call.getString("text"), text.count <= 1200,
++                  let action = call.getString("action"), ["share", "save"].contains(action) else {
++                call.reject("The achievement card is invalid."); return
++            }
++            do {
++                let root = FileManager.default.temporaryDirectory.appendingPathComponent("velora-achievements", isDirectory: true)
++                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
++                // Keep handed-off files available; only prune our own old temporary folders.
++                if let previous = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey]) {
++                    for folder in previous where UUID(uuidString: folder.lastPathComponent) != nil {
++                        if let created = try? folder.resourceValues(forKeys: [.creationDateKey]).creationDate,
++                           created < Date().addingTimeInterval(-86400) { try? FileManager.default.removeItem(at: folder) }
++                    }
++                }
++                let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
++                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
++                let file = folder.appendingPathComponent(name)
++                try data.write(to: file, options: .atomic)
++                self.busy = true
++                if action == "save" {
++                    let picker = UIDocumentPickerViewController(forExporting: [file], asCopy: true)
++                    picker.delegate = self
++                    self.pendingSave = call
++                    host.present(picker, animated: true)
++                } else {
++                    let activity = UIActivityViewController(activityItems: [file, text], applicationActivities: nil)
++                    activity.completionWithItemsHandler = { [weak self] _, completed, _, error in
++                        DispatchQueue.main.async {
++                            self?.busy = false
++                            if error != nil { call.reject("Sharing could not finish. Please try again.") }
++                            else { call.resolve(["status": completed ? "presented" : "cancelled"]) }
++                        }
++                    }
++                    // An anchored popover is required on iPad.
++                    if let popover = activity.popoverPresentationController {
++                        popover.sourceView = host.view
++                        popover.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 1, height: 1)
++                        popover.permittedArrowDirections = []
++                    }
++                    host.present(activity, animated: true)
++                }
++            } catch { self.busy = false; call.reject("The achievement card could not be prepared for sharing.") }
++        }
++    }
++
++    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
++        pendingSave?.resolve(["status": "cancelled"])
++        pendingSave = nil; busy = false
++    }
++
++    public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
++        pendingSave?.resolve(["status": urls.isEmpty ? "cancelled" : "saved"])
++        pendingSave = nil; busy = false
++    }
++}
+--- /dev/null
++++ b/frontend/android/app/src/main/java/com/velorachat/app/VeloraAchievementSharePlugin.java
+@@ -0,0 +1,109 @@
++package com.velorachat.app;
++
++import android.app.Activity;
++import android.content.ClipData;
++import android.content.Intent;
++import android.graphics.BitmapFactory;
++import android.net.Uri;
++import android.util.Base64;
++import androidx.activity.result.ActivityResult;
++import androidx.core.content.FileProvider;
++import com.getcapacitor.JSObject;
++import com.getcapacitor.Plugin;
++import com.getcapacitor.PluginCall;
++import com.getcapacitor.PluginMethod;
++import com.getcapacitor.annotation.ActivityCallback;
++import com.getcapacitor.annotation.CapacitorPlugin;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
++import java.io.OutputStream;
++import java.util.Arrays;
++import java.util.UUID;
++
++@CapacitorPlugin(name = "VeloraAchievementShare")
++public class VeloraAchievementSharePlugin extends Plugin {
++    private static final byte[] PNG_HEADER = {(byte) 137, 80, 78, 71, 13, 10, 26, 10};
++
++    private File prepare(PluginCall call) throws Exception {
++        String encoded = call.getString("pngBase64");
++        String name = call.getString("fileName");
++        if (encoded == null || encoded.length() > 6000000 || name == null ||
++            !name.matches("velora-(lighthouse|drowned-bell|blackwood)-master-detective\\.png")) {
++            throw new IllegalArgumentException("Invalid achievement card");
++        }
++        byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
++        if (bytes.length < 8 || bytes.length > 4000000 || !Arrays.equals(Arrays.copyOf(bytes, 8), PNG_HEADER)) {
++            throw new IllegalArgumentException("Invalid achievement image");
++        }
++        BitmapFactory.Options bounds = new BitmapFactory.Options();
++        bounds.inJustDecodeBounds = true;
++        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
++        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 4096 || bounds.outHeight > 4096) {
++            throw new IllegalArgumentException("Invalid achievement dimensions");
++        }
++        File root = new File(getContext().getCacheDir(), "velora-achievements");
++        if (!root.isDirectory() && !root.mkdirs()) throw new IllegalStateException("Could not create achievement cache");
++        File[] previous = root.listFiles();
++        if (previous != null) for (File item : previous) {
++            if (item.isFile() && item.getName().matches("[a-f0-9-]{36}\\.png") && item.lastModified() < System.currentTimeMillis() - 86400000L) item.delete();
++        }
++        File file = new File(root, UUID.randomUUID().toString() + ".png");
++        try (FileOutputStream stream = new FileOutputStream(file)) { stream.write(bytes); }
++        call.getData().put("_achievementCacheFile", file.getName());
++        return file;
++    }
++
++    @PluginMethod
++    public void exportCard(PluginCall call) {
++        String action = call.getString("action");
++        String text = call.getString("text");
++        if ((!"share".equals(action) && !"save".equals(action)) || text == null || text.length() > 1200) {
++            call.reject("The achievement request is invalid."); return;
++        }
++        try {
++            File file = prepare(call);
++            getActivity().runOnUiThread(() -> {
++                try {
++                    if ("save".equals(action)) {
++                        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
++                        intent.addCategory(Intent.CATEGORY_OPENABLE);
++                        intent.setType("image/png");
++                        intent.putExtra(Intent.EXTRA_TITLE, call.getString("fileName"));
++                        startActivityForResult(call, intent, "cardSaved");
++                    } else {
++                        Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", file);
++                        Intent intent = new Intent(Intent.ACTION_SEND);
++                        intent.setType("image/png");
++                        intent.putExtra(Intent.EXTRA_STREAM, uri);
++                        intent.putExtra(Intent.EXTRA_TEXT, text);
++                        intent.putExtra(Intent.EXTRA_TITLE, "Velora · Master Detective");
++                        intent.setClipData(ClipData.newUri(getContext().getContentResolver(), "Velora achievement", uri));
++                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++                        getActivity().startActivity(Intent.createChooser(intent, "Share your achievement"));
++                        JSObject result = new JSObject(); result.put("status", "presented"); call.resolve(result);
++                    }
++                } catch (Exception error) { call.reject("Sharing could not open. Please try again."); }
++            });
++        } catch (Exception error) { call.reject("The achievement card could not be prepared for sharing."); }
++    }
++
++    @ActivityCallback
++    private void cardSaved(PluginCall call, ActivityResult activityResult) {
++        if (call == null) return;
++        JSObject result = new JSObject();
++        if (activityResult.getResultCode() != Activity.RESULT_OK || activityResult.getData() == null || activityResult.getData().getData() == null) {
++            result.put("status", "cancelled"); call.resolve(result); return;
++        }
++        String cached = call.getString("_achievementCacheFile");
++        if (cached == null || !cached.matches("[a-f0-9-]{36}\\.png")) { call.reject("The saved achievement could not be found."); return; }
++        File file = new File(new File(getContext().getCacheDir(), "velora-achievements"), cached);
++        try (FileInputStream input = new FileInputStream(file);
++             OutputStream output = getContext().getContentResolver().openOutputStream(activityResult.getData().getData())) {
++            if (output == null) throw new IllegalStateException("Could not open the destination");
++            byte[] buffer = new byte[8192]; int count;
++            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
++            output.flush(); result.put("status", "saved"); call.resolve(result);
++        } catch (Exception error) { call.reject("Your achievement card could not be saved. Please try again."); }
++    }
++}
+--- a/frontend/ios/App/App/Info.plist
++++ b/frontend/ios/App/App/Info.plist
+@@ -28,6 +28,8 @@
+ 	<false/>
+ 	<key>NSCameraUsageDescription</key>
+ 	<string>Velora uses the camera when you choose to take a profile photo.</string>
++	<key>NSPhotoLibraryAddUsageDescription</key>
++	<string>Velora saves an achievement image to your photos only when you choose Save Image.</string>
+ 	<key>NSPhotoLibraryUsageDescription</key>
+ 	<string>Velora uses your photo library when you choose a profile photo.</string>
+ 	<key>SKAdNetworkItems</key>

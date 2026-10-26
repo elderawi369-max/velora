@@ -16,6 +16,7 @@
 		"LocalNotificationsPlugin",
 		"PushNotificationsPlugin",
 		"VeloraRewardedAdsPlugin",
-		"VeloraStoreKitPlugin"
+		"VeloraStoreKitPlugin",
+		"VeloraAchievementSharePlugin"
 	]
 }

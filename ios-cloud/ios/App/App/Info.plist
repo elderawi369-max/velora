@@ -28,6 +28,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Velora uses the camera when you choose to take a profile photo.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Velora saves an achievement image to your photos only when you choose Save Image.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Velora uses your photo library when you choose a profile photo.</string>
 	<key>SKAdNetworkItems</key>

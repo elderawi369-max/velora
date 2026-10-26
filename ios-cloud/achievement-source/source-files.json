@@ -1,0 +1,97 @@
+[
+  {
+    "file": "frontend/src/ui/pages/lighthouse-page.tsx",
+    "sha256": "8e944f95bdc18e326fa8713e749bd3cc08eef7fee36c4c443411b0ce584f2158",
+    "new": false
+  },
+  {
+    "file": "frontend/src/ui/pages/drowned-bell-page.tsx",
+    "sha256": "63fbde45d65ad16c34bc886c264421ad6833075794a3194d4cfd169ae0efc92b",
+    "new": false
+  },
+  {
+    "file": "frontend/src/ui/pages/last-exhibit-page.tsx",
+    "sha256": "8641a6e1e40947fd420d603ea7771f40a7184cbb6e69beb1a0c3298ed371b96a",
+    "new": false
+  },
+  {
+    "file": "frontend/android/app/src/main/java/com/velorachat/app/MainActivity.java",
+    "sha256": "bea32faad28732f378c8d8efe15406fd48806157b776e763ba4e40c4a48838b6",
+    "new": false
+  },
+  {
+    "file": "frontend/ios/App/App/capacitor.config.json",
+    "sha256": "32cdaa07011bfd08caa6f32a2c369caf8e51f1620f9c749480bdc031d148e242",
+    "new": false
+  },
+  {
+    "file": "frontend/src/lib/achievement-data.ts",
+    "sha256": "595cef3ddd436e2ea7d57d092e53d6ac7b85dae9194f94066d4007811412d93e",
+    "new": true
+  },
+  {
+    "file": "frontend/src/lib/achievement-card.ts",
+    "sha256": "83bc152fd1b29c2026974d2ccbd7e75bff78d69655c57897ddc4a84087683e20",
+    "new": true
+  },
+  {
+    "file": "frontend/src/lib/achievement-sharing.ts",
+    "sha256": "61ea729714d39d48964ec9c6d1234801e464eb39698bb2fb5e4714ee2cd1eeb5",
+    "new": true
+  },
+  {
+    "file": "frontend/src/lib/achievement-sharing.test.ts",
+    "sha256": "d32b2a334aa7f69f17e89bcaa8b137f44743348696e6027f5b66ff226fbaadc4",
+    "new": true
+  },
+  {
+    "file": "frontend/src/ui/components/investigation-achievement.tsx",
+    "sha256": "bb49ba44b234c7c5f86054fd4a3ba4f178313fafc5f6c4b2e5c14069ff9e5539",
+    "new": true
+  },
+  {
+    "file": "frontend/src/ui/components/investigation-achievement.css",
+    "sha256": "ab1d54366a6589bd8ef57a758606afbeabe8e8496219690eae262e8f75a511b1",
+    "new": true
+  },
+  {
+    "file": "frontend/src/ui/components/investigation-achievement.test.tsx",
+    "sha256": "89c84d911db6d5239868bf927eebd60dcaa92d7926c029184c1a982f6619ffae",
+    "new": true
+  },
+  {
+    "file": "frontend/src/ui/pages/investigation-achievements.test.tsx",
+    "sha256": "3dca8abb0ed2e6cd8fe31c0e135e14d885d7e20398ff52c8c3e84f64bbb73d72",
+    "new": true
+  },
+  {
+    "file": "frontend/public/achievement-assets/app-store.svg",
+    "sha256": "a26fc5b38380272c92e9019a2eb8b45542a66814b3e2b203772db8904b9fb99f",
+    "new": true
+  },
+  {
+    "file": "frontend/public/achievement-assets/google-play.png",
+    "sha256": "f72611e2df8e88204009fd896d05d5e8e83c77009c63943bbffa169559934849",
+    "new": true
+  },
+  {
+    "file": "frontend/public/achievement-assets/README.md",
+    "sha256": "9db63390b5fe1c9e5b29cec8fa8e11b0d7104363396f545bd43d5d7261fc19af",
+    "new": true
+  },
+  {
+    "file": "frontend/plugins/velora-rewarded-ads-native/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift",
+    "sha256": "58b13d079607b8add41315b06f7b632f33ec806a0852f64428c30f46e23b5b1a",
+    "new": true
+  },
+  {
+    "file": "frontend/android/app/src/main/java/com/velorachat/app/VeloraAchievementSharePlugin.java",
+    "sha256": "12159a7368493b3bfec90b3b558c4a50d4ab1cd5881735b87956209390727055",
+    "new": true
+  },
+  {
+    "file": "frontend/ios/App/App/Info.plist",
+    "sha256": "ce57f55bb8e2b56b6178250c6707cc25db10e4596cc36264f7877b0cfdb10365",
+    "new": false
+  }
+]

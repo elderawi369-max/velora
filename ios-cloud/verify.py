@@ -19,14 +19,17 @@ assert config["appId"] == "com.velorachat.app"
 assert config["server"]["iosScheme"] == "capacitor"
 assert not config["server"].get("url"), "A release must embed its web bundle"
 assert set(config["packageClassList"]) >= {
-    "LocalNotificationsPlugin", "PushNotificationsPlugin", "VeloraRewardedAdsPlugin"
+    "LocalNotificationsPlugin", "PushNotificationsPlugin", "VeloraRewardedAdsPlugin",
+    "VeloraStoreKitPlugin", "VeloraAchievementSharePlugin"
 }
 with (app / "GoogleService-Info.plist").open("rb") as file:
     firebase = plistlib.load(file)
 assert firebase["BUNDLE_ID"] == config["appId"]
 assert firebase["PROJECT_ID"] == "velora-e3a28"
 with (app / "Info.plist").open("rb") as file:
-    assert not plistlib.load(file).get("VeloraAdTesting"), "Test ads must be enabled only by the device-testing workflow"
+    app_info = plistlib.load(file)
+    assert not app_info.get("VeloraAdTesting"), "Test ads must be enabled only by the device-testing workflow"
+    assert app_info.get("NSPhotoLibraryAddUsageDescription"), "Save Image must have a photo-library purpose description"
 with (app / "App.entitlements").open("rb") as file:
     assert plistlib.load(file)["aps-environment"] == "$(APNS_ENVIRONMENT)"
 
@@ -45,9 +48,16 @@ for value in (
     "ca-app-pub-8082896452517848/5984730430",
     "ca-app-pub-8082896452517848/8419322089",
     "ca-app-pub-8082896452517848/6510595610",
+    "https://play.google.com/store/apps/details?id=com.velorachat.app",
+    "https://apps.apple.com/app/id6826858824",
+    "VeloraAchievementShare",
+    "Share My Achievement",
 ):
     assert value in javascript, f"Missing production configuration: {value}"
 assert "Google is still verifying" not in javascript
+assert (app / "public/achievement-assets/app-store.svg").is_file()
+assert (app / "public/achievement-assets/google-play.png").is_file()
+assert (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").is_file()
 private_files = [p for p in root.rglob("*") if p.suffix.lower() in {
     ".p8", ".p12", ".pem", ".mobileprovision"
 }]
