@@ -16,6 +16,10 @@ Validation completed:
 - Android `:app:compileDebugJavaWithJavac` passed using the existing offline toolchain.
 - The standalone iOS snapshot integrity check passed with 179 files, native plugin registration, both store links, badge assets, and the Save Image purpose description.
 
-Not yet verified: native iOS compilation of this new share bridge, the actual iPhone share/save menus, social destination behavior, or a native Android sharing interaction. Run the Codemagic compile/direct-install workflow and a brief real-phone share/save/cancel check before the App Store distribution upload. Earlier purchase-enabled build 10003 does not contain achievement sharing.
+October 26 follow-up: the original bridge compiled and installed in direct build 10004. The user reported that Facebook dropped the card when image and URL text were shared together. The iOS bridge now sends only the PNG and copies the caption containing both store links. The maintained source, staging source, native package, and production web bundle have been reconciled. The share button says "Share Card + Copy Store Links" and a visible instruction explains pasting the caption before the native menu opens. Cancellation does not claim publication. The source record includes the matching native-file hash, and verify.py checks the bundled instructions, all seven purchase IDs, and the native/source record match.
+
+Current validation: 155 frontend tests across 28 files, TypeScript and the production iOS web build passed. The standalone 179-file snapshot integrity check passed. The staging convenience script's later Capacitor sync step could not run because this source staging directory has no root Capacitor configuration; the reviewed native project and fresh web bundle are packaged explicitly instead, with their configuration and hashes verified.
+
+Still required: compile this final web/native snapshot in Codemagic and check image sharing, manual caption pasting, save, and cancel on the actual iPhone. Neither a successful build nor the source checks establish that a Facebook post contains the card. No native Android sharing interaction has been verified. Earlier purchase-enabled build 10003 does not contain achievement sharing.
 
 No app, website, Android update, or App Store version has been deployed/submitted by this change.

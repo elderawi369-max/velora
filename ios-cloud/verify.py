@@ -51,7 +51,8 @@ for value in (
     "https://play.google.com/store/apps/details?id=com.velorachat.app",
     "https://apps.apple.com/app/id6826858824",
     "VeloraAchievementShare",
-    "Share My Achievement",
+    "Share Card + Copy Store Links",
+    "Share the card as a photo, then paste the copied caption into your post to include both store links.",
 ):
     assert value in javascript, f"Missing production configuration: {value}"
 assert "Google is still verifying" not in javascript
@@ -62,6 +63,11 @@ share_plugin = (root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewar
 assert "UIPasteboard.general.string = text" in share_plugin, "Achievement caption must be copied for manual pasting"
 assert "activityItems: [file]" in share_plugin, "Only the image may be sent to social share sheets"
 assert "activityItems: [file, text]" not in share_plugin, "Sharing image and link text can replace the image with a link preview"
+source_records = json.loads((root / "achievement-source/source-files.json").read_text())
+recorded_swift = next(row for row in source_records if row["file"].endswith("VeloraAchievementSharePlugin.swift"))
+assert hashlib.sha256((root / "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift").read_bytes()).hexdigest() == recorded_swift["sha256"], "Packaged native sharing must match maintained-source records"
+for product in ("credits.3", "credits.10", "gift.rose_aura", "gift.starlight_ring", "gift.velora_crown", "boost.spark", "boost.spotlight"):
+    assert "com.velorachat.app." + product in javascript, f"Missing purchase product: {product}"
 private_files = [p for p in root.rglob("*") if p.suffix.lower() in {
     ".p8", ".p12", ".pem", ".mobileprovision"
 }]

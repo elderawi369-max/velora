@@ -36,17 +36,17 @@
   },
   {
     "file": "frontend/src/lib/achievement-sharing.ts",
-    "sha256": "61ea729714d39d48964ec9c6d1234801e464eb39698bb2fb5e4714ee2cd1eeb5",
+    "sha256": "23c124c589f81eaf48c8c29bcf3dcd472328e55696ab89b5f09161c5f3fad460",
     "new": true
   },
   {
     "file": "frontend/src/lib/achievement-sharing.test.ts",
-    "sha256": "d32b2a334aa7f69f17e89bcaa8b137f44743348696e6027f5b66ff226fbaadc4",
+    "sha256": "e6dfc1791f57b848f284b464644e84fecb0aea197c228bdda16865d27d26b7b2",
     "new": true
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.tsx",
-    "sha256": "bb49ba44b234c7c5f86054fd4a3ba4f178313fafc5f6c4b2e5c14069ff9e5539",
+    "sha256": "363234c1f8e0121491c9e0fb72c693d3fea8d3f72e9a3bd4498ad9785108989f",
     "new": true
   },
   {
@@ -56,7 +56,7 @@
   },
   {
     "file": "frontend/src/ui/components/investigation-achievement.test.tsx",
-    "sha256": "89c84d911db6d5239868bf927eebd60dcaa92d7926c029184c1a982f6619ffae",
+    "sha256": "ef0a5d26989495ac825f8e84f98794d2b757b71c298043f6ca57a1151f6d3dfd",
     "new": true
   },
   {
@@ -81,12 +81,12 @@
   },
   {
     "file": "frontend/plugins/velora-rewarded-ads-native/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift",
-    "sha256": "58b13d079607b8add41315b06f7b632f33ec806a0852f64428c30f46e23b5b1a",
+    "sha256": "63ee947f09e95b78607b410cb856e8696f4b55a7988e39dca42a3ea06cd6a852",
     "new": true
   },
   {
     "file": "frontend/android/app/src/main/java/com/velorachat/app/VeloraAchievementSharePlugin.java",
-    "sha256": "12159a7368493b3bfec90b3b558c4a50d4ab1cd5881735b87956209390727055",
+    "sha256": "4f57d97462ba3ebfaac3c27580fb7ea8dbc068c8efa40e5a74675c2117206af9",
     "new": true
   },
   {
