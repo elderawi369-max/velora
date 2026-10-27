@@ -1,0 +1,26 @@
+[
+  {
+    "file": "frontend/src/ui/components/turnstile-widget.tsx",
+    "sha256": "1a286217a2a41789cdde8196603d9e9dea0d5cdd360f57de282b219a979310f8"
+  },
+  {
+    "file": "frontend/src/ui/components/turnstile-widget-native.test.tsx",
+    "sha256": "393a385343ae05fe0cb87aef2942b6228115aa058b1c97566a5dc56ccf9634de"
+  },
+  {
+    "file": "backend/src/lib/native-auth-policy.ts",
+    "sha256": "d2c556d170a06bcc279e9575db719c00b7e77bd11b3cd720be169aa64f85fb4e"
+  },
+  {
+    "file": "backend/src/lib/turnstile.ts",
+    "sha256": "5026ea3392cdff5d9f610dd4a5a3b794c76aaa14630da081b99d1b4d54b79e81"
+  },
+  {
+    "file": "backend/src/routes/auth.ts",
+    "sha256": "833435345b14797a618045fd9da0e93832c92ef300ac2dcbec1bb8f81a4d3952"
+  },
+  {
+    "file": "backend/src/db/migrations/0053_native_auth_rate_limits.sql",
+    "sha256": "367a9b36d1326414d701c9cf9f14764811db5bcb99f5d24ee47990e8ea8a87a1"
+  }
+]

@@ -76,3 +76,13 @@ private_files = [p for p in root.rglob("*") if p.suffix.lower() in {
 }]
 assert not private_files, "Private signing material must stay in Codemagic"
 print(f"Verified {len(manifest)} snapshot files, local packages, Firebase, ads and shared scheme.")
+
+# Native signup must not depend on the web verification widget.
+native_sources = root / "native-signup-source"
+for row in json.loads((native_sources / "source-files.json").read_text()):
+    assert hashlib.sha256((native_sources / row["file"]).read_bytes()).hexdigest() == row["sha256"]
+widget_source = (native_sources / "frontend/src/ui/components/turnstile-widget.tsx").read_text()
+assert 'if (nativeToken) return null;' in widget_source
+assert 'onTokenChange(nativeToken)' in widget_source
+assert '-native-bypass' in javascript
+print("Verified native signup removal and matching frontend/backend source records.")

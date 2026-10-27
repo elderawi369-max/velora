@@ -63,7 +63,7 @@
   "ios/App/App/public/cordova.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/cordova_plugins.js": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "ios/App/App/public/firebase-messaging-sw.js": "ed0cbf2edb02dd4f4d3f57216ec763cfefa9449548b95cd395c887cde7a6f6b2",
-  "ios/App/App/public/index.html": "19f40b5e3f1246940ef1913419ae0b5b1af69df26fe91b38d63847dad3a056a6",
+  "ios/App/App/public/index.html": "8d2f018130ae8639d79b1c2b826c391f11722c0ff06fd084bcc40adb63d65e64",
   "ios/App/App/public/investigations/blackwood/blackwood-museum-storm-v1.png": "57932c3fb34e3178582faa1dd90ced899e0dda03f3accd6a9925587eebcbdbc4",
   "ios/App/App/public/investigations/blackwood/clara-finch-v1.png": "fef659a6800523741913464ec6e3f8ac073f8c6f223b8fa432ffaf2abf2b94dd",
   "ios/App/App/public/investigations/blackwood/conservation-laboratory-v1.png": "83ba145be62196b61be6fe03f583ae800e2305957787474e1d2ec70c10b43625",
@@ -178,6 +178,6 @@
   "packages/VeloraRewardedAdsNative/ios/Sources/VeloraRewardedAdsNative/VeloraAchievementSharePlugin.swift": "e1f49eb65607c8a8e1d3bba1f6d5554cef01b46575c97701c4222b25f2f0e6df",
   "ios/App/App/public/achievement-assets/app-store-qr.png": "77d29447b5e356215538be68559303b23c35a110d2fc20573764304c72faf226",
   "ios/App/App/public/achievement-assets/google-play-qr.png": "5167b930bf025549b6078014038131ebbf3f5fe182fa6341948184b35f71b66d",
-  "ios/App/App/public/assets/index-BkN0g1PJ.js": "d6afcd2b0f740d7f39ce19745cb81ef57e1d616c8da497948a7af9e40c1b7d74",
-  "ios/App/App/public/assets/web-oq1UTBQK.js": "8da6685e21a022d4fbfd3f86c46affc5747017d3bcff29661d09fd9e7064dce7"
+  "ios/App/App/public/assets/index-WHIdZVO1.js": "121163619a442fc2bfb9238de831b7db67bc18d9943a651f8c23ccc280dd3ea7",
+  "ios/App/App/public/assets/web-BZarbMYP.js": "a12671fecae9158f83cafe482faa6ee68952e604d4402b1060e7420410e278b0"
 }
