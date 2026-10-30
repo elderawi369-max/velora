@@ -52,7 +52,7 @@ export function GiftActions({ profileId }: GiftActionsProps) {
   return (
     <div className="gift-actions">
       <p className="gift-explainer">
-        Send a small signal that lingers. Gifts add a visible aura and make your attention feel harder to ignore.
+        Send a friendly gift to show appreciation. Gifts add a visible badge to the profile you send them to.
       </p>
 
       <div className="gift-row">

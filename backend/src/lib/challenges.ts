@@ -1,5 +1,6 @@
 import type { EnvBindings } from "./db";
 import { bundledTriviaQuestionBank } from "./trivia-fallback.generated";
+import { isSuitableTriviaQuestion } from "./trivia-content-filter";
 
 export type ChallengeType = "compatibility" | "trivia";
 export type ChallengeStatus =
@@ -258,7 +259,7 @@ export const compatibilityQuestionBank: CompatibilityQuestion[] = [
   { id: "vibe_200", prompt: "What is the best ending for a great Vibe Check?", options: ["Start chatting immediately", "Keep teasing a little", "Trade one honest answer", "Want a second round"] },
 ];
 
-export const triviaQuestionBank = bundledTriviaQuestionBank as TriviaQuestion[];
+export const triviaQuestionBank = (bundledTriviaQuestionBank as TriviaQuestion[]).filter(isSuitableTriviaQuestion);
 
 type TriviaQuestionRow = {
   id: string;
@@ -335,6 +336,10 @@ function normalizeTriviaQuestionRow(row: TriviaQuestionRow): TriviaQuestion | nu
   }
 
   if (row.correct_answer_index < 0 || row.correct_answer_index >= options.length) {
+    return null;
+  }
+
+  if (!isSuitableTriviaQuestion({ prompt: row.prompt, options })) {
     return null;
   }
 

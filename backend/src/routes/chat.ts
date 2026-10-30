@@ -4,7 +4,7 @@ import type { EnvBindings } from "../lib/db";
 import { getDb } from "../lib/db";
 import { conversations, messages, profiles } from "../db/schema";
 import { enforceConversationStartLimit, enforceMessageLimit } from "../lib/limits";
-import { containsBlockedContactInfo } from "../lib/moderation";
+import { containsBlockedContactInfo, containsSexualContent } from "../lib/moderation";
 import { getOwnProfileContext } from "../lib/profile-context";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { logEvent } from "../lib/analytics";
@@ -451,6 +451,10 @@ chatRoutes.post("/conversations/:conversationId/messages", async (c) => {
       { error: "Messages cannot include off-platform contact information." },
       400,
     );
+  }
+
+  if (containsSexualContent(trimmedBody)) {
+    return c.json({ error: "Messages cannot include sexual or explicit content." }, 400);
   }
 
   const db = getDb(c.env);

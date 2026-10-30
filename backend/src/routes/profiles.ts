@@ -5,7 +5,7 @@ import { getDb } from "../lib/db";
 import { boosts, conversations, gifts, profiles, reports, users } from "../db/schema";
 import { getUserIdFromSession } from "../lib/auth";
 import { getOwnProfileContext } from "../lib/profile-context";
-import { containsBlockedContactInfo } from "../lib/moderation";
+import { containsBlockedContactInfo, containsSexualContent } from "../lib/moderation";
 import { areProfilesBlocked, isFavorited } from "../lib/relationships";
 import { profileSchema } from "../lib/validation";
 import { logEvent } from "../lib/analytics";
@@ -106,6 +106,18 @@ function parseBrowseLimit(value: string | undefined) {
   }
 
   return Math.max(1, Math.min(browsePageSizeMax, Math.floor(parsed)));
+}
+
+function profileContainsSexualContent(input: {
+  username?: string;
+  displayName: string;
+  bio: string;
+  promptEntries: Array<{ question: string; answer: string }>;
+}) {
+  return (
+    [input.username ?? "", input.displayName, input.bio].some(containsSexualContent) ||
+    input.promptEntries.some((entry) => containsSexualContent(entry.question) || containsSexualContent(entry.answer))
+  );
 }
 
 function profileContainsBlockedContactInfo(input: {
@@ -1240,6 +1252,13 @@ profileRoutes.post("/", async (c) => {
     );
   }
 
+  if (profileContainsSexualContent(payload.data)) {
+    return c.json(
+      { error: "Profiles cannot include sexual or explicit content. Please edit your username, name, bio or prompts." },
+      400,
+    );
+  }
+
   const db = getDb(c.env);
   const [existingProfile] = await db
     .select({ id: profiles.id })
@@ -1375,6 +1394,13 @@ profileRoutes.put("/me", async (c) => {
   if (profileContainsBlockedContactInfo(payload.data)) {
     return c.json(
       { error: "Profiles cannot include off-platform contact information." },
+      400,
+    );
+  }
+
+  if (profileContainsSexualContent(payload.data)) {
+    return c.json(
+      { error: "Profiles cannot include sexual or explicit content. Please edit your username, name, bio or prompts." },
       400,
     );
   }

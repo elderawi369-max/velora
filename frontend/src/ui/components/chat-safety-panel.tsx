@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { blockProfile, reportProfile } from "../../lib/api";
 
 type ChatSafetyPanelProps = {
-  conversationId: string;
+  conversationId?: string;
   targetProfileId: string;
 };
 
@@ -49,6 +49,7 @@ export function ChatSafetyPanel({
         <select value={reason} onChange={(event) => setReason(event.target.value)}>
           <option value="spam">Spam</option>
           <option value="harassment">Harassment</option>
+          <option value="sexual or inappropriate content">Sexual or inappropriate content</option>
           <option value="off-platform contact">Off-platform contact</option>
           <option value="impersonation">Impersonation</option>
           <option value="other">Other</option>

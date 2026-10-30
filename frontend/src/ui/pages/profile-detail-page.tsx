@@ -15,6 +15,7 @@ import {
   personalityTypeDescriptions,
   platformRules,
 } from "../../config";
+import { ChatSafetyPanel } from "../components/chat-safety-panel";
 import { GiftActions } from "../components/gift-actions";
 import { ProfileAvatar } from "../components/profile-avatar";
 
@@ -291,6 +292,8 @@ export function ProfileDetailPage() {
         </div>
 
         <GiftActions profileId={profile.id} />
+
+        <ChatSafetyPanel targetProfileId={profile.id} />
 
         {profile.promptEntries.length > 0 ? (
           <div className="meta-group">
